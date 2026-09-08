@@ -184,11 +184,11 @@ String redactDiagnostic(String value) {
     RegExp(r'bearer\s+\S+', caseSensitive: false),
     'Bearer [REDACTED]',
   );
-  return withoutBearerToken.replaceAll(
+  return withoutBearerToken.replaceAllMapped(
     RegExp(
       r'(authorization|token|password)\s*[:=]\s*[^\s&]+',
       caseSensitive: false,
     ),
-    r'$1=[REDACTED]',
+    (match) => '${match.group(1)}=[REDACTED]',
   );
 }
