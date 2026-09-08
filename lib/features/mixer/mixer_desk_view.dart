@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/fingerprint_service.dart';
+import '../../services/lossless_recording_writer.dart';
+import '../patchbay/patchbay_routing_modal.dart';
 
 const Color kSurfaceBase = Color(0xFF111315);
 const Color kSurfaceRack = Color(0xFF1C1F23);
@@ -13,8 +15,13 @@ const Color kMeterClip = Color(0xFFEF4444);
 
 class MixerDeskView extends StatefulWidget {
   final FingerprintService? fingerprintService;
+  final LosslessRecordingWriter? recordingWriter;
 
-  const MixerDeskView({Key? key, this.fingerprintService}) : super(key: key);
+  const MixerDeskView({
+    Key? key,
+    this.fingerprintService,
+    this.recordingWriter,
+  }) : super(key: key);
 
   @override
   State<MixerDeskView> createState() => _MixerDeskViewState();
@@ -22,9 +29,30 @@ class MixerDeskView extends StatefulWidget {
 
 class _MixerDeskViewState extends State<MixerDeskView> {
   final List<ChannelData> _channels = [
-    ChannelData(id: 'ch_1', name: 'REKORDBOX', source: 'Virtual Loopback', fader: 0.85),
-    ChannelData(id: 'ch_2', name: 'USB MIC / LINE', source: 'CoreAudio In 1-2', fader: 0.70),
-    ChannelData(id: 'ch_3', name: 'HARDWARE SYNTH', source: 'USB In 3-4', fader: 0.65),
+    ChannelData(
+      id: 'ch_1',
+      name: 'REKORDBOX',
+      source: 'Virtual Loopback (Ch 1-2)',
+      fader: 0.85,
+      trimDb: 0.0,
+      accentColor: kAccentOchre,
+    ),
+    ChannelData(
+      id: 'ch_2',
+      name: 'USB LINE 1-2',
+      source: 'CoreAudio In 1-2',
+      fader: 0.70,
+      trimDb: -2.0,
+      accentColor: kAccentCopper,
+    ),
+    ChannelData(
+      id: 'ch_3',
+      name: 'HARDWARE SYNTH',
+      source: 'USB In 3-4',
+      fader: 0.65,
+      trimDb: 1.5,
+      accentColor: const Color(0xFF3B82F6),
+    ),
   ];
 
   final List<IdentifiedTrack> _playlistHistory = [];
@@ -34,14 +62,16 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   double _masterFader = 0.90;
   bool _isStreaming = false;
   bool _isRecording = false;
+  String _recordingTimeFormatted = '00:00';
+  double _recordingSizeMb = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _subscribeFingerprintService();
+    _subscribeServices();
   }
 
-  void _subscribeFingerprintService() {
+  void _subscribeServices() {
     widget.fingerprintService?.onTrackIdentified.listen((track) {
       if (!mounted) return;
       setState(() {
@@ -55,6 +85,69 @@ class _MixerDeskViewState extends State<MixerDeskView> {
       setState(() {
         _isAnalyzing = status;
       });
+    });
+
+    widget.recordingWriter?.onStatsUpdated.listen((stats) {
+      if (!mounted) return;
+      setState(() {
+        final mins = stats.elapsed.inMinutes.toString().padLeft(2, '0');
+        final secs = (stats.elapsed.inSeconds % 60).toString().padLeft(2, '0');
+        _recordingTimeFormatted = '$mins:$secs';
+        _recordingSizeMb = stats.currentFileSizeMb;
+      });
+    });
+  }
+
+  Future<void> _handleToggleRecording() async {
+    if (widget.recordingWriter == null) {
+      setState(() => _isRecording = !_isRecording);
+      return;
+    }
+
+    try {
+      if (!_isRecording) {
+        await widget.recordingWriter!.startRecording();
+        setState(() => _isRecording = true);
+      } else {
+        await widget.recordingWriter!.stopRecording();
+        setState(() {
+          _isRecording = false;
+          _recordingTimeFormatted = '00:00';
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Recording error: $e'), backgroundColor: kMeterClip),
+      );
+    }
+  }
+
+  Future<void> _openPatchbayModal() async {
+    await PatchbayRoutingModal.show(
+      context,
+      onChannelConfigured: (result) {
+        setState(() {
+          final chLeft = (result.channelPairIndex * 2) + 1;
+          final chRight = (result.channelPairIndex * 2) + 2;
+
+          _channels.add(
+            ChannelData(
+              id: 'ch_${DateTime.now().millisecondsSinceEpoch}',
+              name: result.channelName,
+              source: '${result.endpoint.name} (Ch $chLeft-$chRight)',
+              fader: 0.80,
+              trimDb: result.initialTrimDb,
+              accentColor: result.channelColor,
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  void _removeChannel(String channelId) {
+    setState(() {
+      _channels.removeWhere((ch) => ch.id == channelId);
     });
   }
 
@@ -134,6 +227,27 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 ),
                 child: const Text('48 kHz / 24-bit', style: TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 11)),
               ),
+              if (_isRecording) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: kMeterClip.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(3),
+                    border: Border.all(color: kMeterClip),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: kMeterClip, shape: BoxShape.circle)),
+                      const SizedBox(width: 6),
+                      Text(
+                        'REC $_recordingTimeFormatted (${_recordingSizeMb.toStringAsFixed(1)} MB)',
+                        style: const TextStyle(color: kMeterClip, fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           Row(
@@ -155,7 +269,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 label: 'RECORD',
                 active: _isRecording,
                 activeColor: kMeterClip,
-                onTap: () => setState(() => _isRecording = !_isRecording),
+                onTap: _handleToggleRecording,
               ),
               const SizedBox(width: 12),
               _buildHeavyToggle(
@@ -278,29 +392,61 @@ class _MixerDeskViewState extends State<MixerDeskView> {
 
   Widget _buildChannelStrip(ChannelData ch) {
     return Container(
-      width: 120,
+      width: 126,
       decoration: BoxDecoration(
         color: kSurfaceStrip,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: const Color(0xFF2E343B)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       child: Column(
         children: [
-          Text(ch.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-          Text(ch.source, maxLines: 1, style: const TextStyle(color: Colors.grey, fontSize: 9)),
-          const SizedBox(height: 12),
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.black48,
-              border: Border.all(color: kAccentOchre, width: 2),
-            ),
-            child: const Center(child: Text('0dB', style: TextStyle(color: Colors.white, fontSize: 8))),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: ch.accentColor, shape: BoxShape.circle),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    ch.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () => _removeChannel(ch.id),
+                child: const Icon(Icons.close, color: Colors.grey, size: 14),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          Text(ch.source, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 8)),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onDoubleTap: () => setState(() => ch.trimDb = 0.0),
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black48,
+                border: Border.all(color: ch.accentColor, width: 2),
+              ),
+              child: Center(
+                child: Text(
+                  '${ch.trimDb >= 0 ? "+" : ""}${ch.trimDb.toStringAsFixed(0)}',
+                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -311,7 +457,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   quarterTurns: 3,
                   child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
-                      thumbColor: kAccentOchre,
+                      thumbColor: ch.accentColor,
                       activeTrackColor: Colors.white24,
                       inactiveTrackColor: Colors.black48,
                       trackHeight: 6,
@@ -448,9 +594,9 @@ class _MixerDeskViewState extends State<MixerDeskView> {
 
   Widget _buildAddChannelButton() {
     return InkWell(
-      onTap: () {},
+      onTap: _openPatchbayModal,
       child: Container(
-        width: 100,
+        width: 112,
         decoration: BoxDecoration(
           border: Border.all(color: Colors.white24, style: BorderStyle.solid),
           borderRadius: BorderRadius.circular(6),
@@ -461,6 +607,8 @@ class _MixerDeskViewState extends State<MixerDeskView> {
             Icon(Icons.add, color: kAccentOchre, size: 32),
             SizedBox(height: 8),
             Text('ADD INPUT', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+            SizedBox(height: 4),
+            Text('PATCHBAY', style: TextStyle(color: kAccentCopper, fontSize: 9, fontFamily: 'monospace')),
           ],
         ),
       ),
@@ -473,6 +621,8 @@ class ChannelData {
   final String name;
   final String source;
   double fader;
+  double trimDb;
+  Color accentColor;
   bool isMuted;
   bool isSolo;
 
@@ -481,6 +631,8 @@ class ChannelData {
     required this.name,
     required this.source,
     required this.fader,
+    this.trimDb = 0.0,
+    this.accentColor = kAccentOchre,
     this.isMuted = false,
     this.isSolo = false,
   });
