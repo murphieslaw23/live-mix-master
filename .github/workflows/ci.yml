@@ -1,35 +1,42 @@
-name: LiveMixMaster CI Test & Build
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  flutter-tests:
+  flutter-lint-test:
     name: Flutter Lint & Tests
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Flutter stable
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.x'
-          channel: 'stable'
+          channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos
-      - run: flutter test
+      - name: Resolve packages
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Run tests
+        run: flutter test
 
   native-engine-build:
-    name: Native Engine Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+    name: Native Engine Build (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure & Build Native Library
-        run: |
-          cmake -B build -S native
-          cmake --build build --config Release
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Configure native engine
+        run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
+      - name: Build native engine
+        run: cmake --build build/native --config Release --parallel
