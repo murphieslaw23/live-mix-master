@@ -1,0 +1,13 @@
+name: live_mix_master
+description: Live audio routing, meter, recording, fingerprinting and broadcast console.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
