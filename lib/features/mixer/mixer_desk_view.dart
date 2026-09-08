@@ -170,4 +170,473 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       itemCount: _channels.length + 1,
                       separatorBuilder: (context, index) => const SizedBox(width: 12),
-                      itemBuilder: (context, index) {\n                        if (index == _channels.length) {\n                          return _buildAddChannelButton();\n                        }\n                        return _buildChannelStrip(_channels[index]);\n                      },\n                    ),\n                  ),\n                  _buildMasterSection(),\n                ],\n              ),\n            ),\n          ],\n        ),\n      ),\n    );\n  }\n\n  Widget _buildTopActionBar() {\n    return Container(\n      height: 64,\n      padding: const EdgeInsets.symmetric(horizontal: 20),\n      decoration: const BoxDecoration(\n        color: kSurfaceRack,\n        border: Border(bottom: BorderSide(color: Color(0xFF2D333B), width: 2)),\n      ),\n      child: Row(\n        mainAxisAlignment: MainAxisAlignment.spaceBetween,\n        children: [\n          Row(\n            children: [\n              Container(\n                width: 32,\n                height: 32,\n                decoration: BoxDecoration(\n                  color: kAccentOchre,\n                  borderRadius: BorderRadius.circular(4),\n                ),\n                child: const Center(\n                  child: Text('LMM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11)),\n                ),\n              ),\n              const SizedBox(width: 12),\n              const Text(\n                'LIVEMIXMASTER',\n                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),\n              ),\n              const SizedBox(width: 16),\n              Container(\n                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),\n                decoration: BoxDecoration(\n                  color: Colors.black38,\n                  borderRadius: BorderRadius.circular(3),\n                  border: Border.all(color: kAccentCopper),\n                ),\n                child: const Text('48 kHz / 24-bit', style: TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 11)),\n              ),\n              if (_isRecording) ...[\n                const SizedBox(width: 12),\n                Container(\n                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),\n                  decoration: BoxDecoration(\n                    color: kMeterClip.withOpacity(0.2),\n                    borderRadius: BorderRadius.circular(3),\n                    border: Border.all(color: kMeterClip),\n                  ),\n                  child: Row(\n                    children: [\n                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: kMeterClip, shape: BoxShape.circle)),\n                      const SizedBox(width: 6),\n                      Text(\n                        'REC $_recordingTimeFormatted (${_recordingSizeMb.toStringAsFixed(1)} MB)',\n                        style: const TextStyle(color: kMeterClip, fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.bold),\n                      ),\n                    ],\n                  ),\n                ),\n              ],\n            ],\n          ),\n          Row(\n            children: [\n              Builder(\n                builder: (context) => IconButton(\n                  icon: Badge(\n                    label: Text('${_playlistHistory.length}'),\n                    isLabelVisible: _playlistHistory.isNotEmpty,\n                    backgroundColor: kAccentOchre,\n                    child: const Icon(Icons.playlist_play, color: Colors.white),\n                  ),\n                  tooltip: 'Session Playlist',\n                  onPressed: () => Scaffold.of(context).openEndDrawer(),\n                ),\n              ),\n              const SizedBox(width: 8),\n              _buildHeavyToggle(\n                label: 'RECORD',\n                active: _isRecording,\n                activeColor: kMeterClip,\n                onTap: _handleToggleRecording,\n              ),\n              const SizedBox(width: 12),\n              _buildHeavyToggle(\n                label: 'BROADCAST',\n                active: _isStreaming,\n                activeColor: kAccentOchre,\n                onTap: () => setState(() => _isStreaming = !_isStreaming),\n              ),\n            ],\n          ),\n        ],\n      ),\n    );\n  }\n\n  Widget _buildLiveFingerprintBanner() {\n    return Container(\n      width: double.infinity,\n      color: const Color(0xFF16191D),\n      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),\n      child: Row(\n        children: [\n          Icon(\n            Icons.fingerprint,\n            color: _isAnalyzing ? kAccentCopper : kAccentOchre,\n            size: 20,\n          ),\n          const SizedBox(width: 10),\n          Text(\n            _isAnalyzing ? 'SCANNING AUDIO...' : 'LIVE TRACK:',\n            style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold),\n          ),\n          const SizedBox(width: 8),\n          Expanded(\n            child: Text(\n              _currentTrack != null\n                  ? '${_currentTrack!.artist.toUpperCase()} — ${_currentTrack!.title.toUpperCase()}'\n                  : 'AWAITING TRACK DETECTION...',\n              overflow: TextOverflow.ellipsis,\n              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),\n            ),\n          ),\n          if (_currentTrack != null) ...[\n            Text(\n              'CONFIDENCE: ${(_currentTrack!.confidence * 100).toInt()}%',\n              style: const TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 11),\n            ),\n          ],\n        ],\n      ),\n    );\n  }\n\n  Widget _buildPlaylistDrawer() {\n    return Drawer(\n      backgroundColor: kSurfaceRack,\n      child: SafeArea(\n        child: Column(\n          crossAxisAlignment: CrossAxisAlignment.start,\n          children: [\n            Container(\n              padding: const EdgeInsets.all(16),\n              color: kSurfaceBase,\n              child: Row(\n                mainAxisAlignment: MainAxisAlignment.spaceBetween,\n                children: [\n                  const Expanded(\n                    child: Text(\n                      'SESSION PLAYLIST',\n                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2),\n                    ),\n                  ),\n                  const SizedBox(width: 8),\n                  Text(\n                    '${_playlistHistory.length} TRACKS',\n                    style: const TextStyle(color: kAccentOchre, fontFamily: 'monospace', fontSize: 12),\n                  ),\n                ],\n              ),\n            ),\n            Expanded(\n              child: _playlistHistory.isEmpty\n                  ? const Center(\n                      child: Text('No tracks identified yet.', style: TextStyle(color: Colors.grey)),\n                    )\n                  : ListView.separated(\n                      padding: const EdgeInsets.symmetric(vertical: 8),\n                      itemCount: _playlistHistory.length,\n                      separatorBuilder: (context, index) => const Divider(color: Color(0xFF2D333B), height: 1),\n                      itemBuilder: (context, index) {\n                        final track = _playlistHistory[index];\n                        final durationFormatted =\n                            '${track.sessionOffset.inMinutes.toString().padLeft(2, '0')}:${(track.sessionOffset.inSeconds % 60).toString().padLeft(2, '0')}';\n\n                        return ListTile(\n                          dense: true,\n                          title: Text(track.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),\n                          subtitle: Text(track.artist, style: const TextStyle(color: Colors.grey)),\n                          leading: Text(\n                            durationFormatted,\n                            style: const TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 12),\n                          ),\n                          trailing: Container(\n                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),\n                            decoration: BoxDecoration(\n                              color: Colors.black54,\n                              borderRadius: BorderRadius.circular(3),\n                            ),\n                            child: Text(\n                              '${(track.confidence * 100).toInt()}%',\n                              style: const TextStyle(color: kMeterNominal, fontFamily: 'monospace', fontSize: 10),\n                            ),\n                          ),\n                        );\n                      },\n                    ),\n            ),\n          ],\n        ),\n      ),\n    );\n  }\n\n  Widget _buildChannelStrip(ChannelData ch) {\n    return Container(\n      width: 126,\n      decoration: BoxDecoration(\n        color: kSurfaceStrip,\n        borderRadius: BorderRadius.circular(6),\n        border: Border.all(color: const Color(0xFF2E343B)),\n      ),\n      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),\n      child: Column(\n        children: [\n          Row(\n            mainAxisAlignment: MainAxisAlignment.spaceBetween,\n            children: [\n              Container(\n                width: 8,\n                height: 8,\n                decoration: BoxDecoration(color: ch.accentColor, shape: BoxShape.circle),\n              ),\n              Expanded(\n                child: Padding(\n                  padding: const EdgeInsets.symmetric(horizontal: 4),\n                  child: Text(\n                    ch.name,\n                    maxLines: 1,\n                    overflow: TextOverflow.ellipsis,\n                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),\n                  ),\n                ),\n              ),\n              InkWell(\n                onTap: () => _removeChannel(ch.id),\n                child: const Icon(Icons.close, color: Colors.grey, size: 14),\n              ),\n            ],\n          ),\n          Text(ch.source, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 8)),\n          const SizedBox(height: 10),\n          GestureDetector(\n            onDoubleTap: () => setState(() => ch.trimDb = 0.0),\n            child: Container(\n              width: 34,\n              height: 34,\n              decoration: BoxDecoration(\n                shape: BoxShape.circle,\n                color: Colors.black.withValues(alpha: 0.48),\n                border: Border.all(color: ch.accentColor, width: 2),\n              ),\n              child: Center(\n                child: Text(\n                  '${ch.trimDb >= 0 ? "+" : ""}${ch.trimDb.toStringAsFixed(0)}',\n                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),\n                ),\n              ),\n            ),\n          ),\n          const SizedBox(height: 14),\n          Expanded(\n            child: Row(\n              mainAxisAlignment: MainAxisAlignment.center,\n              children: [\n                _buildLedMeter(level: ch.fader * 0.9),\n                const SizedBox(width: 8),\n                RotatedBox(\n                  quarterTurns: 3,\n                  child: SliderTheme(\n                    data: SliderTheme.of(context).copyWith(\n                      thumbColor: ch.accentColor,\n                      activeTrackColor: Colors.white24,\n                      inactiveTrackColor: Colors.black.withValues(alpha: 0.48),\n                      trackHeight: 6,\n                    ),\n                    child: Slider(\n                      value: ch.fader,\n                      onChanged: (val) => setState(() => ch.fader = val),\n                    ),\n                  ),\n                ),\n              ],\n            ),\n          ),\n          const SizedBox(height: 8),\n          Row(\n            children: [\n              Expanded(\n                child: InkWell(\n                  onTap: () => setState(() => ch.isMuted = !ch.isMuted),\n                  child: Container(\n                    height: 24,\n                    color: ch.isMuted ? kMeterClip : Colors.black.withValues(alpha: 0.48),\n                    alignment: Alignment.center,\n                    child: const Text('M', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),\n                  ),\n                ),\n              ),\n              const SizedBox(width: 4),\n              Expanded(\n                child: InkWell(\n                  onTap: () => setState(() => ch.isSolo = !ch.isSolo),\n                  child: Container(\n                    height: 24,\n                    color: ch.isSolo ? kAccentCopper : Colors.black.withValues(alpha: 0.48),\n                    alignment: Alignment.center,\n                    child: const Text('S', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),\n                  ),\n                ),\n              ),\n            ],\n          ),\n        ],\n      ),\n    );\n  }\n\n  Widget _buildMasterSection() {\n    return Container(\n      width: 160,\n      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),\n      padding: const EdgeInsets.all(12),\n      decoration: BoxDecoration(\n        color: kSurfaceRack,\n        borderRadius: BorderRadius.circular(6),\n        border: Border.all(color: kAccentOchre.withOpacity(0.5)),\n      ),\n      child: Column(\n        children: [\n          const Text('MASTER BUS', style: TextStyle(color: kAccentOchre, fontWeight: FontWeight.bold, fontSize: 14)),\n          const Text('TRUE PEAK / LUFS', style: TextStyle(color: Colors.grey, fontSize: 9)),\n          const SizedBox(height: 16),\n          Expanded(\n            child: Row(\n              mainAxisAlignment: MainAxisAlignment.center,\n              children: [\n                _buildLedMeter(level: _masterFader * 0.95),\n                const SizedBox(width: 4),\n                _buildLedMeter(level: _masterFader * 0.93),\n                const SizedBox(width: 8),\n                RotatedBox(\n                  quarterTurns: 3,\n                  child: Slider(\n                    value: _masterFader,\n                    activeColor: kAccentOchre,\n                    onChanged: (val) => setState(() => _masterFader = val),\n                  ),\n                ),\n              ],\n            ),\n          ),\n          const SizedBox(height: 8),\n          Container(\n            padding: const EdgeInsets.all(6),\n            color: Colors.black87,\n            child: Column(\n              children: const [\n                Text('-14.2 LUFS', style: TextStyle(color: kMeterNominal, fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 11)),\n                Text('LIMITER READY', style: TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 9)),\n              ],\n            ),\n          ),\n        ],\n      ),\n    );\n  }\n\n  Widget _buildLedMeter({required double level}) {\n    return Container(\n      width: 14,\n      height: 220,\n      decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(2)),\n      child: Column(\n        verticalDirection: VerticalDirection.up,\n        children: List.generate(24, (i) {\n          final isLit = level >= (i / 24);\n          Color color = kMeterNominal;\n          if (i > 20) color = kMeterClip;\n          else if (i > 15) color = kMeterHeadroom;\n\n          return Container(\n            height: 6,\n            margin: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 2),\n            color: isLit ? color : const Color(0xFF1C1F22),\n          );\n        }),\n      ),\n    );\n  }\n\n  Widget _buildHeavyToggle({required String label, required bool active, required Color activeColor, required VoidCallback onTap}) {\n    return GestureDetector(\n      onTap: onTap,\n      child: Container(\n        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),\n        decoration: BoxDecoration(\n          color: active ? activeColor : const Color(0xFF2D333B),\n          borderRadius: BorderRadius.circular(4),\n          border: Border.all(color: active ? Colors.white : Colors.transparent),\n        ),\n        child: Text(label, style: TextStyle(color: active ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),\n      ),\n    );\n  }\n\n  Widget _buildAddChannelButton() {\n    return InkWell(\n      onTap: _openPatchbayModal,\n      child: Container(\n        width: 112,\n        decoration: BoxDecoration(\n          border: Border.all(color: Colors.white24, style: BorderStyle.solid),\n          borderRadius: BorderRadius.circular(6),\n        ),\n        child: Column(\n          mainAxisAlignment: MainAxisAlignment.center,\n          children: const [\n            Icon(Icons.add, color: kAccentOchre, size: 32),\n            SizedBox(height: 8),\n            Text('ADD INPUT', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),\n            SizedBox(height: 4),\n            Text('PATCHBAY', style: TextStyle(color: kAccentCopper, fontSize: 9, fontFamily: 'monospace')),\n          ],\n        ),\n      ),\n    );\n  }\n}\n\nclass ChannelData {\n  final String id;\n  final String name;\n  final String source;\n  double fader;\n  double trimDb;\n  Color accentColor;\n  bool isMuted;\n  bool isSolo;\n\n  ChannelData({\n    required this.id,\n    required this.name,\n    required this.source,\n    required this.fader,\n    this.trimDb = 0.0,\n    this.accentColor = kAccentOchre,\n    this.isMuted = false,\n    this.isSolo = false,\n  });\n}\n
+                      itemBuilder: (context, index) {
+                        if (index == _channels.length) {
+                          return _buildAddChannelButton();
+                        }
+                        return _buildChannelStrip(_channels[index]);
+                      },
+                    ),
+                  ),
+                  _buildMasterSection(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopActionBar() {
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        color: kSurfaceRack,
+        border: Border(bottom: BorderSide(color: Color(0xFF2D333B), width: 2)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: kAccentOchre,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Center(
+                  child: Text('LMM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'LIVEMIXMASTER',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+              ),
+              const SizedBox(width: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(3),
+                  border: Border.all(color: kAccentCopper),
+                ),
+                child: const Text('48 kHz / 24-bit', style: TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 11)),
+              ),
+              if (_isRecording) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: kMeterClip.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(3),
+                    border: Border.all(color: kMeterClip),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: kMeterClip, shape: BoxShape.circle)),
+                      const SizedBox(width: 6),
+                      Text(
+                        'REC $_recordingTimeFormatted (${_recordingSizeMb.toStringAsFixed(1)} MB)',
+                        style: const TextStyle(color: kMeterClip, fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          Row(
+            children: [
+              Builder(
+                builder: (context) => IconButton(
+                  icon: Badge(
+                    label: Text('${_playlistHistory.length}'),
+                    isLabelVisible: _playlistHistory.isNotEmpty,
+                    backgroundColor: kAccentOchre,
+                    child: const Icon(Icons.playlist_play, color: Colors.white),
+                  ),
+                  tooltip: 'Session Playlist',
+                  onPressed: () => Scaffold.of(context).openEndDrawer(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildHeavyToggle(
+                label: 'RECORD',
+                active: _isRecording,
+                activeColor: kMeterClip,
+                onTap: _handleToggleRecording,
+              ),
+              const SizedBox(width: 12),
+              _buildHeavyToggle(
+                label: 'BROADCAST',
+                active: _isStreaming,
+                activeColor: kAccentOchre,
+                onTap: () => setState(() => _isStreaming = !_isStreaming),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveFingerprintBanner() {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFF16191D),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.fingerprint,
+            color: _isAnalyzing ? kAccentCopper : kAccentOchre,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _isAnalyzing ? 'SCANNING AUDIO...' : 'LIVE TRACK:',
+            style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _currentTrack != null
+                  ? '${_currentTrack!.artist.toUpperCase()} — ${_currentTrack!.title.toUpperCase()}'
+                  : 'AWAITING TRACK DETECTION...',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+          if (_currentTrack != null) ...[
+            Text(
+              'CONFIDENCE: ${(_currentTrack!.confidence * 100).toInt()}%',
+              style: const TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 11),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaylistDrawer() {
+    return Drawer(
+      backgroundColor: kSurfaceRack,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: kSurfaceBase,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'SESSION PLAYLIST',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_playlistHistory.length} TRACKS',
+                    style: const TextStyle(color: kAccentOchre, fontFamily: 'monospace', fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _playlistHistory.isEmpty
+                  ? const Center(
+                      child: Text('No tracks identified yet.', style: TextStyle(color: Colors.grey)),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _playlistHistory.length,
+                      separatorBuilder: (context, index) => const Divider(color: Color(0xFF2D333B), height: 1),
+                      itemBuilder: (context, index) {
+                        final track = _playlistHistory[index];
+                        final durationFormatted =
+                            '${track.sessionOffset.inMinutes.toString().padLeft(2, '0')}:${(track.sessionOffset.inSeconds % 60).toString().padLeft(2, '0')}';
+
+                        return ListTile(
+                          dense: true,
+                          title: Text(track.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          subtitle: Text(track.artist, style: const TextStyle(color: Colors.grey)),
+                          leading: Text(
+                            durationFormatted,
+                            style: const TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 12),
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: Text(
+                              '${(track.confidence * 100).toInt()}%',
+                              style: const TextStyle(color: kMeterNominal, fontFamily: 'monospace', fontSize: 10),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChannelStrip(ChannelData ch) {
+    return Container(
+      width: 126,
+      decoration: BoxDecoration(
+        color: kSurfaceStrip,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF2E343B)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: ch.accentColor, shape: BoxShape.circle),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    ch.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () => _removeChannel(ch.id),
+                child: const Icon(Icons.close, color: Colors.grey, size: 14),
+              ),
+            ],
+          ),
+          Text(ch.source, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 8)),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onDoubleTap: () => setState(() => ch.trimDb = 0.0),
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.48),
+                border: Border.all(color: ch.accentColor, width: 2),
+              ),
+              child: Center(
+                child: Text(
+                  '${ch.trimDb >= 0 ? "+" : ""}${ch.trimDb.toStringAsFixed(0)}',
+                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildLedMeter(level: ch.fader * 0.9),
+                const SizedBox(width: 8),
+                RotatedBox(
+                  quarterTurns: 3,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      thumbColor: ch.accentColor,
+                      activeTrackColor: Colors.white24,
+                      inactiveTrackColor: Colors.black.withValues(alpha: 0.48),
+                      trackHeight: 6,
+                    ),
+                    child: Slider(
+                      value: ch.fader,
+                      onChanged: (val) => setState(() => ch.fader = val),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => ch.isMuted = !ch.isMuted),
+                  child: Container(
+                    height: 24,
+                    color: ch.isMuted ? kMeterClip : Colors.black.withValues(alpha: 0.48),
+                    alignment: Alignment.center,
+                    child: const Text('M', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => ch.isSolo = !ch.isSolo),
+                  child: Container(
+                    height: 24,
+                    color: ch.isSolo ? kAccentCopper : Colors.black.withValues(alpha: 0.48),
+                    alignment: Alignment.center,
+                    child: const Text('S', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMasterSection() {
+    return Container(
+      width: 160,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: kSurfaceRack,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: kAccentOchre.withOpacity(0.5)),
+      ),
+      child: Column(
+        children: [
+          const Text('MASTER BUS', style: TextStyle(color: kAccentOchre, fontWeight: FontWeight.bold, fontSize: 14)),
+          const Text('TRUE PEAK / LUFS', style: TextStyle(color: Colors.grey, fontSize: 9)),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildLedMeter(level: _masterFader * 0.95),
+                const SizedBox(width: 4),
+                _buildLedMeter(level: _masterFader * 0.93),
+                const SizedBox(width: 8),
+                RotatedBox(
+                  quarterTurns: 3,
+                  child: Slider(
+                    value: _masterFader,
+                    activeColor: kAccentOchre,
+                    onChanged: (val) => setState(() => _masterFader = val),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(6),
+            color: Colors.black87,
+            child: Column(
+              children: const [
+                Text('-14.2 LUFS', style: TextStyle(color: kMeterNominal, fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 11)),
+                Text('LIMITER READY', style: TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 9)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLedMeter({required double level}) {
+    return Container(
+      width: 14,
+      height: 220,
+      decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(2)),
+      child: Column(
+        verticalDirection: VerticalDirection.up,
+        children: List.generate(24, (i) {
+          final isLit = level >= (i / 24);
+          Color color = kMeterNominal;
+          if (i > 20) color = kMeterClip;
+          else if (i > 15) color = kMeterHeadroom;
+
+          return Container(
+            height: 6,
+            margin: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 2),
+            color: isLit ? color : const Color(0xFF1C1F22),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildHeavyToggle({required String label, required bool active, required Color activeColor, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? activeColor : const Color(0xFF2D333B),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: active ? Colors.white : Colors.transparent),
+        ),
+        child: Text(label, style: TextStyle(color: active ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
+      ),
+    );
+  }
+
+  Widget _buildAddChannelButton() {
+    return InkWell(
+      onTap: _openPatchbayModal,
+      child: Container(
+        width: 112,
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white24, style: BorderStyle.solid),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.add, color: kAccentOchre, size: 32),
+            SizedBox(height: 8),
+            Text('ADD INPUT', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+            SizedBox(height: 4),
+            Text('PATCHBAY', style: TextStyle(color: kAccentCopper, fontSize: 9, fontFamily: 'monospace')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ChannelData {
+  final String id;
+  final String name;
+  final String source;
+  double fader;
+  double trimDb;
+  Color accentColor;
+  bool isMuted;
+  bool isSolo;
+
+  ChannelData({
+    required this.id,
+    required this.name,
+    required this.source,
+    required this.fader,
+    this.trimDb = 0.0,
+    this.accentColor = kAccentOchre,
+    this.isMuted = false,
+    this.isSolo = false,
+  });
+}
