@@ -10,33 +10,63 @@ permissions:
   contents: read
 
 jobs:
-  flutter-lint-test:
-    name: Flutter Lint & Tests
+  flutter-analyze:
+    name: Flutter Analyze
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-      - name: Set up Flutter stable
-        uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-      - name: Resolve packages
-        run: flutter pub get
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
-      - name: Run tests
-        run: flutter test
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+
+  reliability-models-test:
+    name: Reliability Models Test
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/reliability_models_test.dart
+
+  broadcast-pipeline-test:
+    name: Broadcast Pipeline Test
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/broadcast_pipeline_test.dart
+
+  mixer-user-flow-test:
+    name: Mixer User Flow Test
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/mixer_user_flow_test.dart
 
   native-engine-build:
     name: Native Engine Build (macos-latest)
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-      - name: Configure native engine
-        run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
-      - name: Build native engine
-        run: cmake --build build/native --config Release --parallel
+      - uses: actions/checkout@v4
+      - run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build/native --config Release --parallel
