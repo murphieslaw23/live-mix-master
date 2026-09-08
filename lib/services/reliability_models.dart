@@ -179,6 +179,16 @@ bool shouldSuppressAutomaticMatch({
       (entry.cueTime - candidate.cueTime).abs() <= debounceWindow);
 }
 
-String redactDiagnostic(String value) => value
-    .replaceAll(RegExp(r'(?i)(authorization|token|password)\s*[:=]\s*[^\s&]+'), r'$1=[REDACTED]')
-    .replaceAll(RegExp(r'(?i)bearer\s+[^\s]+'), 'Bearer [REDACTED]');
+String redactDiagnostic(String value) {
+  final withoutBearerToken = value.replaceAll(
+    RegExp(r'bearer\s+\S+', caseSensitive: false),
+    'Bearer [REDACTED]',
+  );
+  return withoutBearerToken.replaceAll(
+    RegExp(
+      r'(authorization|token|password)\s*[:=]\s*[^\s&]+',
+      caseSensitive: false,
+    ),
+    r'$1=[REDACTED]',
+  );
+}
