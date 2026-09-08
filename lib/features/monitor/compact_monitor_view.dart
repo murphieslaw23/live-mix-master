@@ -53,7 +53,7 @@ class _CompactMonitorViewState extends State<CompactMonitorView> {
             margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: widget.isStreaming ? kMeterNominal.withOpacity(0.2) : Colors.black48,
+              color: widget.isStreaming ? kMeterNominal.withOpacity(0.2) : Colors.black.withValues(alpha: 0.48),
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: widget.isStreaming ? kMeterNominal : Colors.grey),
             ),
@@ -114,7 +114,7 @@ class _CompactMonitorViewState extends State<CompactMonitorView> {
                                 data: SliderTheme.of(context).copyWith(
                                   thumbColor: kAccentOchre,
                                   activeTrackColor: kAccentOchre,
-                                  inactiveTrackColor: Colors.black48,
+                                  inactiveTrackColor: Colors.black.withValues(alpha: 0.48),
                                   trackHeight: 12,
                                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 16),
                                 ),
