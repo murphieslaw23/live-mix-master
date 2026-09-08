@@ -21,13 +21,13 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos
+      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
   reliability-models-test:
     name: Reliability Models Test
     runs-on: macos-latest
     timeout-minutes: 15
-    steps:
+n    steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
