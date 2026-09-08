@@ -27,7 +27,7 @@ jobs:
     name: Reliability Models Test
     runs-on: macos-latest
     timeout-minutes: 15
-n    steps:
+    steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
