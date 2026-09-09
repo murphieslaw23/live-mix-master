@@ -16,12 +16,15 @@ LiveMixMaster is a Flutter-driven control surface for live audio input routing, 
 ```text
 lib/
   audio/audio_engine_bridge.dart  # Native engine contract and UI models
+  audio/native_library_loader.dart
   features/mixer/mixer_desk_view.dart
+macos/                             # Committed Flutter 3.47.2 desktop host
 native/
   live_mixer_engine.cpp           # C ABI and DSP/metering prototype
 docs/
   product-spec.md
-  figma-handoff.md
+  design/
+DEVELOPMENT.md                     # Clean-clone macOS development path
 ```
 
 ## Architecture
@@ -37,6 +40,22 @@ Physical devices + application loopback
             -> Flutter mixer UI + session tracklist
 ```
 
+## Desktop support matrix
+
+`Verified` means the repository contains execution evidence for that specific capability. `Contract only` means source/tests exist but no real device/provider E2E is claimed.
+
+| Platform | Committed runner | Native engine build | Physical capture | System/app loopback | Recording | Fingerprinting | Broadcast metadata | E2E verification |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| macOS | Verified | Verified | Pending #3 | Pending #3 | Contract only; E2E pending | Contract only; E2E pending | Contract only; E2E pending | Pending #6 |
+| Windows | Not verified | Not verified | Pending | Pending | Not verified | Not verified | Not verified | Not verified |
+| Linux | Not verified | Not verified | Pending | Pending | Not verified | Not verified | Not verified | Not verified |
+
+The initial supported desktop development target is macOS. Windows and Linux remain planned and must not be inferred as runnable from platform-specific code branches alone.
+
+## Development
+
+See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the pinned Flutter 3.47.2 clean-clone workflow, native-library lookup order, focused Issue #2 tests, and current limitations.
+
 ## Current status
 
-This is a deliberately scoped foundation: domain contracts, mixer UI scaffold, native C ABI prototype, product specification, and Figma implementation handoff are present. Production work remains for per-platform capture backends, audio-thread-safe lock-free queues, standards-compliant EBU R128 measurement, a look-ahead limiter, persistent sessions, provider credentials, and integration tests.
+The repository now contains the repository-first hybrid design contract, responsive Flutter operator UI, a native C ABI/DSP prototype, service/reliability contracts, and a committed macOS desktop host baseline. Production work remains for device-backed capture and loopback, audio-thread-safe production DSP, recording conformance, provider-backed fingerprinting/metadata E2E, persistent operational state, and release-gate verification.
