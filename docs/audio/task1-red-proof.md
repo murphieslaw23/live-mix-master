@@ -1,0 +1,1 @@
+RED proof is considered valid only when GitHub Actions executes the draft PR against the current branch head and reports the expected runtime test failures. Merely committing these tests is not completion evidence.
