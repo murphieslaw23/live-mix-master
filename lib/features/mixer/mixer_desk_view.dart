@@ -336,10 +336,13 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'SESSION PLAYLIST',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                  const Expanded(
+                    child: Text(
+                      'SESSION PLAYLIST',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
                     '${_playlistHistory.length} TRACKS',
                     style: const TextStyle(color: kAccentOchre, fontFamily: 'monospace', fontSize: 12),
@@ -435,7 +438,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               height: 34,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.black48,
+                color: Colors.black.withValues(alpha: 0.48),
                 border: Border.all(color: ch.accentColor, width: 2),
               ),
               child: Center(
@@ -459,7 +462,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                     data: SliderTheme.of(context).copyWith(
                       thumbColor: ch.accentColor,
                       activeTrackColor: Colors.white24,
-                      inactiveTrackColor: Colors.black48,
+                      inactiveTrackColor: Colors.black.withValues(alpha: 0.48),
                       trackHeight: 6,
                     ),
                     child: Slider(
@@ -479,7 +482,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   onTap: () => setState(() => ch.isMuted = !ch.isMuted),
                   child: Container(
                     height: 24,
-                    color: ch.isMuted ? kMeterClip : Colors.black48,
+                    color: ch.isMuted ? kMeterClip : Colors.black.withValues(alpha: 0.48),
                     alignment: Alignment.center,
                     child: const Text('M', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
@@ -491,7 +494,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   onTap: () => setState(() => ch.isSolo = !ch.isSolo),
                   child: Container(
                     height: 24,
-                    color: ch.isSolo ? kAccentCopper : Colors.black48,
+                    color: ch.isSolo ? kAccentCopper : Colors.black.withValues(alpha: 0.48),
                     alignment: Alignment.center,
                     child: const Text('S', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),

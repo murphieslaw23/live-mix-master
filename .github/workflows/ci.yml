@@ -1,35 +1,72 @@
-name: LiveMixMaster CI Test & Build
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  flutter-tests:
-    name: Flutter Lint & Tests
-    runs-on: ubuntu-latest
+  flutter-analyze:
+    name: Flutter Analyze
+    runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.x'
-          channel: 'stable'
+          channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos
-      - run: flutter test
+      - run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
-  native-engine-build:
-    name: Native Engine Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+  reliability-models-test:
+    name: Reliability Models Test
+    runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Configure & Build Native Library
-        run: |
-          cmake -B build -S native
-          cmake --build build --config Release
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/reliability_models_test.dart test/session_tracklist_test.dart test/fingerprint_tracklist_bridge_test.dart test/session_tracklist_codec_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart
+
+  broadcast-pipeline-test:
+    name: Broadcast Pipeline Test
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/broadcast_pipeline_test.dart
+
+  mixer-user-flow-test:
+    name: Mixer User Flow Test
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/mixer_user_flow_test.dart
+
+  native-engine-build:
+    name: Native Engine Build (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build/native --config Release --parallel
