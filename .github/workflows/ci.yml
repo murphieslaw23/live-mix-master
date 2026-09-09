@@ -20,6 +20,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
@@ -33,6 +34,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart test/operator_surface_design_contract_test.dart test/component_state_registry_test.dart test/responsive_layout_test.dart
 
@@ -46,6 +48,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - name: Render deterministic review fixtures
         run: flutter test --update-goldens test/golden_fixture_render_test.dart
@@ -67,6 +70,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - run: flutter test test/reliability_models_test.dart test/session_tracklist_test.dart test/fingerprint_tracklist_bridge_test.dart test/session_tracklist_codec_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart test/fingerprint_service_test.dart test/tracklist_exporter_test.dart
 
@@ -80,6 +84,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - run: flutter test --reporter expanded test/broadcast_pipeline_test.dart test/broadcast_metadata_adapter_test.dart
 
@@ -93,6 +98,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - run: flutter test test/mixer_user_flow_test.dart
 
