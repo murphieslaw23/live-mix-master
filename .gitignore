@@ -17,3 +17,5 @@ native/vendor/
 .env
 .env.*
 !.env.example
+assets/fonts/*.ttf
+assets/fonts/*.tmp

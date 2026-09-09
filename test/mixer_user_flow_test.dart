@@ -39,7 +39,9 @@ void main() {
 
       expect(find.byType(MixerDeskView), findsOneWidget);
 
-      final recordToggle = find.text('RECORD');
+      // Issue #5 requires explicit state copy on binary controls, so the
+      // visible control text is RECORD OFF / RECORD ON rather than RECORD.
+      final recordToggle = find.textContaining('RECORD');
       expect(recordToggle, findsOneWidget);
       await tester.tap(recordToggle);
       await tester.pump();
