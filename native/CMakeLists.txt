@@ -94,4 +94,17 @@ if(BUILD_TESTING)
         NAME capture_state_tests
         COMMAND capture_state_tests $<TARGET_FILE:live_mixer_engine>
     )
+
+    add_executable(capture_conversion_tests
+        tests/capture_conversion_tests.cpp
+    )
+    target_include_directories(capture_conversion_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    add_dependencies(capture_conversion_tests live_mixer_engine)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(capture_conversion_tests PRIVATE dl)
+    endif()
+    add_test(
+        NAME capture_conversion_tests
+        COMMAND capture_conversion_tests $<TARGET_FILE:live_mixer_engine>
+    )
 endif()
