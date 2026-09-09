@@ -1,4 +1,6 @@
 #include "lmm_engine.h"
+#include "lmm_pcm_handoff.h"
+#include "spsc_ring_buffer.h"
 
 #include <algorithm>
 #include <array>
@@ -7,15 +9,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 // LiveMixMaster native engine core. Platform capture backends feed preallocated
 // interleaved stereo blocks into this engine. The callback path performs only
-// bounded arithmetic and atomic snapshot writes; device discovery/capture and
-// PCM fan-out are added in later Issue #3 tasks.
+// bounded arithmetic, atomic state reads/writes, and bounded SPSC queue writes.
 
 namespace lmm {
 constexpr std::size_t kMaxChannels = 16;
 constexpr float kLimiterCeiling = 0.98F;
+constexpr std::size_t kPcmQueueCapacity = 64;
+constexpr std::size_t kInvalidChannelIndex = std::numeric_limits<std::size_t>::max();
 
 struct Meter {
   std::atomic<float> peakLeft{0};
@@ -29,6 +33,7 @@ struct Channel {
   std::atomic<bool> active{false};
   std::atomic<bool> muted{false};
   std::atomic<bool> solo{false};
+  std::atomic<std::uint64_t> generation{0};
   char id[64]{};
   std::atomic<float> linearTrim{1};
   std::atomic<float> fader{0.8F};
@@ -52,6 +57,9 @@ class Engine {
     master_.truePeakLeft.store(0.0F, std::memory_order_relaxed);
     master_.truePeakRight.store(0.0F, std::memory_order_relaxed);
     master_.limiterActive.store(false, std::memory_order_relaxed);
+    boundCaptureIndex_.store(kInvalidChannelIndex, std::memory_order_release);
+    boundCaptureGeneration_.store(0, std::memory_order_relaxed);
+    nextPcmSequence_.store(1, std::memory_order_relaxed);
     return true;
   }
 
@@ -68,6 +76,7 @@ class Engine {
         channel.linearTrim.store(1.0F, std::memory_order_relaxed);
         channel.fader.store(0.8F, std::memory_order_relaxed);
         clearMeter(channel.meter);
+        channel.generation.fetch_add(1, std::memory_order_relaxed);
         channel.active.store(true, std::memory_order_release);
         return true;
       }
@@ -79,6 +88,7 @@ class Engine {
     Channel* channel = findChannel(id);
     if (!channel) return false;
     channel->active.store(false, std::memory_order_release);
+    channel->generation.fetch_add(1, std::memory_order_relaxed);
     channel->muted.store(false, std::memory_order_relaxed);
     channel->solo.store(false, std::memory_order_relaxed);
     clearMeter(channel->meter);
@@ -106,6 +116,76 @@ class Engine {
     Channel* channel = findChannel(id);
     if (!channel) return false;
     channel->solo.store(solo, std::memory_order_relaxed);
+    return true;
+  }
+
+  bool bindCaptureChannel(const char* id) {
+    const std::size_t index = findChannelIndex(id);
+    if (index == kInvalidChannelIndex) return false;
+    const auto generation = channels_[index].generation.load(std::memory_order_acquire);
+    boundCaptureGeneration_.store(generation, std::memory_order_relaxed);
+    boundCaptureIndex_.store(index, std::memory_order_release);
+    return true;
+  }
+
+  bool processBoundCaptureStereo(const float* input, std::size_t frames) {
+    if (!input || frames == 0) return false;
+
+    const std::size_t boundIndex = boundCaptureIndex_.load(std::memory_order_acquire);
+    if (!captureBindingIsValid(boundIndex)) return false;
+
+    std::array<const float*, kMaxChannels> inputs{};
+    std::array<float, LMM_PCM_BLOCK_FRAMES * 2> masterOutput{};
+
+    std::size_t offset = 0;
+    while (offset < frames) {
+      if (!captureBindingIsValid(boundIndex)) return false;
+
+      const std::size_t chunkFrames = std::min<std::size_t>(
+          LMM_PCM_BLOCK_FRAMES,
+          frames - offset);
+      inputs.fill(nullptr);
+      inputs[boundIndex] = input + offset * 2;
+
+      if (!sumBlock(
+              inputs.data(),
+              inputs.size(),
+              masterOutput.data(),
+              chunkFrames)) {
+        return false;
+      }
+
+      LmmPcmBlock block{};
+      block.frames = static_cast<std::uint32_t>(chunkFrames);
+      block.sequence = nextPcmSequence_.fetch_add(1, std::memory_order_relaxed);
+      std::copy_n(
+          masterOutput.data(),
+          chunkFrames * 2,
+          block.interleaved_stereo);
+
+      // Queue saturation is observable but never blocks or fails the callback.
+      recordingQueue_.tryPush(block);
+      fingerprintQueue_.tryPush(block);
+      offset += chunkFrames;
+    }
+
+    return true;
+  }
+
+  bool popRecordingPcm(LmmPcmBlock* outBlock) {
+    return outBlock != nullptr && recordingQueue_.tryPop(*outBlock);
+  }
+
+  bool popFingerprintPcm(LmmPcmBlock* outBlock) {
+    return outBlock != nullptr && fingerprintQueue_.tryPop(*outBlock);
+  }
+
+  bool getPcmHandoffStatus(LmmPcmHandoffStatus* outStatus) const {
+    if (!outStatus) return false;
+    outStatus->recorder_queue_depth = recordingQueue_.size();
+    outStatus->fingerprint_queue_depth = fingerprintQueue_.size();
+    outStatus->recorder_rejected_blocks = recordingQueue_.rejectedWrites();
+    outStatus->fingerprint_rejected_blocks = fingerprintQueue_.rejectedWrites();
     return true;
   }
 
@@ -204,24 +284,34 @@ class Engine {
     meter.clipping.store(false, std::memory_order_relaxed);
   }
 
-  Channel* findChannel(const char* id) {
-    if (!id) return nullptr;
-    for (auto& channel : channels_) {
-      if (channel.active.load(std::memory_order_acquire) && std::strcmp(channel.id, id) == 0) {
-        return &channel;
+  std::size_t findChannelIndex(const char* id) const {
+    if (!id) return kInvalidChannelIndex;
+    for (std::size_t index = 0; index < channels_.size(); ++index) {
+      const auto& channel = channels_[index];
+      if (channel.active.load(std::memory_order_acquire) &&
+          std::strcmp(channel.id, id) == 0) {
+        return index;
       }
     }
-    return nullptr;
+    return kInvalidChannelIndex;
+  }
+
+  bool captureBindingIsValid(std::size_t index) const {
+    if (index >= channels_.size()) return false;
+    const auto& channel = channels_[index];
+    if (!channel.active.load(std::memory_order_acquire)) return false;
+    return channel.generation.load(std::memory_order_acquire) ==
+        boundCaptureGeneration_.load(std::memory_order_relaxed);
+  }
+
+  Channel* findChannel(const char* id) {
+    const std::size_t index = findChannelIndex(id);
+    return index == kInvalidChannelIndex ? nullptr : &channels_[index];
   }
 
   const Channel* findChannel(const char* id) const {
-    if (!id) return nullptr;
-    for (const auto& channel : channels_) {
-      if (channel.active.load(std::memory_order_acquire) && std::strcmp(channel.id, id) == 0) {
-        return &channel;
-      }
-    }
-    return nullptr;
+    const std::size_t index = findChannelIndex(id);
+    return index == kInvalidChannelIndex ? nullptr : &channels_[index];
   }
 
   void limit(float* output, std::size_t frames) {
@@ -253,6 +343,11 @@ class Engine {
   std::uint32_t framesPerBuffer_ = 256;
   std::array<Channel, kMaxChannels> channels_{};
   Master master_;
+  std::atomic<std::size_t> boundCaptureIndex_{kInvalidChannelIndex};
+  std::atomic<std::uint64_t> boundCaptureGeneration_{0};
+  std::atomic<std::uint64_t> nextPcmSequence_{1};
+  SpscRingBuffer<LmmPcmBlock, kPcmQueueCapacity> recordingQueue_;
+  SpscRingBuffer<LmmPcmBlock, kPcmQueueCapacity> fingerprintQueue_;
 };
 
 Engine engine;
@@ -297,5 +392,27 @@ bool lmm_get_channel_meter(const char* id, LmmChannelMeterSnapshot* outSnapshot)
 
 bool lmm_get_master_meter(LmmMasterMeterSnapshot* outSnapshot) {
   return lmm::engine.getMasterMeter(outSnapshot);
+}
+
+bool lmm_bind_capture_channel(const char* channelId) {
+  return lmm::engine.bindCaptureChannel(channelId);
+}
+
+bool lmm_process_bound_capture_stereo(
+    const float* interleavedStereo,
+    std::size_t frames) {
+  return lmm::engine.processBoundCaptureStereo(interleavedStereo, frames);
+}
+
+bool lmm_pop_recording_pcm(LmmPcmBlock* outBlock) {
+  return lmm::engine.popRecordingPcm(outBlock);
+}
+
+bool lmm_pop_fingerprint_pcm(LmmPcmBlock* outBlock) {
+  return lmm::engine.popFingerprintPcm(outBlock);
+}
+
+bool lmm_get_pcm_handoff_status(LmmPcmHandoffStatus* outStatus) {
+  return lmm::engine.getPcmHandoffStatus(outStatus);
 }
 }
