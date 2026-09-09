@@ -1,8 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+
+import 'fingerprint_tracklist_bridge.dart';
+import 'live_session_tracklist_controller.dart';
+import 'reliability_models.dart';
 
 /// Continuous Audio Fingerprint Service for LiveMixMaster
 ///
@@ -56,12 +61,21 @@ class IdentifiedTrack {
     'detectedAt': detectedAt.toIso8601String(),
     'sessionOffsetMs': sessionOffset.inMilliseconds,
   };
+
+  FingerprintMatch toFingerprintMatch() => FingerprintMatch(
+    artist: artist,
+    title: title,
+    confidence: confidence,
+    providerId: acoustId.isNotEmpty ? acoustId : null,
+  );
 }
 
 class FingerprintService {
   final AudioFingerprintConfig config;
+  final LiveSessionTracklistController? tracklistController;
   final StreamController<IdentifiedTrack> _trackController = StreamController<IdentifiedTrack>.broadcast();
   final StreamController<bool> _analyzingStatusController = StreamController<bool>.broadcast();
+  final StreamController<ServiceStatus> _statusController = StreamController<ServiceStatus>.broadcast();
 
   Isolate? _analysisIsolate;
   SendPort? _isolateSendPort;
@@ -69,10 +83,11 @@ class FingerprintService {
   DateTime? _sessionStartTime;
   String? _lastTrackSignature;
 
-  FingerprintService({required this.config});
+  FingerprintService({required this.config, this.tracklistController});
 
   Stream<IdentifiedTrack> get onTrackIdentified => _trackController.stream;
   Stream<bool> get onAnalyzingStatusChanged => _analyzingStatusController.stream;
+  Stream<ServiceStatus> get onStatus => _statusController.stream;
 
   Future<void> start() async {
     _sessionStartTime = DateTime.now();
@@ -116,7 +131,19 @@ class FingerprintService {
   void _handleIsolateMessage(Map<String, dynamic> msg) {
     final type = msg['type'];
     if (type == 'STATUS') {
-      _analyzingStatusController.add(msg['isAnalyzing'] as bool);
+      final isAnalyzing = msg['isAnalyzing'] as bool;
+      _analyzingStatusController.add(isAnalyzing);
+      _statusController.add(isAnalyzing ? const ServiceStatus.running() : const ServiceStatus.idle());
+    } else if (type == 'ERROR') {
+      final codeString = msg['code'] as String?;
+      final code = ServiceFailureCode.values.firstWhere(
+        (c) => c.name == codeString,
+        orElse: () => ServiceFailureCode.unknown,
+      );
+      _statusController.add(ServiceStatus.failed(
+        failureCode: code,
+        message: msg['message'] as String?,
+      ));
     } else if (type == 'TRACK_FOUND') {
       final String artist = msg['artist'];
       final String title = msg['title'];
@@ -139,6 +166,13 @@ class FingerprintService {
       );
 
       _trackController.add(track);
+      _statusController.add(const ServiceStatus.succeeded());
+
+      tracklistController?.acceptFingerprint(
+        cueTime: track.sessionOffset,
+        match: track.toFingerprintMatch(),
+        recognizedAt: track.detectedAt,
+      );
     }
   }
 
@@ -148,6 +182,7 @@ class FingerprintService {
     _isolateReceivePort?.close();
     await _trackController.close();
     await _analyzingStatusController.close();
+    await _statusController.close();
   }
 }
 
@@ -222,27 +257,88 @@ Future<void> _processAndQueryAcoustId({
   required double minConfidence,
   required SendPort sendPort,
 }) async {
-  if (apiKey.isEmpty) return;
+  if (apiKey.isEmpty) {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'invalidConfiguration',
+      'message': 'AcoustID API key is missing',
+    });
+    return;
+  }
 
   final int durationSeconds = (pcmData.length ~/ (sampleRate * 2)).clamp(5, 12);
-
   final uri = Uri.parse('https://api.acoustid.org/v2/lookup');
-  
   final bufferBytes = pcmData.buffer.asUint8List();
   final String base64Fingerprint = base64Encode(bufferBytes.sublist(0, bufferBytes.length.clamp(0, 1024)));
 
-  final response = await http.post(
-    uri,
-    body: {
-      'client': apiKey,
-      'meta': 'recordings releasegroups',
-      'duration': durationSeconds.toString(),
-      'fingerprint': base64Fingerprint,
-    },
-  ).timeout(const Duration(seconds: 6));
+  http.Response response;
+  try {
+    response = await http.post(
+      uri,
+      body: {
+        'client': apiKey,
+        'meta': 'recordings releasegroups',
+        'duration': durationSeconds.toString(),
+        'fingerprint': base64Fingerprint,
+      },
+    ).timeout(const Duration(seconds: 6));
+  } on TimeoutException {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'timeout',
+      'message': 'AcoustID lookup request timed out',
+    });
+    return;
+  } on SocketException {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'offline',
+      'message': 'AcoustID host unreachable / offline',
+    });
+    return;
+  } on http.ClientException {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'offline',
+      'message': 'HTTP client error communicating with AcoustID',
+    });
+    return;
+  } catch (_) {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'unknown',
+      'message': 'Unexpected error querying AcoustID',
+    });
+    return;
+  }
 
-  if (response.statusCode == 200) {
-    final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
+  if (response.statusCode == 401 || response.statusCode == 403) {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'unauthorized',
+      'message': 'AcoustID unauthorized / invalid credentials',
+    });
+    return;
+  } else if (response.statusCode == 429) {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'rateLimited',
+      'message': 'AcoustID rate limit exceeded',
+    });
+    return;
+  } else if (response.statusCode == 200) {
+    Map<String, dynamic> jsonResponse;
+    try {
+      jsonResponse = jsonDecode(response.body);
+    } catch (_) {
+      sendPort.send({
+        'type': 'ERROR',
+        'code': 'malformedResponse',
+        'message': 'Malformed JSON received from AcoustID',
+      });
+      return;
+    }
+
     if (jsonResponse['status'] == 'ok' && jsonResponse['results'] != null) {
       final List results = jsonResponse['results'];
       for (final result in results) {
@@ -268,10 +364,22 @@ Future<void> _processAndQueryAcoustId({
               'confidence': score,
               'detectedAt': DateTime.now().millisecondsSinceEpoch,
             });
-            break;
+            return;
           }
         }
       }
+    } else {
+      sendPort.send({
+        'type': 'ERROR',
+        'code': 'unavailable',
+        'message': 'AcoustID returned non-ok status or empty results',
+      });
     }
+  } else {
+    sendPort.send({
+      'type': 'ERROR',
+      'code': 'unavailable',
+      'message': 'AcoustID server error status: ${response.statusCode}',
+    });
   }
 }

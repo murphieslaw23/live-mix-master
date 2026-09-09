@@ -34,7 +34,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter test test/reliability_models_test.dart test/session_tracklist_test.dart test/fingerprint_tracklist_bridge_test.dart test/session_tracklist_codec_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart
+      - run: flutter test test/reliability_models_test.dart test/session_tracklist_test.dart test/fingerprint_tracklist_bridge_test.dart test/session_tracklist_codec_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart test/fingerprint_service_test.dart
 
   broadcast-pipeline-test:
     name: Broadcast Pipeline Test
