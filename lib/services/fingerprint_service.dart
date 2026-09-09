@@ -1,8 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+
+import 'fingerprint_tracklist_bridge.dart';
+import 'live_session_tracklist_controller.dart';
+import 'reliability_models.dart';
 
 /// Continuous Audio Fingerprint Service for LiveMixMaster
 ///
@@ -56,12 +61,21 @@ class IdentifiedTrack {
     'detectedAt': detectedAt.toIso8601String(),
     'sessionOffsetMs': sessionOffset.inMilliseconds,
   };
+
+  FingerprintMatch toFingerprintMatch() => FingerprintMatch(
+    artist: artist,
+    title: title,
+    confidence: confidence,
+    providerId: acoustId.isNotEmpty ? acoustId : null,
+  );
 }
 
 class FingerprintService {
   final AudioFingerprintConfig config;
+  final LiveSessionTracklistController? tracklistController;
   final StreamController<IdentifiedTrack> _trackController = StreamController<IdentifiedTrack>.broadcast();
   final StreamController<bool> _analyzingStatusController = StreamController<bool>.broadcast();
+  final StreamController<ServiceStatus> _statusController = StreamController<ServiceStatus>.broadcast();
 
   Isolate? _analysisIsolate;
   SendPort? _isolateSendPort;
@@ -69,10 +83,11 @@ class FingerprintService {
   DateTime? _sessionStartTime;
   String? _lastTrackSignature;
 
-  FingerprintService({required this.config});
+  FingerprintService({required this.config, this.tracklistController});
 
   Stream<IdentifiedTrack> get onTrackIdentified => _trackController.stream;
   Stream<bool> get onAnalyzingStatusChanged => _analyzingStatusController.stream;
+  Stream<ServiceStatus> get onStatus => _statusController.stream;
 
   Future<void> start() async {
     _sessionStartTime = DateTime.now();
@@ -116,7 +131,19 @@ class FingerprintService {
   void _handleIsolateMessage(Map<String, dynamic> msg) {
     final type = msg['type'];
     if (type == 'STATUS') {
-      _analyzingStatusController.add(msg['isAnalyzing'] as bool);
+      final isAnalyzing = msg['isAnalyzing'] as bool;
+      _analyzingStatusController.add(isAnalyzing);
+      _statusController.add(isAnalyzing ? const ServiceStatus.running() : const ServiceStatus.idle());
+    } else if (type == 'ERROR') {
+      final codeString = msg['code'] as String?;
+      final code = ServiceFailureCode.values.firstWhere(
+        (c) => c.name == codeString,
+        orElse: () => ServiceFailureCode.unknown,
+      );
+      _statusController.add(ServiceStatus.failed(
+        failureCode: code,
+        message: msg['message'] as String?,
+      ));
     } else if (type == 'TRACK_FOUND') {
       final String artist = msg['artist'];
       final String title = msg['title'];
@@ -139,6 +166,13 @@ class FingerprintService {
       );
 
       _trackController.add(track);
+      _statusController.add(const ServiceStatus.succeeded());
+
+      tracklistController?.acceptFingerprint(
+        cueTime: track.sessionOffset,
+        match: track.toFingerprintMatch(),
+        recognizedAt: track.detectedAt,
+      );
     }
   }
 
@@ -148,6 +182,7 @@ class FingerprintService {
     _isolateReceivePort?.close();
     await _trackController.close();
     await _analyzingStatusController.close();
+    await _statusController.close();
   }
 }
 
@@ -166,112 +201,4 @@ void _fingerprintIsolateWorker(SendPort mainSendPort) {
   bool isBusyQuerying = false;
   DateTime lastQueryTime = DateTime.now().subtract(const Duration(seconds: 15));
 
-  commandPort.listen((message) async {
-    if (message is! Map<String, dynamic>) return;
-    final type = message['type'];
-
-    if (type == 'INIT') {
-      apiKey = message['apiKey'] ?? '';
-      sampleRate = message['sampleRate'] ?? 48000;
-      channels = message['channels'] ?? 2;
-      minConfidence = message['minConfidence'] ?? 0.65;
-    } else if (type == 'AUDIO_CHUNK') {
-      final Float32List chunk = message['data'] as Float32List;
-      rollingBuffer.addAll(chunk);
-
-      // Maintain rolling 10-second window
-      if (rollingBuffer.length > maxBufferSamples) {
-        rollingBuffer.removeRange(0, rollingBuffer.length - maxBufferSamples);
-      }
-
-      // Check if it's time to trigger an analysis query
-      final now = DateTime.now();
-      if (!isBusyQuerying &&
-          rollingBuffer.length >= maxBufferSamples &&
-          now.difference(lastQueryTime) >= const Duration(seconds: 8)) {
-        isBusyQuerying = true;
-        lastQueryTime = now;
-        mainSendPort.send({'type': 'STATUS', 'isAnalyzing': true});
-
-        try {
-          await _processAndQueryAcoustId(
-            pcmData: Float32List.fromList(rollingBuffer),
-            sampleRate: sampleRate,
-            apiKey: apiKey,
-            minConfidence: minConfidence,
-            sendPort: mainSendPort,
-          );
-        } catch (_) {
-          // Gracefully swallow network/lookup errors to avoid crashing isolate
-        } finally {
-          isBusyQuerying = false;
-          mainSendPort.send({'type': 'STATUS', 'isAnalyzing': false});
-        }
-      }
-    } else if (type == 'STOP') {
-      commandPort.close();
-    }
-  });
-}
-
-/// Generate fingerprint & query AcoustID REST API
-Future<void> _processAndQueryAcoustId({
-  required Float32List pcmData,
-  required int sampleRate,
-  required String apiKey,
-  required double minConfidence,
-  required SendPort sendPort,
-}) async {
-  if (apiKey.isEmpty) return;
-
-  final int durationSeconds = (pcmData.length ~/ (sampleRate * 2)).clamp(5, 12);
-
-  final uri = Uri.parse('https://api.acoustid.org/v2/lookup');
-  
-  final bufferBytes = pcmData.buffer.asUint8List();
-  final String base64Fingerprint = base64Encode(bufferBytes.sublist(0, bufferBytes.length.clamp(0, 1024)));
-
-  final response = await http.post(
-    uri,
-    body: {
-      'client': apiKey,
-      'meta': 'recordings releasegroups',
-      'duration': durationSeconds.toString(),
-      'fingerprint': base64Fingerprint,
-    },
-  ).timeout(const Duration(seconds: 6));
-
-  if (response.statusCode == 200) {
-    final Map<String, dynamic> jsonResponse = jsonDecode(response.body);
-    if (jsonResponse['status'] == 'ok' && jsonResponse['results'] != null) {
-      final List results = jsonResponse['results'];
-      for (final result in results) {
-        final double score = (result['score'] as num?)?.toDouble() ?? 0.0;
-        if (score >= minConfidence && result['recordings'] != null) {
-          final List recordings = result['recordings'];
-          if (recordings.isNotEmpty) {
-            final recording = recordings.first;
-            final List artists = recording['artists'] ?? [];
-            final String artistName = artists.isNotEmpty
-                ? (artists.first['name'] ?? 'Unknown Artist')
-                : 'Unknown Artist';
-            final String trackTitle = recording['title'] ?? 'Untitled Track';
-
-            sendPort.send({
-              'type': 'TRACK_FOUND',
-              'artist': artistName,
-              'title': trackTitle,
-              'release': (recording['releasegroups'] != null && (recording['releasegroups'] as List).isNotEmpty)
-                  ? recording['releasegroups'][0]['title']
-                  : null,
-              'acoustId': result['id'] ?? '',
-              'confidence': score,
-              'detectedAt': DateTime.now().millisecondsSinceEpoch,
-            });
-            break;
-          }
-        }
-      }
-    }
-  }
-}
+  commandPort.listen((message) async {\n    if (message is! Map<String, dynamic>) return;\n    final type = message['type'];\n\n    if (type == 'INIT') {\n      apiKey = message['apiKey'] ?? '';\n      sampleRate = message['sampleRate'] ?? 48000;\n      channels = message['channels'] ?? 2;\n      minConfidence = message['minConfidence'] ?? 0.65;\n    } else if (type == 'AUDIO_CHUNK') {\n      final Float32List chunk = message['data'] as Float32List;\n      rollingBuffer.addAll(chunk);\n\n      // Maintain rolling 10-second window\n      if (rollingBuffer.length > maxBufferSamples) {\n        rollingBuffer.removeRange(0, rollingBuffer.length - maxBufferSamples);\n      }\n\n      // Check if it's time to trigger an analysis query\n      final now = DateTime.now();\n      if (!isBusyQuerying &&\n          rollingBuffer.length >= maxBufferSamples &&\n          now.difference(lastQueryTime) >= const Duration(seconds: 8)) {\n        isBusyQuerying = true;\n        lastQueryTime = now;\n        mainSendPort.send({'type': 'STATUS', 'isAnalyzing': true});\n\n        try {\n          await _processAndQueryAcoustId(\n            pcmData: Float32List.fromList(rollingBuffer),\n            sampleRate: sampleRate,\n            apiKey: apiKey,\n            minConfidence: minConfidence,\n            sendPort: mainSendPort,\n          );\n        } catch (_) {\n          // Gracefully swallow network/lookup errors to avoid crashing isolate\n        } finally {\n          isBusyQuerying = false;\n          mainSendPort.send({'type': 'STATUS', 'isAnalyzing': false});\n        }\n      }\n    } else if (type == 'STOP') {\n      commandPort.close();\n    }\n  });\n}\n\n/// Generate fingerprint & query AcoustID REST API\nFuture<void> _processAndQueryAcoustId({\n  required Float32List pcmData,\n  required int sampleRate,\n  required String apiKey,\n  required double minConfidence,\n  required SendPort sendPort,\n}) async {\n  if (apiKey.isEmpty) {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'invalidConfiguration',\n      'message': 'AcoustID API key is missing',\n    });\n    return;\n  }\n\n  final int durationSeconds = (pcmData.length ~/ (sampleRate * 2)).clamp(5, 12);\n  final uri = Uri.parse('https://api.acoustid.org/v2/lookup');\n  final bufferBytes = pcmData.buffer.asUint8List();\n  final String base64Fingerprint = base64Encode(bufferBytes.sublist(0, bufferBytes.length.clamp(0, 1024)));\n\n  http.Response response;\n  try {\n    response = await http.post(\n      uri,\n      body: {\n        'client': apiKey,\n        'meta': 'recordings releasegroups',\n        'duration': durationSeconds.toString(),\n        'fingerprint': base64Fingerprint,\n      },\n    ).timeout(const Duration(seconds: 6));\n  } on TimeoutException {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'timeout',\n      'message': 'AcoustID lookup request timed out',\n    });\n    return;\n  } on SocketException {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'offline',\n      'message': 'AcoustID host unreachable / offline',\n    });\n    return;\n  } on http.ClientException {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'offline',\n      'message': 'HTTP client error communicating with AcoustID',\n    });\n    return;\n  } catch (_) {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'unknown',\n      'message': 'Unexpected error querying AcoustID',\n    });\n    return;\n  }\n\n  if (response.statusCode == 401 || response.statusCode == 403) {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'unauthorized',\n      'message': 'AcoustID unauthorized / invalid credentials',\n    });\n    return;\n  } else if (response.statusCode == 429) {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'rateLimited',\n      'message': 'AcoustID rate limit exceeded',\n    });\n    return;\n  } else if (response.statusCode == 200) {\n    Map<String, dynamic> jsonResponse;\n    try {\n      jsonResponse = jsonDecode(response.body);\n    } catch (_) {\n      sendPort.send({\n        'type': 'ERROR',\n        'code': 'malformedResponse',\n        'message': 'Malformed JSON received from AcoustID',\n      });\n      return;\n    }\n\n    if (jsonResponse['status'] == 'ok' && jsonResponse['results'] != null) {\n      final List results = jsonResponse['results'];\n      for (final result in results) {\n        final double score = (result['score'] as num?)?.toDouble() ?? 0.0;\n        if (score >= minConfidence && result['recordings'] != null) {\n          final List recordings = result['recordings'];\n          if (recordings.isNotEmpty) {\n            final recording = recordings.first;\n            final List artists = recording['artists'] ?? [];\n            final String artistName = artists.isNotEmpty\n                ? (artists.first['name'] ?? 'Unknown Artist')\n                : 'Unknown Artist';\n            final String trackTitle = recording['title'] ?? 'Untitled Track';\n\n            sendPort.send({\n              'type': 'TRACK_FOUND',\n              'artist': artistName,\n              'title': trackTitle,\n              'release': (recording['releasegroups'] != null && (recording['releasegroups'] as List).isNotEmpty)\n                  ? recording['releasegroups'][0]['title']\n                  : null,\n              'acoustId': result['id'] ?? '',\n              'confidence': score,\n              'detectedAt': DateTime.now().millisecondsSinceEpoch,\n            });\n            return;\n          }\n        }\n      }\n    } else {\n      sendPort.send({\n        'type': 'ERROR',\n        'code': 'unavailable',\n        'message': 'AcoustID returned non-ok status or empty results',\n      });\n    }\n  } else {\n    sendPort.send({\n      'type': 'ERROR',\n      'code': 'unavailable',\n      'message': 'AcoustID server error status: ${response.statusCode}',\n    });\n  }\n}\n
