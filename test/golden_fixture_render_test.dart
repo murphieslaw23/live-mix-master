@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -36,10 +35,10 @@ void main() {
         tester,
         const Size(390, 844),
         const CompactMonitorView(
-          isStreaming: true,
+          isStreaming: false,
           isRecording: true,
-          currentTrackTitle: 'TEKNO TOTEM',
-          currentArtist: 'SYSTEM CORRUPT',
+          currentTrackTitle: 'FORWARD THE REVOLUTION',
+          currentArtist: 'SPIRAL TRIBE',
           streamBitrateKbps: 320,
           masterPeakLevel: .84,
         ),
