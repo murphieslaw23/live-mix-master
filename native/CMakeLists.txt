@@ -78,4 +78,17 @@ if(BUILD_TESTING)
         NAME device_catalog_contract_tests
         COMMAND device_catalog_contract_tests $<TARGET_FILE:live_mixer_engine>
     )
+
+    add_executable(capture_state_tests
+        tests/capture_state_tests.cpp
+    )
+    target_include_directories(capture_state_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    add_dependencies(capture_state_tests live_mixer_engine)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(capture_state_tests PRIVATE dl)
+    endif()
+    add_test(
+        NAME capture_state_tests
+        COMMAND capture_state_tests $<TARGET_FILE:live_mixer_engine>
+    )
 endif()
