@@ -1,0 +1,96 @@
+{
+  "name": "LiveMixMaster Operator Journey",
+  "version": "1.0.0-draft",
+  "status": "review-required",
+  "sourceIssue": "https://github.com/murphieslaw23/live-mix-master/issues/1",
+  "initial": "launch",
+  "successPath": ["launch", "routeSource", "mix", "preflight", "recordOrStream", "identify", "correct", "export", "finalizeRecording"],
+  "states": {
+    "launch": {
+      "primaryActions": ["openSession", "newSession"],
+      "next": ["routeSource"]
+    },
+    "routeSource": {
+      "primaryActions": ["addSource", "saveRoute"],
+      "secondaryActions": ["cancel", "back"],
+      "next": ["mix"],
+      "recovery": {
+        "noDevice": "routeSource",
+        "permissionDenied": "routeSource"
+      }
+    },
+    "mix": {
+      "controls": ["trim", "fader", "mute", "solo", "masterMeter"],
+      "next": ["preflight"],
+      "recovery": {
+        "deviceLost": "mix",
+        "noSignal": "mix",
+        "clipping": "mix"
+      }
+    },
+    "preflight": {
+      "checks": ["audioDevice", "routing", "diskSpace", "recordingPath", "broadcastCredentials", "network", "fingerprintProvider"],
+      "primaryActions": ["startRecording", "goLive"],
+      "secondaryActions": ["back"],
+      "next": ["recordOrStream"],
+      "recovery": {
+        "invalidCredentials": "preflight"
+      }
+    },
+    "recordOrStream": {
+      "parallelStatus": ["recording", "broadcast"],
+      "next": ["identify"],
+      "recovery": {
+        "diskFull": "chooseLocationOrFinalizePartial",
+        "writeFailure": "chooseLocationOrFinalizePartial",
+        "streamReconnecting": "recordOrStream",
+        "streamFailed": "recordOrStream"
+      },
+      "invariant": "Broadcast failure must not imply recording failure; local recording continues unless its own status fails."
+    },
+    "identify": {
+      "states": ["searching", "match", "lowConfidence", "noMatch", "offlineLookup"],
+      "next": ["correct", "export"],
+      "recovery": {
+        "noMatch": "identify",
+        "offlineLookup": "identify"
+      },
+      "invariant": "No-match/offline candidates remain retryable and preserve provenance."
+    },
+    "correct": {
+      "primaryActions": ["saveCorrection"],
+      "secondaryActions": ["cancel", "back"],
+      "next": ["export", "identify"]
+    },
+    "export": {
+      "primaryActions": ["export"],
+      "secondaryActions": ["back"],
+      "next": ["finalizeRecording"]
+    },
+    "finalizeRecording": {
+      "primaryActions": ["finalizeRecording"],
+      "secondaryActions": ["keepRecording", "back"],
+      "terminalStates": ["finalized"]
+    },
+    "chooseLocationOrFinalizePartial": {
+      "primaryActions": ["chooseLocation", "retryWrite", "finalizePartial"],
+      "secondaryActions": ["stopRecording"],
+      "next": ["recordOrStream", "finalizeRecording"]
+    }
+  },
+  "requiredRecoveryStates": [
+    "noDevice",
+    "permissionDenied",
+    "deviceLost",
+    "noSignal",
+    "clipping",
+    "diskFull",
+    "writeFailure",
+    "noMatch",
+    "offlineLookup",
+    "invalidCredentials",
+    "streamReconnecting",
+    "streamFailed"
+  ],
+  "prototypeReplacementRule": "This state graph is the canonical interaction contract when no Figma clickable prototype is used. Flutter integration tests in Issue #5 must execute the same success, cancel/back, error, and recovery transitions."
+}
