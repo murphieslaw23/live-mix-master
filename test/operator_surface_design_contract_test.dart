@@ -17,11 +17,11 @@ void main() {
       expect(mixer, isNot(contains('const Color kAccentOchre')));
     });
 
-    test('field monitor consumes shared telemetry and fader controls', () {
+    test('field monitor consumes shared telemetry controls and remains read-only', () {
       expect(monitor, contains("../../design/live_mix_tokens.dart"));
       expect(monitor, contains("../../design/widgets/lmm_controls.dart"));
       expect(monitor, contains('LmmStatusBadge('));
-      expect(monitor, contains('LmmFader('));
+      expect(monitor, isNot(contains('LmmFader(')));
       expect(monitor, isNot(contains('const Color kSurfaceBase')));
       expect(monitor, isNot(contains('const Color kMeterNominal')));
     });
