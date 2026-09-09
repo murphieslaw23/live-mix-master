@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'design/live_mix_tokens.dart';
 import 'features/mixer/mixer_desk_view.dart';
 
 void main() {
@@ -13,14 +15,7 @@ class LiveMixMasterApp extends StatelessWidget {
     return MaterialApp(
       title: 'LiveMixMaster',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF111315),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFD96528),
-          secondary: Color(0xFF2A7A6D),
-          surface: Color(0xFF1C1F23),
-        ),
-      ),
+      theme: LiveMixTheme.dark(),
       home: const MixerDeskView(),
     );
   }
