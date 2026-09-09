@@ -7,7 +7,6 @@ coverage/
 *.iml
 .idea/
 .vscode/
-macos/Runner/Configs/AppInfo.xcconfig
 windows/flutter/ephemeral/
 linux/flutter/ephemeral/
 *.dylib
