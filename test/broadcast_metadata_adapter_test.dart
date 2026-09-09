@@ -74,7 +74,8 @@ void main() {
           expect(request.url.queryParameters['mode'], 'updinfo');
           expect(request.url.queryParameters['song'], 'System Corrupt - Tekno Total 2026');
           expect(request.url.queryParameters['charset'], 'UTF-8');
-          expect(request.headers['authorization'], 'Basic ' + base64Encode(utf8.encode('source:hackme')));
+          final authHeader = request.headers['authorization'] ?? request.headers['Authorization'];
+          expect(authHeader, 'Basic ' + base64Encode(utf8.encode('source:hackme')));
           return textResponse(200, 'Mountpoint updated');
         });
 
@@ -201,8 +202,9 @@ void main() {
         client = MockHttpClient((request) async {
           expect(request.method, 'POST');
           expect(request.url.toString(), 'https://api.syco23.org/webhook/tracks?token=abc');
-          final bodyBytes = await request.finalize().toBytes();
-          final bodyJson = jsonDecode(utf8.decode(bodyBytes)) as Map<String, dynamic>;
+          expect(request, isA<http.Request>());
+          final httpRequest = request as http.Request;
+          final bodyJson = jsonDecode(httpRequest.body) as Map<String, dynamic>;
           expect(bodyJson['event'], 'track_change');
           expect(bodyJson['artist'], 'System Corrupt');
           expect(bodyJson['title'], 'Tekno Total 2026');
