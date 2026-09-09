@@ -1,4 +1,5 @@
 #include "lmm_capture.h"
+#include "lmm_pcm_handoff.h"
 
 #include <CoreAudio/CoreAudio.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -431,6 +432,10 @@ bool convertPcmToStereo(
   return true;
 }
 
+bool forwardConvertedStereo(const float* interleaved_stereo, std::size_t frames) {
+  return lmm_process_bound_capture_stereo(interleaved_stereo, frames);
+}
+
 bool resolveDeviceUid(const char* device_uid, AudioDeviceID& out_device_id) {
   if (!device_uid || device_uid[0] == '\0') return false;
 
@@ -688,9 +693,9 @@ OSStatus captureIoProc(
     return noErr;
   }
 
-  // g_stereo_scratch now contains the bounded float32 stereo staging block.
-  // Task 5 consumes this block through preallocated mixer/record/fingerprint
-  // handoff queues; this Task 4 callback intentionally performs no fan-out yet.
+  // No active mixer binding and saturated downstream queues are both safe,
+  // observable drop conditions. Neither may block or fail the Core Audio IOProc.
+  (void)forwardConvertedStereo(g_stereo_scratch.data(), available_frames);
   recordCurrentCallbackDuration(started);
   return noErr;
 }
@@ -931,6 +936,12 @@ extern "C" bool lmm_capture_test_convert_pcm(
       frames,
       out_stereo,
       output_sample_capacity);
+}
+
+extern "C" bool lmm_capture_test_forward_stereo(
+    const float* interleaved_stereo,
+    std::size_t frames) {
+  return forwardConvertedStereo(interleaved_stereo, frames);
 }
 
 #endif
