@@ -54,4 +54,17 @@ if(BUILD_TESTING)
         NAME spsc_ring_buffer_tests
         COMMAND spsc_ring_buffer_tests
     )
+
+    add_executable(device_catalog_contract_tests
+        tests/device_catalog_contract_tests.cpp
+    )
+    target_include_directories(device_catalog_contract_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    add_dependencies(device_catalog_contract_tests live_mixer_engine)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(device_catalog_contract_tests PRIVATE dl)
+    endif()
+    add_test(
+        NAME device_catalog_contract_tests
+        COMMAND device_catalog_contract_tests $<TARGET_FILE:live_mixer_engine>
+    )
 endif()
