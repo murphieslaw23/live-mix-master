@@ -309,13 +309,15 @@ void main() {
 
     group('Credential and Secret Redaction', () {
       test('redactBroadcastDiagnostic strips tokens, passwords, and basic auth', () {
-        const raw = 'Failed request: GET /admin.cgi?mode=updinfo&pass=superSecret123 Basic dXNlcjpwYXNz Authorization: Bearer abc-xyz';
+        const raw = 'GET /admin.cgi?pass=superSecret123 Basic dXNlcjpwYXNz token=my-token Bearer abc-xyz';
         final redacted = redactBroadcastDiagnostic(raw);
         expect(redacted, isNot(contains('superSecret123')));
         expect(redacted, isNot(contains('dXNlcjpwYXNz')));
         expect(redacted, isNot(contains('abc-xyz')));
+        expect(redacted, isNot(contains('my-token')));
         expect(redacted, contains('pass=[REDACTED]'));
         expect(redacted, contains('Basic [REDACTED]'));
+        expect(redacted, contains('token=[REDACTED]'));
         expect(redacted, contains('Bearer [REDACTED]'));
       });
     });
