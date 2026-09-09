@@ -1,27 +1,20 @@
 import 'package:flutter/material.dart';
+
+import '../../design/live_mix_tokens.dart';
+import '../../design/widgets/lmm_controls.dart';
 import '../../services/fingerprint_service.dart';
 import '../../services/lossless_recording_writer.dart';
 import '../patchbay/patchbay_routing_modal.dart';
 
-const Color kSurfaceBase = Color(0xFF111315);
-const Color kSurfaceRack = Color(0xFF1C1F23);
-const Color kSurfaceStrip = Color(0xFF24292F);
-const Color kAccentOchre = Color(0xFFD96528);
-const Color kAccentCopper = Color(0xFF2A7A6D);
-const Color kStatusWarn = Color(0xFFD48822);
-const Color kMeterNominal = Color(0xFF22C55E);
-const Color kMeterHeadroom = Color(0xFFEAB308);
-const Color kMeterClip = Color(0xFFEF4444);
-
 class MixerDeskView extends StatefulWidget {
-  final FingerprintService? fingerprintService;
-  final LosslessRecordingWriter? recordingWriter;
-
   const MixerDeskView({
-    Key? key,
+    super.key,
     this.fingerprintService,
     this.recordingWriter,
-  }) : super(key: key);
+  });
+
+  final FingerprintService? fingerprintService;
+  final LosslessRecordingWriter? recordingWriter;
 
   @override
   State<MixerDeskView> createState() => _MixerDeskViewState();
@@ -34,8 +27,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
       name: 'REKORDBOX',
       source: 'Virtual Loopback (Ch 1-2)',
       fader: 0.85,
-      trimDb: 0.0,
-      accentColor: kAccentOchre,
+      accentColor: LiveMixTokens.accentOchre,
     ),
     ChannelData(
       id: 'ch_2',
@@ -43,7 +35,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
       source: 'CoreAudio In 1-2',
       fader: 0.70,
       trimDb: -2.0,
-      accentColor: kAccentCopper,
+      accentColor: LiveMixTokens.accentCopper,
     ),
     ChannelData(
       id: 'ch_3',
@@ -51,14 +43,13 @@ class _MixerDeskViewState extends State<MixerDeskView> {
       source: 'USB In 3-4',
       fader: 0.65,
       trimDb: 1.5,
-      accentColor: const Color(0xFF3B82F6),
+      accentColor: LiveMixTokens.statusWarn,
     ),
   ];
 
   final List<IdentifiedTrack> _playlistHistory = [];
   IdentifiedTrack? _currentTrack;
   bool _isAnalyzing = false;
-
   double _masterFader = 0.90;
   bool _isStreaming = false;
   bool _isRecording = false;
@@ -82,9 +73,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
 
     widget.fingerprintService?.onAnalyzingStatusChanged.listen((status) {
       if (!mounted) return;
-      setState(() {
-        _isAnalyzing = status;
-      });
+      setState(() => _isAnalyzing = status);
     });
 
     widget.recordingWriter?.onStatsUpdated.listen((stats) {
@@ -107,17 +96,22 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     try {
       if (!_isRecording) {
         await widget.recordingWriter!.startRecording();
-        setState(() => _isRecording = true);
+        if (mounted) setState(() => _isRecording = true);
       } else {
         await widget.recordingWriter!.stopRecording();
+        if (!mounted) return;
         setState(() {
           _isRecording = false;
           _recordingTimeFormatted = '00:00';
         });
       }
-    } catch (e) {
+    } catch (error) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recording error: $e'), backgroundColor: kMeterClip),
+        SnackBar(
+          content: Text('Recording error: $error'),
+          backgroundColor: LiveMixTokens.meterClip,
+        ),
       );
     }
   }
@@ -129,7 +123,6 @@ class _MixerDeskViewState extends State<MixerDeskView> {
         setState(() {
           final chLeft = (result.channelPairIndex * 2) + 1;
           final chRight = (result.channelPairIndex * 2) + 2;
-
           _channels.add(
             ChannelData(
               id: 'ch_${DateTime.now().millisecondsSinceEpoch}',
@@ -146,15 +139,13 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   }
 
   void _removeChannel(String channelId) {
-    setState(() {
-      _channels.removeWhere((ch) => ch.id == channelId);
-    });
+    setState(() => _channels.removeWhere((channel) => channel.id == channelId));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSurfaceBase,
+      backgroundColor: LiveMixTokens.surfaceBase,
       endDrawer: _buildPlaylistDrawer(),
       body: SafeArea(
         child: Column(
@@ -169,11 +160,9 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       itemCount: _channels.length + 1,
-                      separatorBuilder: (context, index) => const SizedBox(width: 12),
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
                       itemBuilder: (context, index) {
-                        if (index == _channels.length) {
-                          return _buildAddChannelButton();
-                        }
+                        if (index == _channels.length) return _buildAddChannelButton();
                         return _buildChannelStrip(_channels[index]);
                       },
                     ),
@@ -190,11 +179,13 @@ class _MixerDeskViewState extends State<MixerDeskView> {
 
   Widget _buildTopActionBar() {
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      constraints: const BoxConstraints(minHeight: 72),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       decoration: const BoxDecoration(
-        color: kSurfaceRack,
-        border: Border(bottom: BorderSide(color: Color(0xFF2D333B), width: 2)),
+        color: LiveMixTokens.surfaceRack,
+        border: Border(
+          bottom: BorderSide(color: LiveMixTokens.surfaceStrip, width: 2),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -202,50 +193,32 @@ class _MixerDeskViewState extends State<MixerDeskView> {
           Row(
             children: [
               Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: kAccentOchre,
-                  borderRadius: BorderRadius.circular(4),
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: LiveMixTokens.accentOchre,
+                  borderRadius: BorderRadius.all(Radius.circular(4)),
                 ),
-                child: const Center(
-                  child: Text('LMM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11)),
-                ),
+                child: Text('LMM', style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textPrimary)),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'LIVEMIXMASTER',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-              ),
+              const Text('LIVEMIXMASTER', style: LiveMixTextStyles.sectionDisplay),
               const SizedBox(width: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black38,
-                  borderRadius: BorderRadius.circular(3),
-                  border: Border.all(color: kAccentCopper),
-                ),
-                child: const Text('48 kHz / 24-bit', style: TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 11)),
+              const LmmStatusBadge(
+                label: 'ENGINE',
+                status: '48 KHZ / 24-BIT',
+                tone: LmmStatusTone.healthy,
+                icon: Icons.graphic_eq,
               ),
               if (_isRecording) ...[
                 const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: kMeterClip.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(3),
-                    border: Border.all(color: kMeterClip),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: kMeterClip, shape: BoxShape.circle)),
-                      const SizedBox(width: 6),
-                      Text(
-                        'REC $_recordingTimeFormatted (${_recordingSizeMb.toStringAsFixed(1)} MB)',
-                        style: const TextStyle(color: kMeterClip, fontFamily: 'monospace', fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
+                LmmStatusBadge(
+                  label: 'RECORDING',
+                  status: _recordingTimeFormatted,
+                  detail: '${_recordingSizeMb.toStringAsFixed(1)} MB',
+                  tone: LmmStatusTone.critical,
+                  icon: Icons.fiber_manual_record,
                 ),
               ],
             ],
@@ -257,26 +230,26 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   icon: Badge(
                     label: Text('${_playlistHistory.length}'),
                     isLabelVisible: _playlistHistory.isNotEmpty,
-                    backgroundColor: kAccentOchre,
-                    child: const Icon(Icons.playlist_play, color: Colors.white),
+                    backgroundColor: LiveMixTokens.accentOchre,
+                    child: const Icon(Icons.playlist_play),
                   ),
                   tooltip: 'Session Playlist',
                   onPressed: () => Scaffold.of(context).openEndDrawer(),
                 ),
               ),
               const SizedBox(width: 8),
-              _buildHeavyToggle(
+              LmmToggleControl(
                 label: 'RECORD',
-                active: _isRecording,
-                activeColor: kMeterClip,
-                onTap: _handleToggleRecording,
+                value: _isRecording,
+                onChanged: (_) {
+                  _handleToggleRecording();
+                },
               ),
-              const SizedBox(width: 12),
-              _buildHeavyToggle(
+              const SizedBox(width: 8),
+              LmmToggleControl(
                 label: 'BROADCAST',
-                active: _isStreaming,
-                activeColor: kAccentOchre,
-                onTap: () => setState(() => _isStreaming = !_isStreaming),
+                value: _isStreaming,
+                onChanged: (value) => setState(() => _isStreaming = value),
               ),
             ],
           ),
@@ -288,36 +261,38 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   Widget _buildLiveFingerprintBanner() {
     return Container(
       width: double.infinity,
-      color: const Color(0xFF16191D),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      color: LiveMixTokens.surfaceStrip,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Row(
         children: [
           Icon(
             Icons.fingerprint,
-            color: _isAnalyzing ? kAccentCopper : kAccentOchre,
+            color: _isAnalyzing ? LiveMixTokens.accentCopper : LiveMixTokens.accentOchre,
             size: 20,
           ),
           const SizedBox(width: 10),
           Text(
             _isAnalyzing ? 'SCANNING AUDIO...' : 'LIVE TRACK:',
-            style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold),
+            style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textSecondary),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _currentTrack != null
-                  ? '${_currentTrack!.artist.toUpperCase()} — ${_currentTrack!.title.toUpperCase()}'
-                  : 'AWAITING TRACK DETECTION...',
+              _currentTrack == null
+                  ? 'AWAITING TRACK DETECTION...'
+                  : '${_currentTrack!.artist.toUpperCase()} — ${_currentTrack!.title.toUpperCase()}',
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+              style: LiveMixTextStyles.uiLabel,
             ),
           ),
-          if (_currentTrack != null) ...[
+          if (_currentTrack case final track?)
             Text(
-              'CONFIDENCE: ${(_currentTrack!.confidence * 100).toInt()}%',
-              style: const TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 11),
+              'CONFIDENCE: ${(track.confidence * 100).toInt()}%',
+              style: LiveMixTextStyles.numericTelemetry.copyWith(
+                color: LiveMixTokens.accentCopper,
+                fontSize: 11,
+              ),
             ),
-          ],
         ],
       ),
     );
@@ -325,62 +300,66 @@ class _MixerDeskViewState extends State<MixerDeskView> {
 
   Widget _buildPlaylistDrawer() {
     return Drawer(
-      backgroundColor: kSurfaceRack,
+      backgroundColor: LiveMixTokens.surfaceRack,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              color: kSurfaceBase,
+              color: LiveMixTokens.surfaceBase,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
-                    child: Text(
-                      'SESSION PLAYLIST',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
+                  const Expanded(child: Text('SESSION PLAYLIST', style: LiveMixTextStyles.uiLabel)),
                   Text(
                     '${_playlistHistory.length} TRACKS',
-                    style: const TextStyle(color: kAccentOchre, fontFamily: 'monospace', fontSize: 12),
+                    style: LiveMixTextStyles.numericTelemetry.copyWith(
+                      color: LiveMixTokens.accentOchre,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
             Expanded(
               child: _playlistHistory.isEmpty
-                  ? const Center(
-                      child: Text('No tracks identified yet.', style: TextStyle(color: Colors.grey)),
+                  ? Center(
+                      child: Text(
+                        'No tracks identified yet.',
+                        style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary),
+                      ),
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: _playlistHistory.length,
-                      separatorBuilder: (context, index) => const Divider(color: Color(0xFF2D333B), height: 1),
+                      separatorBuilder: (_, __) => const Divider(
+                        color: LiveMixTokens.surfaceStrip,
+                        height: 1,
+                      ),
                       itemBuilder: (context, index) {
                         final track = _playlistHistory[index];
-                        final durationFormatted =
+                        final duration =
                             '${track.sessionOffset.inMinutes.toString().padLeft(2, '0')}:${(track.sessionOffset.inSeconds % 60).toString().padLeft(2, '0')}';
-
                         return ListTile(
                           dense: true,
-                          title: Text(track.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          subtitle: Text(track.artist, style: const TextStyle(color: Colors.grey)),
-                          leading: Text(
-                            durationFormatted,
-                            style: const TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 12),
+                          title: Text(track.title, style: LiveMixTextStyles.uiLabel),
+                          subtitle: Text(
+                            track.artist,
+                            style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary),
                           ),
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(3),
+                          leading: Text(
+                            duration,
+                            style: LiveMixTextStyles.numericTelemetry.copyWith(
+                              color: LiveMixTokens.accentCopper,
+                              fontSize: 12,
                             ),
-                            child: Text(
-                              '${(track.confidence * 100).toInt()}%',
-                              style: const TextStyle(color: kMeterNominal, fontFamily: 'monospace', fontSize: 10),
+                          ),
+                          trailing: Text(
+                            '${(track.confidence * 100).toInt()}%',
+                            style: LiveMixTextStyles.numericTelemetry.copyWith(
+                              color: LiveMixTokens.meterNominal,
+                              fontSize: 10,
                             ),
                           ),
                         );
@@ -393,83 +372,86 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     );
   }
 
-  Widget _buildChannelStrip(ChannelData ch) {
+  Widget _buildChannelStrip(ChannelData channel) {
     return Container(
-      width: 126,
+      width: 170,
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: kSurfaceStrip,
+        color: LiveMixTokens.surfaceStrip,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF2E343B)),
+        border: Border.all(color: LiveMixTokens.textSecondary.withValues(alpha: .28)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
                 width: 8,
                 height: 8,
-                decoration: BoxDecoration(color: ch.accentColor, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: channel.accentColor, shape: BoxShape.circle),
               ),
+              const SizedBox(width: 6),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    ch.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                  ),
+                child: Text(
+                  channel.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: LiveMixTextStyles.uiLabel,
                 ),
               ),
-              InkWell(
-                onTap: () => _removeChannel(ch.id),
-                child: const Icon(Icons.close, color: Colors.grey, size: 14),
+              IconButton(
+                constraints: const BoxConstraints(
+                  minWidth: LiveMixTokens.minimumTarget,
+                  minHeight: LiveMixTokens.minimumTarget,
+                ),
+                tooltip: 'Remove ${channel.name}',
+                onPressed: () => _removeChannel(channel.id),
+                icon: const Icon(Icons.close, size: 16),
               ),
             ],
           ),
-          Text(ch.source, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 8)),
-          const SizedBox(height: 10),
-          GestureDetector(
-            onDoubleTap: () => setState(() => ch.trimDb = 0.0),
-            child: Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.black.withValues(alpha: 0.48),
-                border: Border.all(color: ch.accentColor, width: 2),
-              ),
-              child: Center(
+          Text(
+            channel.source,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: LiveMixTextStyles.body.copyWith(
+              color: LiveMixTokens.textSecondary,
+              fontSize: 9,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Semantics(
+            label: '${channel.name} trim',
+            value: '${channel.trimDb.toStringAsFixed(1)} dB',
+            child: GestureDetector(
+              onDoubleTap: () => setState(() => channel.trimDb = 0),
+              child: Container(
+                width: LiveMixTokens.minimumTarget,
+                height: LiveMixTokens.minimumTarget,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: LiveMixTokens.surfaceBase,
+                  border: Border.all(color: channel.accentColor, width: 2),
+                ),
                 child: Text(
-                  '${ch.trimDb >= 0 ? "+" : ""}${ch.trimDb.toStringAsFixed(0)}',
-                  style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                  '${channel.trimDb >= 0 ? '+' : ''}${channel.trimDb.toStringAsFixed(0)}',
+                  style: LiveMixTextStyles.numericTelemetry.copyWith(fontSize: 10),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildLedMeter(level: ch.fader * 0.9),
+                _buildLedMeter(level: channel.fader * .9),
                 const SizedBox(width: 8),
-                RotatedBox(
-                  quarterTurns: 3,
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      thumbColor: ch.accentColor,
-                      activeTrackColor: Colors.white24,
-                      inactiveTrackColor: Colors.black.withValues(alpha: 0.48),
-                      trackHeight: 6,
-                    ),
-                    child: Slider(
-                      value: ch.fader,
-                      onChanged: (val) => setState(() => ch.fader = val),
-                    ),
-                  ),
+                LmmFader(
+                  label: 'FADER',
+                  value: channel.fader,
+                  onChanged: (value) => setState(() => channel.fader = value),
                 ),
               ],
             ),
@@ -478,26 +460,18 @@ class _MixerDeskViewState extends State<MixerDeskView> {
           Row(
             children: [
               Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => ch.isMuted = !ch.isMuted),
-                  child: Container(
-                    height: 24,
-                    color: ch.isMuted ? kMeterClip : Colors.black.withValues(alpha: 0.48),
-                    alignment: Alignment.center,
-                    child: const Text('M', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
+                child: LmmToggleControl(
+                  label: 'MUTE',
+                  value: channel.isMuted,
+                  onChanged: (value) => setState(() => channel.isMuted = value),
                 ),
               ),
               const SizedBox(width: 4),
               Expanded(
-                child: InkWell(
-                  onTap: () => setState(() => ch.isSolo = !ch.isSolo),
-                  child: Container(
-                    height: 24,
-                    color: ch.isSolo ? kAccentCopper : Colors.black.withValues(alpha: 0.48),
-                    alignment: Alignment.center,
-                    child: const Text('S', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
+                child: LmmToggleControl(
+                  label: 'SOLO',
+                  value: channel.isSolo,
+                  onChanged: (value) => setState(() => channel.isSolo = value),
                 ),
               ),
             ],
@@ -508,49 +482,43 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   }
 
   Widget _buildMasterSection() {
+    final leftDbfs = -60 + (_masterFader * 54);
+    final rightDbfs = leftDbfs - 1.5;
     return Container(
-      width: 160,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      width: 280,
+      margin: const EdgeInsets.fromLTRB(0, 12, 16, 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: kSurfaceRack,
+        color: LiveMixTokens.surfaceRack,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: kAccentOchre.withOpacity(0.5)),
+        border: Border.all(color: LiveMixTokens.accentOchre.withValues(alpha: .5)),
       ),
       child: Column(
         children: [
-          const Text('MASTER BUS', style: TextStyle(color: kAccentOchre, fontWeight: FontWeight.bold, fontSize: 14)),
-          const Text('TRUE PEAK / LUFS', style: TextStyle(color: Colors.grey, fontSize: 9)),
-          const SizedBox(height: 16),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildLedMeter(level: _masterFader * 0.95),
-                const SizedBox(width: 4),
-                _buildLedMeter(level: _masterFader * 0.93),
-                const SizedBox(width: 8),
-                RotatedBox(
-                  quarterTurns: 3,
-                  child: Slider(
-                    value: _masterFader,
-                    activeColor: kAccentOchre,
-                    onChanged: (val) => setState(() => _masterFader = val),
-                  ),
-                ),
-              ],
-            ),
+          Text(
+            'MASTER BUS',
+            style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.accentOchre),
           ),
           const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(6),
-            color: Colors.black87,
-            child: Column(
-              children: const [
-                Text('-14.2 LUFS', style: TextStyle(color: kMeterNominal, fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 11)),
-                Text('LIMITER READY', style: TextStyle(color: kAccentCopper, fontFamily: 'monospace', fontSize: 9)),
-              ],
+          LmmStereoMeter(
+            label: 'MASTER',
+            leftDbfs: leftDbfs,
+            rightDbfs: rightDbfs,
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: LmmFader(
+              label: 'MASTER FADER',
+              value: _masterFader,
+              onChanged: (value) => setState(() => _masterFader = value),
             ),
+          ),
+          const LmmStatusBadge(
+            label: 'LIMITER',
+            status: 'READY',
+            detail: '-14.2 LUFS',
+            tone: LmmStatusTone.healthy,
+            icon: Icons.shield_outlined,
           ),
         ],
       ),
@@ -558,39 +526,34 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   }
 
   Widget _buildLedMeter({required double level}) {
-    return Container(
-      width: 14,
-      height: 220,
-      decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(2)),
-      child: Column(
-        verticalDirection: VerticalDirection.up,
-        children: List.generate(24, (i) {
-          final isLit = level >= (i / 24);
-          Color color = kMeterNominal;
-          if (i > 20) color = kMeterClip;
-          else if (i > 15) color = kMeterHeadroom;
-
-          return Container(
-            height: 6,
-            margin: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 2),
-            color: isLit ? color : const Color(0xFF1C1F22),
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _buildHeavyToggle({required String label, required bool active, required Color activeColor, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? activeColor : const Color(0xFF2D333B),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: active ? Colors.white : Colors.transparent),
+    return Semantics(
+      label: 'channel level meter',
+      value: '${(level * 100).clamp(0, 100).round()} percent',
+      child: ExcludeSemantics(
+        child: Container(
+          width: 14,
+          height: 220,
+          decoration: BoxDecoration(
+            color: LiveMixTokens.meterInactive,
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: Column(
+            verticalDirection: VerticalDirection.up,
+            children: List.generate(24, (index) {
+              final isLit = level >= (index / 24);
+              final color = index > 20
+                  ? LiveMixTokens.meterClip
+                  : index > 15
+                      ? LiveMixTokens.meterHeadroom
+                      : LiveMixTokens.meterNominal;
+              return Container(
+                height: 6,
+                margin: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 2),
+                color: isLit ? color : LiveMixTokens.meterInactive,
+              );
+            }),
+          ),
         ),
-        child: Text(label, style: TextStyle(color: active ? Colors.white : Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
       ),
     );
   }
@@ -598,20 +561,30 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   Widget _buildAddChannelButton() {
     return InkWell(
       onTap: _openPatchbayModal,
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        width: 112,
+        width: 128,
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.white24, style: BorderStyle.solid),
+          border: Border.all(color: LiveMixTokens.textSecondary.withValues(alpha: .45)),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.add, color: kAccentOchre, size: 32),
-            SizedBox(height: 8),
-            Text('ADD INPUT', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
-            SizedBox(height: 4),
-            Text('PATCHBAY', style: TextStyle(color: kAccentCopper, fontSize: 9, fontFamily: 'monospace')),
+          children: [
+            const Icon(Icons.add, color: LiveMixTokens.accentOchre, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              'ADD INPUT',
+              style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textSecondary),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'PATCHBAY',
+              style: LiveMixTextStyles.numericTelemetry.copyWith(
+                color: LiveMixTokens.accentCopper,
+                fontSize: 9,
+              ),
+            ),
           ],
         ),
       ),
@@ -620,6 +593,17 @@ class _MixerDeskViewState extends State<MixerDeskView> {
 }
 
 class ChannelData {
+  ChannelData({
+    required this.id,
+    required this.name,
+    required this.source,
+    required this.fader,
+    this.trimDb = 0,
+    this.accentColor = LiveMixTokens.accentOchre,
+    this.isMuted = false,
+    this.isSolo = false,
+  });
+
   final String id;
   final String name;
   final String source;
@@ -628,15 +612,4 @@ class ChannelData {
   Color accentColor;
   bool isMuted;
   bool isSolo;
-
-  ChannelData({
-    required this.id,
-    required this.name,
-    required this.source,
-    required this.fader,
-    this.trimDb = 0.0,
-    this.accentColor = kAccentOchre,
-    this.isMuted = false,
-    this.isSolo = false,
-  });
 }
