@@ -47,7 +47,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter test test/broadcast_pipeline_test.dart
+      - run: flutter test --reporter expanded test/broadcast_pipeline_test.dart test/broadcast_metadata_adapter_test.dart
 
   mixer-user-flow-test:
     name: Mixer User Flow Test
