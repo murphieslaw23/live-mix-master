@@ -1,0 +1,67 @@
+{
+  "name": "LiveMixMaster Component State Contract",
+  "version": "1.0.0-draft",
+  "status": "review-required",
+  "sourceIssue": "https://github.com/murphieslaw23/live-mix-master/issues/1",
+  "globalRules": {
+    "criticalStatesRequire": ["icon", "text", "shape", "color"],
+    "minimumTargetPx": 44,
+    "focusRingToken": "accent/copper",
+    "focusRingWidthPx": 2,
+    "disabledOpacity": 0.4
+  },
+  "components": {
+    "channelStrip": {
+      "requiredStates": ["default", "active", "muted", "solo", "disabled", "disconnected", "clipping"],
+      "parts": ["label", "trim", "meter", "fader", "mute", "solo", "sourceStatus"]
+    },
+    "trimKnob": {
+      "requiredStates": ["default", "hover", "focus", "disabled"]
+    },
+    "fader": {
+      "requiredStates": ["default", "active", "focus", "disabled"]
+    },
+    "muteControl": {
+      "requiredStates": ["off", "on", "focus", "disabled"],
+      "stateCopy": {"off": "MUTE OFF", "on": "MUTE ON"}
+    },
+    "soloControl": {
+      "requiredStates": ["off", "on", "focus", "disabled"],
+      "stateCopy": {"off": "SOLO OFF", "on": "SOLO ON"}
+    },
+    "stereoMeter": {
+      "requiredStates": ["inactive", "nominal", "headroom", "clipping"],
+      "scaleDbfs": [0, -6, -12, -18, -24, -36, -60]
+    },
+    "masterBus": {
+      "requiredStates": ["default", "limiterOn", "clipping"],
+      "telemetry": ["loudnessLufs", "truePeakDbtp", "limiterState"]
+    },
+    "recordControl": {
+      "requiredStates": ["idle", "recording", "finalizing", "finalized", "writeFailure", "diskFull"]
+    },
+    "broadcastControl": {
+      "requiredStates": ["offline", "preflight", "live", "reconnecting", "failed", "invalidCredentials"]
+    },
+    "fingerprintHud": {
+      "requiredStates": ["searching", "match", "lowConfidence", "noMatch", "offlineLookup"],
+      "requiredFields": ["artist", "title", "confidence", "provider", "timestamp"]
+    },
+    "sessionRow": {
+      "requiredStates": ["approved", "candidate", "needsReview", "ignored", "disabled"],
+      "actions": ["correct", "approve", "ignore"]
+    },
+    "deviceStatus": {
+      "requiredStates": ["connected", "active", "muted", "noSignal", "lost", "permissionDenied", "notDetected", "recovered"]
+    },
+    "preflightCheck": {
+      "requiredStates": ["ok", "warning", "error", "disabled"],
+      "checks": ["audioDevice", "routing", "diskSpace", "recordingPath", "broadcastCredentials", "network", "fingerprintProvider"]
+    }
+  },
+  "referencePolicy": {
+    "visualReferences": "docs/design/issue-1-picsart-pack.md",
+    "implementationRule": "Flutter widgets must consume repository-owned semantic tokens and preserve this state vocabulary; generated artwork is not an executable component definition.",
+    "goldenTests": "Required by Issue #5 before visual-parity claims."
+  }
+}
