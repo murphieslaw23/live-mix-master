@@ -34,11 +34,14 @@ cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/native --config Debug --parallel
 test -f build/native/liblive_mixer_engine.dylib
 flutter analyze --no-fatal-warnings --no-fatal-infos
-flutter test
+TEST_FILES=$(find test -maxdepth 1 -name '*_test.dart' ! -name 'golden_fixture_render_test.dart' -print | sort)
+flutter test --reporter expanded $TEST_FILES
 flutter run -d macos
 ```
 
 The committed `macos/` host was generated with Flutter 3.47.2. A clean checkout must not require uncommitted generated Xcode files before `flutter run -d macos`.
+
+The Issue #5 golden renderer is intentionally excluded from the generic clean-clone test command because its PNGs are generated during the dedicated Golden Fixture Contract workflow and validated against `test/goldens/issue5-approved-sha256.txt`; the PNG files themselves are not repository inputs.
 
 ## Native library lookup
 
@@ -83,10 +86,18 @@ and then launches the application executable as a process-level smoke test.
 
 ## Tests
 
-Run the full Flutter suite:
+Run the clean-clone non-golden suite:
 
 ```sh
-flutter test --reporter expanded
+TEST_FILES=$(find test -maxdepth 1 -name '*_test.dart' ! -name 'golden_fixture_render_test.dart' -print | sort)
+flutter test --reporter expanded $TEST_FILES
+```
+
+Verify Issue #5 golden fixtures through their dedicated contract:
+
+```sh
+flutter test --update-goldens test/golden_fixture_render_test.dart
+grep -v '^#' test/goldens/issue5-approved-sha256.txt | sha256sum --check -
 ```
 
 Focused Issue #2 contracts:
