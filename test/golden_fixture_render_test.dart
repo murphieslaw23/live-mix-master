@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -77,10 +78,18 @@ Future<void> _loadApprovedFonts() async {
     await loader.load();
   }
 
-  final materialIconsBytes = await File('assets/fonts/MaterialIcons-Regular.otf').readAsBytes();
-  final materialIconsLoader = FontLoader('MaterialIcons')
-    ..addFont(Future.value(materialIconsBytes.buffer.asByteData()));
-  await materialIconsLoader.load();
+  final flutterRoot = Platform.environment['FLUTTER_ROOT'];
+  if (flutterRoot == null || flutterRoot.isEmpty) {
+    throw StateError('FLUTTER_ROOT is required for deterministic Material Icons goldens');
+  }
+
+  final iconFont = File(
+    '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+  );
+  final iconBytes = Future<ByteData>.value(
+    iconFont.readAsBytesSync().buffer.asByteData(),
+  );
+  await (FontLoader('MaterialIcons')..addFont(iconBytes)).load();
 
   _approvedFontsLoaded = true;
 }
