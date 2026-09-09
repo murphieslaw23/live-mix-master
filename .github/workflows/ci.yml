@@ -40,7 +40,7 @@ jobs:
           cache: true
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
-      - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart test/operator_surface_design_contract_test.dart test/component_state_registry_test.dart test/responsive_layout_test.dart
+      - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart test/operator_surface_design_contract_test.dart test/component_state_registry_test.dart test/responsive_layout_test.dart test/approved_visual_parity_contract_test.dart
 
   golden-fixture-render:
     name: Golden Fixture Render (review artifact)
