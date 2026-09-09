@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../design/live_mix_tokens.dart';
 import '../../design/widgets/lmm_controls.dart';
 
-/// Compact field monitor for booth-side phone and tablet use.
-class CompactMonitorView extends StatefulWidget {
+/// Read-only booth/field monitor matching the approved Issue #1 mobile baseline.
+class CompactMonitorView extends StatelessWidget {
   const CompactMonitorView({
     super.key,
     this.isStreaming = false,
@@ -13,6 +13,9 @@ class CompactMonitorView extends StatefulWidget {
     this.currentArtist = 'UNKNOWN ARTIST',
     this.streamBitrateKbps = 320.0,
     this.masterPeakLevel = 0.85,
+    this.matchConfidence = 0.94,
+    this.loudnessLufs = -14.2,
+    this.truePeakDbtp = -6.0,
   });
 
   final bool isStreaming;
@@ -21,101 +24,282 @@ class CompactMonitorView extends StatefulWidget {
   final String currentArtist;
   final double streamBitrateKbps;
   final double masterPeakLevel;
-
-  @override
-  State<CompactMonitorView> createState() => _CompactMonitorViewState();
-}
-
-class _CompactMonitorViewState extends State<CompactMonitorView> {
-  double _quickFader = 0.90;
-  bool _limiterEngaged = false;
+  final double matchConfidence;
+  final double loudnessLufs;
+  final double truePeakDbtp;
 
   @override
   Widget build(BuildContext context) {
-    final peakDbfs = -60 + (widget.masterPeakLevel.clamp(0.0, 1.0) * 60);
+    final peakDbfs = -60 + (masterPeakLevel.clamp(0.0, 1.0) * 60);
+
     return Scaffold(
       backgroundColor: LiveMixTokens.surfaceBase,
-      appBar: AppBar(
-        backgroundColor: LiveMixTokens.surfaceRack,
-        title: const Text('FIELD MONITOR', style: LiveMixTextStyles.uiLabel),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: LmmStatusBadge(
-              label: 'BROADCAST',
-              status: widget.isStreaming ? 'LIVE' : 'OFFLINE',
-              detail: widget.isStreaming ? '${widget.streamBitrateKbps.toInt()} KBPS' : null,
-              tone: widget.isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
-              icon: Icons.wifi_tethering,
-            ),
-          ),
-        ],
-      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildLiveTrackCard(),
-              const SizedBox(height: 16),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: LiveMixTokens.surfaceRack,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: LiveMixTokens.textSecondary.withValues(alpha: .28)),
-                  ),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final compact = constraints.maxWidth < 560;
-                      final meter = LmmStereoMeter(
-                        label: 'MASTER',
-                        leftDbfs: peakDbfs,
-                        rightDbfs: peakDbfs - 1.5,
-                      );
-                      final fader = LmmFader(
-                        label: 'MASTER ATTENUATION',
-                        value: _quickFader,
-                        onChanged: (value) => setState(() => _quickFader = value),
-                      );
-
-                      if (compact) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            meter,
-                            const SizedBox(height: 12),
-                            Expanded(child: Center(child: fader)),
-                          ],
-                        );
-                      }
-
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(child: meter),
-                          const SizedBox(width: 24),
-                          fader,
-                        ],
-                      );
-                    },
-                  ),
+        child: Column(
+          children: [
+            _buildBrandHeader(),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildMonitorHeading(),
+                    const SizedBox(height: 10),
+                    _buildMasterCard(peakDbfs),
+                    if (isRecording || !isStreaming) ...[
+                      const SizedBox(height: 10),
+                      _buildRecoveryRow(),
+                    ],
+                    const SizedBox(height: 10),
+                    _buildCurrentTrackCard(),
+                    const SizedBox(height: 10),
+                    _buildSourceStatusCard(),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              _buildStreamHealthFooter(),
-            ],
-          ),
+            ),
+            _buildBottomNavigation(),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildLiveTrackCard() {
+  Widget _buildBrandHeader() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      minHeight: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: const BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        border: Border(
+          bottom: BorderSide(color: LiveMixTokens.surfaceStrip, width: 2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: LiveMixTokens.accentOchre,
+              borderRadius: BorderRadius.all(Radius.circular(4)),
+            ),
+            child: Text(
+              'LMM',
+              style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textPrimary),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('LIVEMIXMASTER', style: LiveMixTextStyles.uiLabel),
+                Text('WAREHOUSE 023', style: LiveMixTextStyles.numericTelemetry),
+              ],
+            ),
+          ),
+          Icon(
+            isStreaming ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+            color: isStreaming ? LiveMixTokens.meterNominal : LiveMixTokens.statusWarn,
+            size: 20,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonitorHeading() {
+    return const Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(child: Text('FIELD MONITOR', style: LiveMixTextStyles.sectionDisplay)),
+        Text('Read-only monitor', style: LiveMixTextStyles.body),
+      ],
+    );
+  }
+
+  Widget _buildMasterCard(double peakDbfs) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: LiveMixTokens.textSecondary.withValues(alpha: .28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'MASTER STEREO',
+                style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.accentOchre),
+              ),
+              const Spacer(),
+              Text(
+                '${streamBitrateKbps.toInt()} KBPS',
+                style: LiveMixTextStyles.numericTelemetry.copyWith(
+                  color: LiveMixTokens.textSecondary,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildMeterRow('L', peakDbfs),
+          const SizedBox(height: 5),
+          _buildMeterRow('R', peakDbfs - 1.5),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final tick in LiveMixTokens.meterScaleDbfs)
+                Text(
+                  '${tick.toInt()}',
+                  style: LiveMixTextStyles.numericTelemetry.copyWith(
+                    color: LiveMixTokens.textSecondary,
+                    fontSize: 8,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _telemetryCell('LOUDNESS', '${loudnessLufs.toStringAsFixed(1)} LUFS')),
+              const SizedBox(width: 6),
+              Expanded(child: _telemetryCell('TRUE PEAK', '${truePeakDbtp.toStringAsFixed(1)} dBTP')),
+              const SizedBox(width: 6),
+              const Expanded(child: _telemetryCell('LIMITER', 'ON')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMeterRow(String channel, double dbfs) {
+    final normalized = ((dbfs.clamp(-60.0, 0.0) + 60.0) / 60.0).toDouble();
+    final color = dbfs >= -6
+        ? LiveMixTokens.meterClip
+        : dbfs >= -12
+            ? LiveMixTokens.meterHeadroom
+            : LiveMixTokens.meterNominal;
+
+    return Semantics(
+      label: 'MASTER $channel meter',
+      value: '${dbfs.toStringAsFixed(1)} dBFS',
+      child: ExcludeSemantics(
+        child: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              child: Text(channel, style: LiveMixTextStyles.uiLabel),
+            ),
+            Expanded(
+              child: LinearProgressIndicator(
+                value: normalized,
+                minHeight: 8,
+                backgroundColor: LiveMixTokens.meterInactive,
+                color: color,
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 52,
+              child: Text(
+                dbfs.toStringAsFixed(1),
+                textAlign: TextAlign.right,
+                style: LiveMixTextStyles.numericTelemetry.copyWith(fontSize: 9),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _telemetryCell(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+      decoration: const BoxDecoration(
+        color: LiveMixTokens.surfaceStrip,
+        borderRadius: BorderRadius.all(Radius.circular(4)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: LiveMixTextStyles.uiLabel),
+          Text(value, style: LiveMixTextStyles.numericTelemetry.copyWith(fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecoveryRow() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final recording = LmmStatusBadge(
+          label: 'RECORDING',
+          status: isRecording ? '00:24:18' : 'IDLE',
+          detail: isRecording ? 'WAV · 86 GB FREE' : null,
+          tone: isRecording ? LmmStatusTone.critical : LmmStatusTone.neutral,
+          icon: Icons.fiber_manual_record,
+        );
+        final broadcast = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            LmmStatusBadge(
+              label: 'BROADCAST',
+              status: isStreaming ? 'LIVE' : 'RECONNECTING',
+              detail: isStreaming ? '${streamBitrateKbps.toInt()} KBPS' : 'Attempt 2 of 5',
+              tone: isStreaming ? LmmStatusTone.healthy : LmmStatusTone.warning,
+              icon: isStreaming ? Icons.wifi_tethering : Icons.sync,
+            ),
+            if (!isStreaming && isRecording)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 4),
+                child: Text(
+                  'Local recording continues',
+                  style: LiveMixTextStyles.body.copyWith(
+                    color: LiveMixTokens.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+          ],
+        );
+
+        if (constraints.maxWidth < 420) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: recording),
+              const SizedBox(width: 8),
+              Expanded(child: broadcast),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: recording),
+            const SizedBox(width: 10),
+            Expanded(child: broadcast),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCurrentTrackCard() {
+    return Container(
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: LiveMixTokens.surfaceStrip,
         borderRadius: BorderRadius.circular(8),
@@ -127,86 +311,97 @@ class _CompactMonitorViewState extends State<CompactMonitorView> {
           Row(
             children: [
               const Icon(Icons.fingerprint, color: LiveMixTokens.accentCopper, size: 16),
-              const SizedBox(width: 8),
+              const SizedBox(width: 7),
               Text(
-                'NOW PLAYING [ACOUSTID]',
+                'CURRENT TRACK',
                 style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.accentCopper),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            widget.currentTrackTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: LiveMixTextStyles.uiLabel.copyWith(fontSize: 16),
-          ),
-          Text(
-            widget.currentArtist,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary),
+          const SizedBox(height: 7),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _trackField('ARTIST', currentArtist)),
+              const SizedBox(width: 8),
+              Expanded(child: _trackField('TITLE', currentTrackTitle)),
+              const SizedBox(width: 8),
+              SizedBox(width: 62, child: _trackField('MATCH', '${(matchConfidence * 100).round()}%')),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStreamHealthFooter() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final buffer = LmmStatusBadge(
-          label: 'BUFFER',
-          status: '99.98%',
-          detail: widget.isStreaming ? 'STABLE' : 'IDLE',
-          tone: widget.isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
-          icon: Icons.network_check,
-        );
-        final limiter = InkWell(
-          borderRadius: BorderRadius.circular(4),
-          onTap: () => setState(() => _limiterEngaged = !_limiterEngaged),
-          child: LmmStatusBadge(
-            label: 'SAFETY LIMITER',
-            status: _limiterEngaged ? 'ENGAGED' : 'ARMED',
-            detail: '-0.2 DB',
-            tone: _limiterEngaged ? LmmStatusTone.warning : LmmStatusTone.healthy,
-            icon: Icons.shield_outlined,
+  static Widget _trackField(String label, String value) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: LiveMixTextStyles.uiLabel),
+        Text(
+          value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: LiveMixTextStyles.body.copyWith(fontSize: 11),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSourceStatusCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: const BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+      ),
+      child: const Column(
+        children: [
+          LmmDeviceStatus(label: 'USB 1-2', state: LmmDeviceState.active),
+          LmmDeviceStatus(label: 'REKORDBOX', state: LmmDeviceState.active),
+          LmmDeviceStatus(label: 'MIC 1', state: LmmDeviceState.muted),
+          LmmDeviceStatus(label: 'AUX', state: LmmDeviceState.noSignal),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigation() {
+    return Container(
+      height: 50,
+      decoration: const BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        border: Border(top: BorderSide(color: LiveMixTokens.surfaceStrip, width: 2)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _navItem('MONITOR', Icons.monitor_heart_outlined, active: true),
           ),
-        );
-        const recording = LmmStatusBadge(
-          label: 'RECORDING',
-          status: 'ACTIVE',
-          tone: LmmStatusTone.critical,
-          icon: Icons.fiber_manual_record,
-        );
+          const VerticalDivider(width: 1, color: LiveMixTokens.surfaceStrip),
+          Expanded(
+            child: _navItem('SESSION', Icons.playlist_play_outlined, active: false),
+          ),
+        ],
+      ),
+    );
+  }
 
-        if (constraints.maxWidth < 560) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              buffer,
-              const SizedBox(height: 8),
-              limiter,
-              if (widget.isRecording) ...[
-                const SizedBox(height: 8),
-                recording,
-              ],
-            ],
-          );
-        }
-
-        return Row(
-          children: [
-            Expanded(child: buffer),
-            const SizedBox(width: 12),
-            Expanded(child: limiter),
-            if (widget.isRecording) ...[
-              const SizedBox(width: 12),
-              const Expanded(child: recording),
-            ],
-          ],
-        );
-      },
+  Widget _navItem(String label, IconData icon, {required bool active}) {
+    final color = active ? LiveMixTokens.accentOchre : LiveMixTokens.textSecondary;
+    return Semantics(
+      label: label,
+      selected: active,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 7),
+          Text(label, style: LiveMixTextStyles.uiLabel.copyWith(color: color)),
+        ],
+      ),
     );
   }
 }
