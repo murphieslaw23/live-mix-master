@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate-macos-runner:
@@ -17,8 +17,10 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - name: Check out source
+      - name: Check out source branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up pinned Flutter
         uses: subosito/flutter-action@v2
@@ -29,6 +31,12 @@ jobs:
       - name: Show generator version
         run: flutter --version
 
+      - name: Resolve packages and verify native loader contract
+        run: |
+          bash tool/bootstrap_fonts.sh
+          flutter pub get
+          flutter test test/native_library_loader_test.dart
+
       - name: Generate isolated macOS runner
         run: |
           rm -rf /tmp/live_mix_master_runner
@@ -38,15 +46,27 @@ jobs:
             --project-name live_mix_master \
             --no-pub \
             /tmp/live_mix_master_runner
-          rm -rf generated
-          mkdir -p generated
-          cp -R /tmp/live_mix_master_runner/macos generated/macos
-          find generated/macos -maxdepth 3 -type f -print | sort
+          rm -rf macos
+          cp -R /tmp/live_mix_master_runner/macos macos
+          find macos -maxdepth 4 -type f -print | sort
 
       - name: Upload generated runner
         uses: actions/upload-artifact@v4
         with:
           name: issue2-generated-macos-runner
-          path: generated/macos/**
+          path: macos/**
           if-no-files-found: error
           retention-days: 7
+
+      - name: Commit generated runner to PR branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git config user.name 'Murphies Law'
+          git config user.email 'emilach82@gmail.com'
+          git add macos
+          if git diff --cached --quiet; then
+            echo 'Generated runner already matches the branch.'
+            exit 0
+          fi
+          git commit -m 'build(macos): commit Flutter 3.47.2 runner'
+          git push origin "HEAD:${{ github.head_ref }}"
