@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,7 +29,7 @@ void main() {
       final semantics = tester.getSemantics(find.byKey(const Key('mute-toggle')));
       expect(semantics.label, contains('MUTE'));
       expect(semantics.value, 'OFF');
-      expect(semantics.hasAction(SemanticsAction.tap), isTrue);
+      expect(semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap), isTrue);
 
       await tester.tap(find.byKey(const Key('mute-toggle')));
       await tester.pump();
@@ -51,7 +53,7 @@ void main() {
       final semantics = tester.getSemantics(find.byKey(const Key('disabled-toggle')));
       expect(semantics.label, contains('SOLO'));
       expect(semantics.value, 'OFF');
-      expect(semantics.hasAction(SemanticsAction.tap), isFalse);
+      expect(semantics.getSemanticsData().hasAction(ui.SemanticsAction.tap), isFalse);
       expect(find.text('SOLO OFF'), findsOneWidget);
     });
 
