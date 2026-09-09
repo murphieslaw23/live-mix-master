@@ -20,12 +20,7 @@ enum LmmDeviceState {
 enum LmmPreflightState { ok, warning, error, disabled, ready, pending }
 
 class LmmToggleControl extends StatefulWidget {
-  const LmmToggleControl({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
+  const LmmToggleControl({super.key, required this.label, required this.value, required this.onChanged});
 
   final String label;
   final bool value;
@@ -41,8 +36,7 @@ class _LmmToggleControlState extends State<LmmToggleControl> {
   bool get _enabled => widget.onChanged != null;
 
   void _activate() {
-    if (!_enabled) return;
-    widget.onChanged!(!widget.value);
+    if (_enabled) widget.onChanged!(!widget.value);
   }
 
   void _tap() {
@@ -62,10 +56,6 @@ class _LmmToggleControlState extends State<LmmToggleControl> {
     final foreground = _enabled
         ? LiveMixTokens.textPrimary
         : LiveMixTokens.textSecondary.withValues(alpha: LiveMixTokens.disabledOpacity);
-    final background = widget.value
-        ? LiveMixTokens.accentOchre.withValues(alpha: .22)
-        : LiveMixTokens.surfaceStrip;
-
     return Semantics(
       label: widget.label,
       value: stateLabel,
@@ -91,14 +81,16 @@ class _LmmToggleControlState extends State<LmmToggleControl> {
                 ),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: background,
+                    color: widget.value
+                        ? LiveMixTokens.accentOchre.withValues(alpha: .22)
+                        : LiveMixTokens.surfaceStrip,
                     borderRadius: const BorderRadius.all(Radius.circular(4)),
                     border: Border.all(
                       color: widget.value ? LiveMixTokens.accentOchre : LiveMixTokens.textSecondary,
                     ),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     child: Center(
                       child: Text(
                         '${widget.label} $stateLabel',
@@ -148,25 +140,33 @@ class LmmStatusBadge extends StatelessWidget {
       child: ExcludeSemantics(
         child: Container(
           constraints: const BoxConstraints(minHeight: LiveMixTokens.minimumTarget),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: LiveMixTokens.surfaceStrip,
             borderRadius: const BorderRadius.all(Radius.circular(4)),
             border: Border.all(color: _toneColor),
           ),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, size: 18, color: _toneColor),
-              Text(label, style: LiveMixTextStyles.uiLabel),
-              Text(status, style: LiveMixTextStyles.uiLabel.copyWith(color: _toneColor)),
-              if (detail case final detail?)
-                Text(
-                  detail,
-                  style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary),
-                ),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: LiveMixTextStyles.uiLabel),
+                  Text(status, style: LiveMixTextStyles.uiLabel.copyWith(color: _toneColor)),
+                  if (detail case final detail?)
+                    Text(
+                      detail,
+                      style: LiveMixTextStyles.body.copyWith(
+                        color: LiveMixTokens.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
@@ -176,12 +176,7 @@ class LmmStatusBadge extends StatelessWidget {
 }
 
 class LmmStereoMeter extends StatelessWidget {
-  const LmmStereoMeter({
-    super.key,
-    required this.label,
-    required this.leftDbfs,
-    required this.rightDbfs,
-  });
+  const LmmStereoMeter({super.key, required this.label, required this.leftDbfs, required this.rightDbfs});
 
   final String label;
   final double leftDbfs;
@@ -298,12 +293,7 @@ class LmmDeviceStatus extends StatelessWidget {
 }
 
 class LmmPreflightCheck extends StatelessWidget {
-  const LmmPreflightCheck({
-    super.key,
-    required this.label,
-    required this.state,
-    this.detail,
-  });
+  const LmmPreflightCheck({super.key, required this.label, required this.state, this.detail});
 
   final String label;
   final LmmPreflightState state;
@@ -338,10 +328,7 @@ class LmmPreflightCheck extends StatelessWidget {
               Text(label, style: LiveMixTextStyles.uiLabel),
               Text(status, style: LiveMixTextStyles.uiLabel.copyWith(color: color)),
               if (detail case final detail?)
-                Text(
-                  detail,
-                  style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary),
-                ),
+                Text(detail, style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary)),
             ],
           ),
         ),
@@ -351,12 +338,7 @@ class LmmPreflightCheck extends StatelessWidget {
 }
 
 class LmmFader extends StatelessWidget {
-  const LmmFader({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
+  const LmmFader({super.key, required this.label, required this.value, required this.onChanged});
 
   final String label;
   final double value;
@@ -383,12 +365,7 @@ class LmmFader extends StatelessWidget {
                 height: 180,
                 child: RotatedBox(
                   quarterTurns: 3,
-                  child: Slider(
-                    value: clampedValue,
-                    min: 0,
-                    max: 1,
-                    onChanged: onChanged,
-                  ),
+                  child: Slider(value: clampedValue, min: 0, max: 1, onChanged: onChanged),
                 ),
               ),
               Text('$percent%', style: LiveMixTextStyles.numericTelemetry),
