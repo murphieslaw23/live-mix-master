@@ -1,0 +1,1 @@
+Task 1 RED verification is performed by the draft PR macOS CI run. Do not mark this file as GREEN evidence; replace the status only after the observed failing run is recorded and the production implementation subsequently passes CTest.
