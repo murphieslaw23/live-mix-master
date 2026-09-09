@@ -82,12 +82,12 @@ class _CompactMonitorViewState extends State<CompactMonitorView> {
                       );
 
                       if (compact) {
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Expanded(child: meter),
-                            const SizedBox(width: 16),
-                            fader,
+                            meter,
+                            const SizedBox(height: 12),
+                            Expanded(child: Center(child: fader)),
                           ],
                         );
                       }
@@ -153,41 +153,60 @@ class _CompactMonitorViewState extends State<CompactMonitorView> {
   }
 
   Widget _buildStreamHealthFooter() {
-    return Row(
-      children: [
-        Expanded(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final buffer = LmmStatusBadge(
+          label: 'BUFFER',
+          status: '99.98%',
+          detail: widget.isStreaming ? 'STABLE' : 'IDLE',
+          tone: widget.isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
+          icon: Icons.network_check,
+        );
+        final limiter = InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: () => setState(() => _limiterEngaged = !_limiterEngaged),
           child: LmmStatusBadge(
-            label: 'BUFFER',
-            status: '99.98%',
-            detail: widget.isStreaming ? 'STABLE' : 'IDLE',
-            tone: widget.isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
-            icon: Icons.network_check,
+            label: 'SAFETY LIMITER',
+            status: _limiterEngaged ? 'ENGAGED' : 'ARMED',
+            detail: '-0.2 DB',
+            tone: _limiterEngaged ? LmmStatusTone.warning : LmmStatusTone.healthy,
+            icon: Icons.shield_outlined,
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(4),
-            onTap: () => setState(() => _limiterEngaged = !_limiterEngaged),
-            child: LmmStatusBadge(
-              label: 'SAFETY LIMITER',
-              status: _limiterEngaged ? 'ENGAGED' : 'ARMED',
-              detail: '-0.2 DB',
-              tone: _limiterEngaged ? LmmStatusTone.warning : LmmStatusTone.healthy,
-              icon: Icons.shield_outlined,
-            ),
-          ),
-        ),
-        if (widget.isRecording) ...[
-          const SizedBox(width: 12),
-          const LmmStatusBadge(
-            label: 'RECORDING',
-            status: 'ACTIVE',
-            tone: LmmStatusTone.critical,
-            icon: Icons.fiber_manual_record,
-          ),
-        ],
-      ],
+        );
+        const recording = LmmStatusBadge(
+          label: 'RECORDING',
+          status: 'ACTIVE',
+          tone: LmmStatusTone.critical,
+          icon: Icons.fiber_manual_record,
+        );
+
+        if (constraints.maxWidth < 560) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              buffer,
+              const SizedBox(height: 8),
+              limiter,
+              if (widget.isRecording) ...[
+                const SizedBox(height: 8),
+                recording,
+              ],
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: buffer),
+            const SizedBox(width: 12),
+            Expanded(child: limiter),
+            if (widget.isRecording) ...[
+              const SizedBox(width: 12),
+              const Expanded(child: recording),
+            ],
+          ],
+        );
+      },
     );
   }
 }
