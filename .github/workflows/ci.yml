@@ -42,8 +42,8 @@ jobs:
       - run: flutter pub get
       - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart test/operator_surface_design_contract_test.dart test/component_state_registry_test.dart test/responsive_layout_test.dart test/approved_visual_parity_contract_test.dart
 
-  golden-fixture-render:
-    name: Golden Fixture Render (review artifact)
+  golden-fixture-contract:
+    name: Golden Fixture Contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -54,8 +54,10 @@ jobs:
           cache: true
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
-      - name: Render deterministic review fixtures
+      - name: Render deterministic approved fixtures
         run: flutter test --update-goldens test/golden_fixture_render_test.dart
+      - name: Verify approved pixel digests
+        run: grep -v '^#' test/goldens/issue5-approved-sha256.txt | sha256sum --check -
       - name: Upload Issue #5 golden fixtures
         uses: actions/upload-artifact@v4
         with:
