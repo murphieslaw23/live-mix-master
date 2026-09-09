@@ -55,3 +55,21 @@ download_verified \
   'ofl/robotomono/RobotoMono%5Bwght%5D.ttf' \
   "$FONT_DIR/RobotoMono-Variable.ttf" \
   'f21d1d716bce3cc756bc618d32be71ce6f733f81'
+
+if [[ -z "${FLUTTER_ROOT:-}" ]]; then
+  printf 'FLUTTER_ROOT is required to bootstrap Material Icons\n' >&2
+  exit 1
+fi
+
+MATERIAL_ICONS_SOURCE="$FLUTTER_ROOT/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf"
+MATERIAL_ICONS_DEST="$FONT_DIR/MaterialIcons-Regular.otf"
+
+if [[ ! -f "$MATERIAL_ICONS_SOURCE" ]]; then
+  printf 'Material Icons font missing from pinned Flutter SDK: %s\n' "$MATERIAL_ICONS_SOURCE" >&2
+  exit 1
+fi
+
+cp "$MATERIAL_ICONS_SOURCE" "$MATERIAL_ICONS_DEST"
+printf 'font installed: %s (%s)\n' \
+  "$(basename "$MATERIAL_ICONS_DEST")" \
+  "$(git hash-object "$MATERIAL_ICONS_DEST")"
