@@ -36,6 +36,27 @@ jobs:
       - run: flutter pub get
       - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart test/operator_surface_design_contract_test.dart test/component_state_registry_test.dart test/responsive_layout_test.dart
 
+  golden-fixture-render:
+    name: Golden Fixture Render (review artifact)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Render deterministic review fixtures
+        run: flutter test --update-goldens test/golden_fixture_render_test.dart
+      - name: Upload Issue #5 golden fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue5-golden-fixtures
+          path: test/goldens/*.png
+          if-no-files-found: error
+          retention-days: 14
+
   reliability-models-test:
     name: Reliability Models Test
     runs-on: macos-latest
