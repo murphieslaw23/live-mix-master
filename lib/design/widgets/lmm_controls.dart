@@ -144,18 +144,16 @@ class LmmStatusBadge extends StatelessWidget {
             borderRadius: const BorderRadius.all(Radius.circular(4)),
             border: Border.all(color: _toneColor),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Icon(icon, size: 18, color: _toneColor),
-              const SizedBox(width: 8),
               Text(label, style: LiveMixTextStyles.uiLabel),
-              const SizedBox(width: 8),
               Text(status, style: LiveMixTextStyles.uiLabel.copyWith(color: _toneColor)),
-              if (detail case final detail?) ...[
-                const SizedBox(width: 8),
+              if (detail case final detail?)
                 Text(detail, style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary)),
-              ],
             ],
           ),
         ),
