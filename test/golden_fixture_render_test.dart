@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,16 +66,21 @@ void main() {
 Future<void> _loadApprovedFonts() async {
   if (_approvedFontsLoaded) return;
 
-  final fonts = <(String, String)>[
+  final bundledFonts = <(String, String)>[
     ('Roboto Condensed', 'assets/fonts/RobotoCondensed-Variable.ttf'),
     ('Inter', 'assets/fonts/Inter-Variable.ttf'),
     ('Roboto Mono', 'assets/fonts/RobotoMono-Variable.ttf'),
   ];
 
-  for (final (family, asset) in fonts) {
+  for (final (family, asset) in bundledFonts) {
     final loader = FontLoader(family)..addFont(rootBundle.load(asset));
     await loader.load();
   }
+
+  final materialIconsBytes = await File('assets/fonts/MaterialIcons-Regular.otf').readAsBytes();
+  final materialIconsLoader = FontLoader('MaterialIcons')
+    ..addFont(Future.value(materialIconsBytes.buffer.asByteData()));
+  await materialIconsLoader.load();
 
   _approvedFontsLoaded = true;
 }
