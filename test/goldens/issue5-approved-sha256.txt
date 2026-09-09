@@ -1,0 +1,7 @@
+# Approved Issue #5 deterministic visual baselines.
+# Renderer: Flutter 3.47.2 on ubuntu-latest with repository-pinned brand fonts
+# and MaterialIcons loaded from the pinned Flutter SDK.
+a8582a923e9f387320207a16a229dcc501d9950bbdaa7c66d82c8815bc329c10  test/goldens/issue5-compact-recording-760x640.png
+9e2f1a93835ed047ff0c5c5fc1fa5f4781fd4874f2e25e5e492c78c53fa3a13b  test/goldens/issue5-desktop-mixer-1440x1000.png
+2b68f5de2d3784c7b703c48d9c258b5669f8808e56cafac20ce2deb0c4640325  test/goldens/issue5-phone-monitor-390x844.png
+847ac7e8a92f518ce2024efe0e9687b95e26e247838c1d2b0c3f53502dc20cb2  test/goldens/issue5-tablet-mixer-1024x768.png
