@@ -23,6 +23,19 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
+  design-contract-test:
+    name: Design Contract Test
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/design_contract_test.dart
+
   reliability-models-test:
     name: Reliability Models Test
     runs-on: macos-latest
