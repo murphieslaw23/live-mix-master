@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/design/live_mix_tokens.dart';
 import 'package:live_mix_master/features/mixer/mixer_desk_view.dart';
 import 'package:live_mix_master/features/monitor/compact_monitor_view.dart';
 
 const _captureKey = ValueKey<String>('issue-5-golden-capture');
+bool _approvedFontsLoaded = false;
 
 void main() {
   group('Issue #5 review golden fixtures', () {
@@ -59,7 +61,26 @@ void main() {
   });
 }
 
+Future<void> _loadApprovedFonts() async {
+  if (_approvedFontsLoaded) return;
+
+  final fonts = <(String, String)>[
+    ('Roboto Condensed', 'assets/fonts/RobotoCondensed-Variable.ttf'),
+    ('Inter', 'assets/fonts/Inter-Variable.ttf'),
+    ('Roboto Mono', 'assets/fonts/RobotoMono-Variable.ttf'),
+  ];
+
+  for (final (family, asset) in fonts) {
+    final loader = FontLoader(family)..addFont(rootBundle.load(asset));
+    await loader.load();
+  }
+
+  _approvedFontsLoaded = true;
+}
+
 Future<void> _pumpCapture(WidgetTester tester, Size size, Widget child) async {
+  await _loadApprovedFonts();
+
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(() {
