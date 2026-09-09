@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../design/live_mix_tokens.dart';
 import '../../design/widgets/lmm_controls.dart';
+import '../../design/widgets/lmm_state_widgets.dart';
 import '../../services/fingerprint_service.dart';
 import '../../services/lossless_recording_writer.dart';
 import '../patchbay/patchbay_routing_modal.dart';
@@ -23,27 +24,40 @@ class MixerDeskView extends StatefulWidget {
 class _MixerDeskViewState extends State<MixerDeskView> {
   final List<ChannelData> _channels = [
     ChannelData(
-      id: 'ch_1',
+      id: 'ch_usb',
+      name: 'USB 1-2',
+      source: 'CoreAudio In 1-2',
+      fader: 0.72,
+      trimDb: -2.0,
+      accentColor: LiveMixTokens.accentCopper,
+      state: LmmChannelStripState.active,
+    ),
+    ChannelData(
+      id: 'ch_rekordbox',
       name: 'REKORDBOX',
       source: 'Virtual Loopback (Ch 1-2)',
       fader: 0.85,
       accentColor: LiveMixTokens.accentOchre,
+      state: LmmChannelStripState.active,
     ),
     ChannelData(
-      id: 'ch_2',
-      name: 'USB LINE 1-2',
-      source: 'CoreAudio In 1-2',
-      fader: 0.70,
-      trimDb: -2.0,
-      accentColor: LiveMixTokens.accentCopper,
-    ),
-    ChannelData(
-      id: 'ch_3',
-      name: 'HARDWARE SYNTH',
-      source: 'USB In 3-4',
-      fader: 0.65,
-      trimDb: 1.5,
+      id: 'ch_mic',
+      name: 'MIC 1',
+      source: 'USB Mic In 1',
+      fader: 0.58,
+      trimDb: -4.0,
       accentColor: LiveMixTokens.statusWarn,
+      isMuted: true,
+      state: LmmChannelStripState.muted,
+    ),
+    ChannelData(
+      id: 'ch_aux',
+      name: 'AUX',
+      source: 'Line In 3-4',
+      fader: 0.35,
+      trimDb: 0.0,
+      accentColor: LiveMixTokens.textSecondary,
+      state: LmmChannelStripState.disconnected,
     ),
   ];
 
@@ -131,6 +145,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               fader: 0.80,
               trimDb: result.initialTrimDb,
               accentColor: result.channelColor,
+              state: LmmChannelStripState.active,
             ),
           );
         });
@@ -142,8 +157,14 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     setState(() => _channels.removeWhere((channel) => channel.id == channelId));
   }
 
+  void _openSessionDrawer() {
+    Scaffold.of(context).openEndDrawer();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final showDesktopSessionPanel = MediaQuery.sizeOf(context).width >= 1200;
+
     return Scaffold(
       backgroundColor: LiveMixTokens.surfaceBase,
       endDrawer: _buildPlaylistDrawer(),
@@ -152,6 +173,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
           children: [
             _buildTopActionBar(),
             _buildLiveFingerprintBanner(),
+            if (showDesktopSessionPanel) _buildDesktopFingerprintPanel(),
             Expanded(
               child: Row(
                 children: [
@@ -321,6 +343,70 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     );
   }
 
+  Widget _buildDesktopFingerprintPanel() {
+    final artist = (_currentTrack?.artist ?? 'SYSTEM CORRUPT').toUpperCase();
+    final title = (_currentTrack?.title ?? 'TEKNO TOTEM').toUpperCase();
+    final confidence = ((_currentTrack?.confidence ?? .94) * 100).round();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: LiveMixTokens.accentCopper.withValues(alpha: .55)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.fingerprint, color: LiveMixTokens.accentCopper, size: 26),
+          const SizedBox(width: 12),
+          Expanded(child: _sessionField('ARTIST', artist)),
+          const SizedBox(width: 12),
+          Expanded(flex: 2, child: _sessionField('TITLE', title)),
+          const SizedBox(width: 12),
+          SizedBox(width: 92, child: _sessionField('MATCH', '$confidence%')),
+          const SizedBox(width: 16),
+          OutlinedButton.icon(
+            onPressed: () {},
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, LiveMixTokens.minimumTarget),
+            ),
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('CORRECT'),
+          ),
+          const SizedBox(width: 8),
+          Builder(
+            builder: (context) => OutlinedButton.icon(
+              onPressed: () => Scaffold.of(context).openEndDrawer(),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, LiveMixTokens.minimumTarget),
+              ),
+              icon: const Icon(Icons.playlist_play_outlined, size: 16),
+              label: const Text('VIEW SESSION'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sessionField(String label, String value) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: LiveMixTextStyles.uiLabel),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textPrimary),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPlaylistDrawer() {
     return Drawer(
       backgroundColor: LiveMixTokens.surfaceRack,
@@ -442,7 +528,9 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               fontSize: 9,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
+          LmmChannelStripStateBadge(label: 'SOURCE', state: channel.state),
+          const SizedBox(height: 6),
           Semantics(
             label: '${channel.name} trim',
             value: '${channel.trimDb.toStringAsFixed(1)} dB',
@@ -464,7 +552,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -479,14 +567,17 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             children: [
               Expanded(
                 child: LmmToggleControl(
                   label: 'MUTE',
                   value: channel.isMuted,
-                  onChanged: (value) => setState(() => channel.isMuted = value),
+                  onChanged: (value) => setState(() {
+                    channel.isMuted = value;
+                    channel.state = value ? LmmChannelStripState.muted : LmmChannelStripState.active;
+                  }),
                 ),
               ),
               const SizedBox(width: 4),
@@ -494,7 +585,10 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 child: LmmToggleControl(
                   label: 'SOLO',
                   value: channel.isSolo,
-                  onChanged: (value) => setState(() => channel.isSolo = value),
+                  onChanged: (value) => setState(() {
+                    channel.isSolo = value;
+                    if (value) channel.state = LmmChannelStripState.solo;
+                  }),
                 ),
               ),
             ],
@@ -508,7 +602,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     final leftDbfs = -60 + (_masterFader * 54);
     final rightDbfs = leftDbfs - 1.5;
     return Container(
-      width: 280,
+      width: 300,
       margin: const EdgeInsets.fromLTRB(0, 12, 16, 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -529,6 +623,20 @@ class _MixerDeskViewState extends State<MixerDeskView> {
             rightDbfs: rightDbfs,
           ),
           const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _masterTelemetry('LOUDNESS', '-14.2 LUFS')),
+              const SizedBox(width: 6),
+              Expanded(child: _masterTelemetry('TRUE PEAK', '-6.0 dBTP')),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const LmmMasterBusStatus(
+            state: LmmMasterBusState.limiterOn,
+            loudnessLufs: -14.2,
+            truePeakDbtp: -6.0,
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: LmmFader(
               label: 'MASTER FADER',
@@ -536,13 +644,31 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               onChanged: (value) => setState(() => _masterFader = value),
             ),
           ),
-          const LmmStatusBadge(
-            label: 'LIMITER',
-            status: 'READY',
-            detail: '-14.2 LUFS',
-            tone: LmmStatusTone.healthy,
-            icon: Icons.shield_outlined,
+          LmmStatusBadge(
+            label: 'BROADCAST',
+            status: _isStreaming ? 'LIVE' : 'READY',
+            detail: _isStreaming ? '320 KBPS' : 'PREFLIGHT OK',
+            tone: _isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
+            icon: Icons.wifi_tethering,
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _masterTelemetry(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: const BoxDecoration(
+        color: LiveMixTokens.surfaceStrip,
+        borderRadius: BorderRadius.all(Radius.circular(4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: LiveMixTextStyles.uiLabel),
+          Text(value, style: LiveMixTextStyles.numericTelemetry.copyWith(fontSize: 10)),
         ],
       ),
     );
@@ -624,6 +750,7 @@ class ChannelData {
     required this.name,
     required this.source,
     required this.fader,
+    required this.state,
     this.trimDb = 0,
     this.accentColor = LiveMixTokens.accentOchre,
     this.isMuted = false,
@@ -638,4 +765,5 @@ class ChannelData {
   Color accentColor;
   bool isMuted;
   bool isSolo;
+  LmmChannelStripState state;
 }
