@@ -34,7 +34,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart
+      - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart test/operator_surface_design_contract_test.dart
 
   reliability-models-test:
     name: Reliability Models Test
