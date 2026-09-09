@@ -1,0 +1,1 @@
+Task 1 scope: deterministic native DSP and queue contracts only. Core Audio device enumeration/capture, permission handling, Dart FFI host integration, recording/fingerprint PCM fan-out, and physical/BlackHole E2E remain later tasks in Issue #3.
