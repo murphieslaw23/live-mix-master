@@ -140,7 +140,7 @@ class LmmStatusBadge extends StatelessWidget {
       child: ExcludeSemantics(
         child: Container(
           constraints: const BoxConstraints(minHeight: LiveMixTokens.minimumTarget),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
             color: LiveMixTokens.surfaceStrip,
             borderRadius: const BorderRadius.all(Radius.circular(4)),
@@ -344,6 +344,16 @@ class LmmFader extends StatelessWidget {
   final double value;
   final ValueChanged<double>? onChanged;
 
+  Widget _slider(double clampedValue) {
+    return SizedBox(
+      width: LiveMixTokens.minimumTarget,
+      child: RotatedBox(
+        quarterTurns: 3,
+        child: Slider(value: clampedValue, min: 0, max: 1, onChanged: onChanged),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final clampedValue = value.clamp(0.0, 1.0).toDouble();
@@ -356,20 +366,27 @@ class LmmFader extends StatelessWidget {
       child: ExcludeSemantics(
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: LiveMixTokens.minimumTarget),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, style: LiveMixTextStyles.uiLabel),
-              SizedBox(
-                width: LiveMixTokens.minimumTarget,
-                height: 180,
-                child: RotatedBox(
-                  quarterTurns: 3,
-                  child: Slider(value: clampedValue, min: 0, max: 1, onChanged: onChanged),
-                ),
-              ),
-              Text('$percent%', style: LiveMixTextStyles.numericTelemetry),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.hasBoundedHeight) {
+                return Column(
+                  children: [
+                    Text(label, style: LiveMixTextStyles.uiLabel),
+                    Expanded(child: _slider(clampedValue)),
+                    Text('$percent%', style: LiveMixTextStyles.numericTelemetry),
+                  ],
+                );
+              }
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label, style: LiveMixTextStyles.uiLabel),
+                  SizedBox(height: 180, child: _slider(clampedValue)),
+                  Text('$percent%', style: LiveMixTextStyles.numericTelemetry),
+                ],
+              );
+            },
           ),
         ),
       ),
