@@ -23,6 +23,7 @@ if(APPLE)
     enable_language(OBJCXX)
     target_sources(live_mixer_engine PRIVATE
         macos/coreaudio_device_catalog.mm
+        macos/coreaudio_capture.mm
     )
     find_library(CORE_AUDIO CoreAudio REQUIRED)
     find_library(CORE_FOUNDATION CoreFoundation REQUIRED)
@@ -44,6 +45,8 @@ endif()
 include(CTest)
 
 if(BUILD_TESTING)
+    target_compile_definitions(live_mixer_engine PRIVATE LMM_BUILD_TESTING=1)
+
     add_executable(engine_signal_tests
         tests/engine_signal_tests.cpp
     )
