@@ -1,0 +1,52 @@
+name: Issue 2 macOS runner bootstrap
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/macos-runner-bootstrap.yml'
+      - 'docs/adr/0001-macos-initial-desktop-target.md'
+      - 'docs/superpowers/plans/2026-09-09-issue-2-macos-desktop-runner.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-macos-runner:
+    name: Generate Flutter 3.47.2 macOS runner
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pinned Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          cache: true
+
+      - name: Show generator version
+        run: flutter --version
+
+      - name: Generate isolated macOS runner
+        run: |
+          rm -rf /tmp/live_mix_master_runner
+          flutter create \
+            --platforms=macos \
+            --org org.syco23 \
+            --project-name live_mix_master \
+            --no-pub \
+            /tmp/live_mix_master_runner
+          rm -rf generated
+          mkdir -p generated
+          cp -R /tmp/live_mix_master_runner/macos generated/macos
+          find generated/macos -maxdepth 3 -type f -print | sort
+
+      - name: Upload generated runner
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue2-generated-macos-runner
+          path: generated/macos/**
+          if-no-files-found: error
+          retention-days: 7
