@@ -65,13 +65,16 @@ class TracklistExporter {
   }
 
   /// Exports standard extended M3U with cue time annotations.
+  /// Sanitizes any newlines in artist/title into spaces to preserve #EXTINF structure.
   /// Does not invent synthetic media locations.
   String toM3u(Iterable<TracklistEntry> entries) {
     final buffer = StringBuffer();
     buffer.writeln('#EXTM3U');
     for (final entry in entries) {
       final seconds = entry.cueTime.inSeconds;
-      buffer.writeln('#EXTINF:$seconds,${entry.artist} - ${entry.title}');
+      final artist = entry.artist.replaceAll(RegExp(r'[\r\n]+'), ' ');
+      final title = entry.title.replaceAll(RegExp(r'[\r\n]+'), ' ');
+      buffer.writeln('#EXTINF:$seconds,$artist - $title');
       buffer.writeln('#CUE:${_formatDuration(entry.cueTime)}');
     }
     return buffer.toString();

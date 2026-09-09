@@ -75,7 +75,7 @@ void main() {
       expect(lines[0], '#EXTM3U');
       expect(lines[1], '#EXTINF:85,Underground Resistance - Transition');
       expect(lines[2], '#CUE:01:25');
-      expect(lines[3], '#EXTINF:460,Jeff Mills, "The Wizard" - The Bells (Live "Mix", 2026)\nRemaster');
+      expect(lines[3], '#EXTINF:460,Jeff Mills, "The Wizard" - The Bells (Live "Mix", 2026) Remaster');
       expect(lines[4], '#CUE:07:40');
 
       // Must not contain fabricated file:/// paths
