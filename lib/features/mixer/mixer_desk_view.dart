@@ -157,10 +157,6 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     setState(() => _channels.removeWhere((channel) => channel.id == channelId));
   }
 
-  void _openSessionDrawer() {
-    Scaffold.of(context).openEndDrawer();
-  }
-
   @override
   Widget build(BuildContext context) {
     final showDesktopSessionPanel = MediaQuery.sizeOf(context).width >= 1200;
@@ -178,15 +174,19 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               child: Row(
                 children: [
                   Expanded(
-                    child: ListView.separated(
+                    child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      itemCount: _channels.length + 1,
-                      separatorBuilder: (_, __) => const SizedBox(width: 12),
-                      itemBuilder: (context, index) {
-                        if (index == _channels.length) return _buildAddChannelButton();
-                        return _buildChannelStrip(_channels[index]);
-                      },
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (var index = 0; index < _channels.length; index++) ...[
+                            _buildChannelStrip(_channels[index]),
+                            const SizedBox(width: 12),
+                          ],
+                          _buildAddChannelButton(),
+                        ],
+                      ),
                     ),
                   ),
                   _buildMasterSection(),
@@ -528,9 +528,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               fontSize: 9,
             ),
           ),
-          const SizedBox(height: 5),
-          LmmChannelStripStateBadge(label: 'SOURCE', state: channel.state),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Semantics(
             label: '${channel.name} trim',
             value: '${channel.trimDb.toStringAsFixed(1)} dB',
@@ -552,7 +550,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -567,7 +565,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               ],
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
