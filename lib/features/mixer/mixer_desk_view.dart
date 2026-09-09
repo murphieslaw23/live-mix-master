@@ -599,6 +599,8 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   Widget _buildMasterSection() {
     final leftDbfs = -60 + (_masterFader * 54);
     final rightDbfs = leftDbfs - 1.5;
+    final extended = MediaQuery.sizeOf(context).width >= 1200;
+
     return Container(
       width: 300,
       margin: const EdgeInsets.fromLTRB(0, 12, 16, 12),
@@ -620,20 +622,22 @@ class _MixerDeskViewState extends State<MixerDeskView> {
             leftDbfs: leftDbfs,
             rightDbfs: rightDbfs,
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _masterTelemetry('LOUDNESS', '-14.2 LUFS')),
-              const SizedBox(width: 6),
-              Expanded(child: _masterTelemetry('TRUE PEAK', '-6.0 dBTP')),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const LmmMasterBusStatus(
-            state: LmmMasterBusState.limiterOn,
-            loudnessLufs: -14.2,
-            truePeakDbtp: -6.0,
-          ),
+          if (extended) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: _masterTelemetry('LOUDNESS', '-14.2 LUFS')),
+                const SizedBox(width: 6),
+                Expanded(child: _masterTelemetry('TRUE PEAK', '-6.0 dBTP')),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const LmmMasterBusStatus(
+              state: LmmMasterBusState.limiterOn,
+              loudnessLufs: -14.2,
+              truePeakDbtp: -6.0,
+            ),
+          ],
           const SizedBox(height: 8),
           Expanded(
             child: LmmFader(
@@ -642,13 +646,22 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               onChanged: (value) => setState(() => _masterFader = value),
             ),
           ),
-          LmmStatusBadge(
-            label: 'BROADCAST',
-            status: _isStreaming ? 'LIVE' : 'READY',
-            detail: _isStreaming ? '320 KBPS' : 'PREFLIGHT OK',
-            tone: _isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
-            icon: Icons.wifi_tethering,
-          ),
+          if (extended)
+            LmmStatusBadge(
+              label: 'BROADCAST',
+              status: _isStreaming ? 'LIVE' : 'READY',
+              detail: _isStreaming ? '320 KBPS' : 'PREFLIGHT OK',
+              tone: _isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
+              icon: Icons.wifi_tethering,
+            )
+          else
+            const LmmStatusBadge(
+              label: 'LIMITER',
+              status: 'READY',
+              detail: '-14.2 LUFS',
+              tone: LmmStatusTone.healthy,
+              icon: Icons.shield_outlined,
+            ),
         ],
       ),
     );
