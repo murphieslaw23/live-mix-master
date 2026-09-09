@@ -111,12 +111,10 @@ class BroadcastMetadataAdapter {
   })  : _client = httpClient ?? http.Client(),
         _shouldCloseClient = httpClient == null,
         _sleeper = sleeper,
-        _statusController = StreamController<ServiceStatus>.broadcast(),
-        _resultController = StreamController<BroadcastAdapterResult>.broadcast(),
+        _statusController = StreamController<ServiceStatus>.broadcast(sync: true),
+        _resultController = StreamController<BroadcastAdapterResult>.broadcast(sync: true),
         _fingerprintSub = fingerprintStream.listen(null) {
-    _fingerprintSub?.onData((track) {
-      _onTrackDetected(track);
-    });
+    _fingerprintSub?.onData(_onTrackDetected);
   }
 
   bool get isConnected => _isConnected;
@@ -139,8 +137,8 @@ class BroadcastMetadataAdapter {
     }
   }
 
-  Future<void> _onTrackDetected(IdentifiedTrack track) async {
-    await sendMetadata(track);
+  void _onTrackDetected(IdentifiedTrack track) {
+    sendMetadata(track);
   }
 
   Future<BroadcastAdapterResult> sendMetadata(IdentifiedTrack track) async {
