@@ -5,9 +5,19 @@ import '../live_mix_tokens.dart';
 
 enum LmmStatusTone { healthy, neutral, warning, critical }
 
-enum LmmDeviceState { connected, disconnected, lost }
+enum LmmDeviceState {
+  connected,
+  active,
+  muted,
+  noSignal,
+  lost,
+  permissionDenied,
+  notDetected,
+  recovered,
+  disconnected,
+}
 
-enum LmmPreflightState { ready, pending, warning, error }
+enum LmmPreflightState { ok, warning, error, disabled, ready, pending }
 
 class LmmToggleControl extends StatefulWidget {
   const LmmToggleControl({
@@ -153,7 +163,10 @@ class LmmStatusBadge extends StatelessWidget {
               Text(label, style: LiveMixTextStyles.uiLabel),
               Text(status, style: LiveMixTextStyles.uiLabel.copyWith(color: _toneColor)),
               if (detail case final detail?)
-                Text(detail, style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary)),
+                Text(
+                  detail,
+                  style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary),
+                ),
             ],
           ),
         ),
@@ -208,7 +221,7 @@ class LmmStereoMeter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 220),
+      constraints: const BoxConstraints(minWidth: 160),
       padding: const EdgeInsets.all(12),
       decoration: const BoxDecoration(
         color: LiveMixTokens.surfaceRack,
@@ -224,7 +237,10 @@ class LmmStereoMeter extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               for (final tick in LiveMixTokens.meterScaleDbfs)
-                Text('${tick.toInt()}', style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textSecondary)),
+                Text(
+                  '${tick.toInt()}',
+                  style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textSecondary),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -245,8 +261,14 @@ class LmmDeviceStatus extends StatelessWidget {
 
   (String, IconData, Color) get _presentation => switch (state) {
         LmmDeviceState.connected => ('CONNECTED', Icons.link, LiveMixTokens.meterNominal),
-        LmmDeviceState.disconnected => ('DISCONNECTED', Icons.link_off, LiveMixTokens.statusWarn),
+        LmmDeviceState.active => ('ACTIVE', Icons.graphic_eq, LiveMixTokens.meterNominal),
+        LmmDeviceState.muted => ('MUTED', Icons.volume_off_outlined, LiveMixTokens.statusWarn),
+        LmmDeviceState.noSignal => ('NO SIGNAL', Icons.signal_cellular_connected_no_internet_0_bar, LiveMixTokens.statusWarn),
         LmmDeviceState.lost => ('DEVICE LOST', Icons.link_off, LiveMixTokens.meterClip),
+        LmmDeviceState.permissionDenied => ('PERMISSION DENIED', Icons.lock_outline, LiveMixTokens.meterClip),
+        LmmDeviceState.notDetected => ('NOT DETECTED', Icons.device_unknown, LiveMixTokens.meterClip),
+        LmmDeviceState.recovered => ('RECOVERED', Icons.settings_backup_restore, LiveMixTokens.meterNominal),
+        LmmDeviceState.disconnected => ('DISCONNECTED', Icons.link_off, LiveMixTokens.statusWarn),
       };
 
   @override
@@ -259,13 +281,13 @@ class LmmDeviceStatus extends StatelessWidget {
         child: Container(
           constraints: const BoxConstraints(minHeight: LiveMixTokens.minimumTarget),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Icon(icon, color: color),
-              const SizedBox(width: 8),
               Text(label, style: LiveMixTextStyles.uiLabel),
-              const SizedBox(width: 8),
               Text(status, style: LiveMixTextStyles.uiLabel.copyWith(color: color)),
             ],
           ),
@@ -288,10 +310,12 @@ class LmmPreflightCheck extends StatelessWidget {
   final String? detail;
 
   (String, IconData, Color) get _presentation => switch (state) {
-        LmmPreflightState.ready => ('READY', Icons.check_circle_outline, LiveMixTokens.meterNominal),
-        LmmPreflightState.pending => ('PENDING', Icons.pending_outlined, LiveMixTokens.textSecondary),
+        LmmPreflightState.ok => ('OK', Icons.check_circle_outline, LiveMixTokens.meterNominal),
         LmmPreflightState.warning => ('WARNING', Icons.warning_amber_outlined, LiveMixTokens.statusWarn),
         LmmPreflightState.error => ('ERROR', Icons.error_outline, LiveMixTokens.meterClip),
+        LmmPreflightState.disabled => ('DISABLED', Icons.block_outlined, LiveMixTokens.textSecondary),
+        LmmPreflightState.ready => ('READY', Icons.check_circle_outline, LiveMixTokens.meterNominal),
+        LmmPreflightState.pending => ('PENDING', Icons.pending_outlined, LiveMixTokens.textSecondary),
       };
 
   @override
@@ -305,18 +329,19 @@ class LmmPreflightCheck extends StatelessWidget {
         child: Container(
           constraints: const BoxConstraints(minHeight: LiveMixTokens.minimumTarget),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Icon(icon, color: color),
-              const SizedBox(width: 8),
               Text(label, style: LiveMixTextStyles.uiLabel),
-              const SizedBox(width: 8),
               Text(status, style: LiveMixTextStyles.uiLabel.copyWith(color: color)),
-              if (detail case final detail?) ...[
-                const SizedBox(width: 8),
-                Text(detail, style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary)),
-              ],
+              if (detail case final detail?)
+                Text(
+                  detail,
+                  style: LiveMixTextStyles.body.copyWith(color: LiveMixTokens.textSecondary),
+                ),
             ],
           ),
         ),
