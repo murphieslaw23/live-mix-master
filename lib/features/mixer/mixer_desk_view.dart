@@ -569,10 +569,13 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   : index > 15
                       ? LiveMixTokens.meterHeadroom
                       : LiveMixTokens.meterNominal;
-              return Container(
-                height: 6,
-                margin: const EdgeInsets.symmetric(vertical: 1.5, horizontal: 2),
-                color: isLit ? color : LiveMixTokens.meterInactive,
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: .75, horizontal: 2),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: isLit ? color : LiveMixTokens.meterInactive),
+                  ),
+                ),
               );
             }),
           ),
