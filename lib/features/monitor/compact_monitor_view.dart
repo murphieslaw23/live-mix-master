@@ -276,12 +276,12 @@ class CompactMonitorView extends StatelessWidget {
         );
 
         if (constraints.maxWidth < 420) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: recording),
-              const SizedBox(width: 8),
-              Expanded(child: broadcast),
+              recording,
+              const SizedBox(height: 8),
+              broadcast,
             ],
           );
         }
