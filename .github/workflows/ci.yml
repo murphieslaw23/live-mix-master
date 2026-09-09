@@ -9,10 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   flutter-analyze:
     name: Flutter Analyze
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +30,7 @@ jobs:
 
   design-contract-test:
     name: Design Contract Test
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +44,7 @@ jobs:
 
   golden-fixture-render:
     name: Golden Fixture Render (review artifact)
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +66,7 @@ jobs:
 
   reliability-models-test:
     name: Reliability Models Test
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +80,7 @@ jobs:
 
   broadcast-pipeline-test:
     name: Broadcast Pipeline Test
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +94,7 @@ jobs:
 
   mixer-user-flow-test:
     name: Mixer User Flow Test
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
