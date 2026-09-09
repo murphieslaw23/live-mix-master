@@ -17,3 +17,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  licenses:
+    - assets/fonts/LICENSES.md
+  fonts:
+    - family: Roboto Condensed
+      fonts:
+        - asset: assets/fonts/RobotoCondensed-Variable.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
+    - family: Roboto Mono
+      fonts:
+        - asset: assets/fonts/RobotoMono-Variable.ttf
