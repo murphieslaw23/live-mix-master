@@ -1,0 +1,111 @@
+name: macOS Desktop CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'macos/**'
+      - 'lib/**'
+      - 'native/**'
+      - 'test/**'
+      - 'tool/bootstrap_fonts.sh'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/macos-ci.yml'
+  pull_request:
+    paths:
+      - 'macos/**'
+      - 'lib/**'
+      - 'native/**'
+      - 'test/**'
+      - 'tool/bootstrap_fonts.sh'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/macos-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-desktop-baseline:
+    name: Build, package, and launch macOS
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pinned Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          cache: true
+
+      - name: Record toolchain evidence
+        run: |
+          sw_vers
+          xcodebuild -version
+          flutter --version
+          cmake --version
+
+      - name: Bootstrap approved fonts
+        run: bash tool/bootstrap_fonts.sh
+
+      - name: Resolve packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+
+      - name: Run full Flutter test suite
+        run: flutter test --reporter expanded
+
+      - name: Build native debug engine
+        run: |
+          cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/native --config Debug --parallel
+          test -f build/native/liblive_mixer_engine.dylib
+
+      - name: Build Flutter debug app
+        run: flutter build macos --debug
+
+      - name: Package native engine into app bundle
+        run: |
+          APP="build/macos/Build/Products/Debug/live_mix_master.app"
+          test -d "$APP"
+          mkdir -p "$APP/Contents/Frameworks"
+          cp build/native/liblive_mixer_engine.dylib "$APP/Contents/Frameworks/liblive_mixer_engine.dylib"
+          test -f "$APP/Contents/Frameworks/liblive_mixer_engine.dylib"
+
+      - name: Launch smoke
+        run: |
+          APP="build/macos/Build/Products/Debug/live_mix_master.app"
+          EXEC="$APP/Contents/MacOS/live_mix_master"
+          test -x "$EXEC"
+          : > /tmp/live-mix-master-launch.log
+          "$EXEC" > /tmp/live-mix-master-launch.log 2>&1 &
+          PID=$!
+          sleep 5
+          if ! kill -0 "$PID" 2>/dev/null; then
+            echo "LiveMixMaster exited before the launch-smoke probe."
+            cat /tmp/live-mix-master-launch.log
+            exit 1
+          fi
+          kill "$PID"
+          wait "$PID" || true
+
+      - name: Upload launch evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue2-macos-launch-evidence
+          path: |
+            /tmp/live-mix-master-launch.log
+            build/macos/Build/Products/Debug/live_mix_master.app/Contents/Frameworks/liblive_mixer_engine.dylib
+          if-no-files-found: warn
+          retention-days: 14
