@@ -187,10 +187,12 @@ class _MixerDeskViewState extends State<MixerDeskView> {
           bottom: BorderSide(color: LiveMixTokens.surfaceStrip, width: 2),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final identity = Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Container(
                 width: 36,
@@ -200,19 +202,19 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   color: LiveMixTokens.accentOchre,
                   borderRadius: BorderRadius.all(Radius.circular(4)),
                 ),
-                child: Text('LMM', style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textPrimary)),
+                child: Text(
+                  'LMM',
+                  style: LiveMixTextStyles.uiLabel.copyWith(color: LiveMixTokens.textPrimary),
+                ),
               ),
-              const SizedBox(width: 12),
               const Text('LIVEMIXMASTER', style: LiveMixTextStyles.sectionDisplay),
-              const SizedBox(width: 16),
               const LmmStatusBadge(
                 label: 'ENGINE',
                 status: '48 KHZ / 24-BIT',
                 tone: LmmStatusTone.healthy,
                 icon: Icons.graphic_eq,
               ),
-              if (_isRecording) ...[
-                const SizedBox(width: 12),
+              if (_isRecording)
                 LmmStatusBadge(
                   label: 'RECORDING',
                   status: _recordingTimeFormatted,
@@ -220,10 +222,13 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   tone: LmmStatusTone.critical,
                   icon: Icons.fiber_manual_record,
                 ),
-              ],
             ],
-          ),
-          Row(
+          );
+
+          final actions = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Builder(
                 builder: (context) => IconButton(
@@ -237,7 +242,6 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   onPressed: () => Scaffold.of(context).openEndDrawer(),
                 ),
               ),
-              const SizedBox(width: 8),
               LmmToggleControl(
                 label: 'RECORD',
                 value: _isRecording,
@@ -245,15 +249,34 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                   _handleToggleRecording();
                 },
               ),
-              const SizedBox(width: 8),
               LmmToggleControl(
                 label: 'BROADCAST',
                 value: _isStreaming,
                 onChanged: (value) => setState(() => _isStreaming = value),
               ),
             ],
-          ),
-        ],
+          );
+
+          if (constraints.maxWidth < 1120) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                identity,
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: actions),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: identity),
+              const SizedBox(width: 16),
+              actions,
+            ],
+          );
+        },
       ),
     );
   }
