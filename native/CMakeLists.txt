@@ -107,4 +107,17 @@ if(BUILD_TESTING)
         NAME capture_conversion_tests
         COMMAND capture_conversion_tests $<TARGET_FILE:live_mixer_engine>
     )
+
+    add_executable(pcm_handoff_tests
+        tests/pcm_handoff_tests.cpp
+    )
+    target_include_directories(pcm_handoff_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    add_dependencies(pcm_handoff_tests live_mixer_engine)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(pcm_handoff_tests PRIVATE dl)
+    endif()
+    add_test(
+        NAME pcm_handoff_tests
+        COMMAND pcm_handoff_tests $<TARGET_FILE:live_mixer_engine>
+    )
 endif()
