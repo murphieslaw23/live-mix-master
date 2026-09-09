@@ -17,24 +17,27 @@ class SessionTracklistStore {
   Future<List<TracklistEntry>> load() async {
     _emit(const ServiceStatus.running());
     try {
-      if (!await file.exists()) {
+      final primary = await _tryDecode(file);
+      if (primary != null) {
+        _emit(const ServiceStatus.succeeded());
+        return primary;
+      }
+      final backup = File('${file.path}.bak');
+      final recovered = await _tryDecode(backup);
+      if (recovered != null) {
+        _emit(const ServiceStatus.succeeded());
+        return recovered;
+      }
+      if (!await file.exists() && !await backup.exists()) {
         _emit(const ServiceStatus.succeeded());
         return const [];
       }
-      final entries = _codec.decode(await file.readAsString());
-      _emit(const ServiceStatus.succeeded());
-      return entries;
+      throw const FormatException('Saved tracklist is invalid');
     } on FormatException {
-      _emit(const ServiceStatus.failed(
-        failureCode: ServiceFailureCode.malformedResponse,
-        message: 'Saved tracklist is invalid',
-      ));
+      _emit(const ServiceStatus.failed(failureCode: ServiceFailureCode.malformedResponse, message: 'Saved tracklist is invalid'));
       rethrow;
     } on FileSystemException {
-      _emit(const ServiceStatus.failed(
-        failureCode: ServiceFailureCode.writeFailed,
-        message: 'Saved tracklist could not be read',
-      ));
+      _emit(const ServiceStatus.failed(failureCode: ServiceFailureCode.writeFailed, message: 'Saved tracklist could not be read'));
       rethrow;
     }
   }
@@ -42,26 +45,32 @@ class SessionTracklistStore {
   Future<void> save(Iterable<TracklistEntry> entries) async {
     _emit(const ServiceStatus.running());
     final temporary = File('${file.path}.tmp');
+    final backup = File('${file.path}.bak');
     try {
       await file.parent.create(recursive: true);
       await temporary.writeAsString(_codec.encode(entries), flush: true);
-      if (await file.exists()) await file.delete();
+      if (await backup.exists()) await backup.delete();
+      if (await file.exists()) await file.rename(backup.path);
       await temporary.rename(file.path);
+      if (await backup.exists()) await backup.delete();
       _emit(const ServiceStatus.succeeded());
     } on FileSystemException {
-      _emit(const ServiceStatus.failed(
-        failureCode: ServiceFailureCode.writeFailed,
-        message: 'Tracklist could not be saved',
-      ));
+      _emit(const ServiceStatus.failed(failureCode: ServiceFailureCode.writeFailed, message: 'Tracklist could not be saved'));
       rethrow;
     } finally {
       if (await temporary.exists()) await temporary.delete();
     }
   }
 
-  Future<void> dispose() => _statuses.close();
-
-  void _emit(ServiceStatus status) {
-    if (!_statuses.isClosed) _statuses.add(status);
+  Future<List<TracklistEntry>?> _tryDecode(File candidate) async {
+    if (!await candidate.exists()) return null;
+    try {
+      return _codec.decode(await candidate.readAsString());
+    } on FormatException {
+      return null;
+    }
   }
+
+  Future<void> dispose() => _statuses.close();
+  void _emit(ServiceStatus status) { if (!_statuses.isClosed) _statuses.add(status); }
 }
