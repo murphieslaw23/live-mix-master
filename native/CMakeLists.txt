@@ -20,9 +20,20 @@ set_target_properties(live_mixer_engine PROPERTIES
 
 # Platform-specific audio library links
 if(APPLE)
+    enable_language(OBJCXX)
+    target_sources(live_mixer_engine PRIVATE
+        macos/coreaudio_device_catalog.mm
+    )
     find_library(CORE_AUDIO CoreAudio REQUIRED)
+    find_library(CORE_FOUNDATION CoreFoundation REQUIRED)
     find_library(AUDIO_TOOLBOX AudioToolbox REQUIRED)
-    target_link_libraries(live_mixer_engine PRIVATE ${CORE_AUDIO} ${AUDIO_TOOLBOX})
+    target_link_libraries(
+        live_mixer_engine
+        PRIVATE
+            ${CORE_AUDIO}
+            ${CORE_FOUNDATION}
+            ${AUDIO_TOOLBOX}
+    )
 elseif(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_link_libraries(live_mixer_engine PRIVATE Threads::Threads asound)
