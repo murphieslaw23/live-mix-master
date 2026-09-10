@@ -24,16 +24,19 @@ if(APPLE)
     target_sources(live_mixer_engine PRIVATE
         macos/coreaudio_device_catalog.mm
         macos/coreaudio_capture.mm
+        macos/audio_input_permissions.mm
     )
     find_library(CORE_AUDIO CoreAudio REQUIRED)
     find_library(CORE_FOUNDATION CoreFoundation REQUIRED)
     find_library(AUDIO_TOOLBOX AudioToolbox REQUIRED)
+    find_library(AV_FOUNDATION AVFoundation REQUIRED)
     target_link_libraries(
         live_mixer_engine
         PRIVATE
             ${CORE_AUDIO}
             ${CORE_FOUNDATION}
             ${AUDIO_TOOLBOX}
+            ${AV_FOUNDATION}
     )
 elseif(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
