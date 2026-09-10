@@ -32,5 +32,6 @@ class NativePcmHandoffStatus {
 /// blocks later on the host event loop and must never be invoked by the callback.
 abstract interface class NativePcmHandoffBindings {
   NativePcmBlock? popRecordingBlock();
+  NativePcmBlock? popFingerprintBlock();
   NativePcmHandoffStatus get status;
 }
