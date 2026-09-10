@@ -12,12 +12,16 @@ class NativeAudioEngine implements AudioEngine {
   NativeAudioEngine({
     required this.bindings,
     required this.permissionState,
+    this.permissionStateProvider,
+    this.requestPermission,
     this.pollInterval = const Duration(milliseconds: 33),
     this.noSignalPollThreshold = 2,
   }) : assert(noSignalPollThreshold > 0);
 
   final NativeAudioBindings bindings;
   final AudioPermissionState permissionState;
+  final AudioPermissionState Function()? permissionStateProvider;
+  final bool Function()? requestPermission;
   final Duration? pollInterval;
   final int noSignalPollThreshold;
 
@@ -54,6 +58,9 @@ class NativeAudioEngine implements AudioEngine {
   NativeCaptureStatus? get captureStatus => _captureStatus;
   List<AudioInputEndpoint> get inputDevices => List.unmodifiable(_inputs);
 
+  AudioPermissionState get currentPermissionState =>
+      permissionStateProvider?.call() ?? permissionState;
+
   @override
   Stream<List<ChannelMeterSnapshot>> get channelMeters =>
       _channelMeters.stream;
@@ -79,21 +86,12 @@ class NativeAudioEngine implements AudioEngine {
       throw StateError('Native audio engine initialization failed.');
     }
 
-    switch (permissionState) {
-      case AudioPermissionState.granted:
-        _state = EngineState.idle;
-        _setRouteState(AudioRouteState.idle);
-      case AudioPermissionState.denied:
-      case AudioPermissionState.restricted:
-        _state = EngineState.degraded;
-        _setRouteState(AudioRouteState.permissionDenied);
-      case AudioPermissionState.unavailable:
-        _state = EngineState.failed;
-        _setRouteState(AudioRouteState.failed);
-      case AudioPermissionState.unknown:
-        _state = EngineState.idle;
-        _setRouteState(AudioRouteState.idle);
+    var permission = currentPermissionState;
+    if (permission == AudioPermissionState.unknown && requestPermission != null) {
+      requestPermission!();
+      permission = currentPermissionState;
     }
+    _applyPermissionState(permission);
 
     if (pollInterval case final interval?) {
       _pollTimer = Timer.periodic(interval, (_) {
@@ -107,6 +105,13 @@ class NativeAudioEngine implements AudioEngine {
   @override
   Future<List<AudioInputEndpoint>> refreshInputDevices() async {
     _ensureUsable();
+    final permission = currentPermissionState;
+    if (!permission.canCapture) {
+      _inputs = const <AudioInputEndpoint>[];
+      _applyPermissionState(permission);
+      return inputDevices;
+    }
+
     final records = bindings.listInputDevices();
     _inputs = List<AudioInputEndpoint>.unmodifiable(
       records.map(
@@ -120,12 +125,10 @@ class NativeAudioEngine implements AudioEngine {
       ),
     );
 
-    if (_inputs.isEmpty && permissionState.canCapture) {
+    if (_inputs.isEmpty) {
       _state = EngineState.degraded;
       _setRouteState(AudioRouteState.noDevice);
-    } else if (_inputs.isNotEmpty &&
-        permissionState.canCapture &&
-        _channels.isEmpty) {
+    } else if (_channels.isEmpty) {
       _state = EngineState.idle;
       _setRouteState(AudioRouteState.idle);
     }
@@ -135,7 +138,7 @@ class NativeAudioEngine implements AudioEngine {
   @override
   Future<void> addChannel(InputChannelConfig channel) async {
     _ensureUsable();
-    if (!permissionState.canCapture) {
+    if (!currentPermissionState.canCapture) {
       _state = EngineState.degraded;
       _setRouteState(AudioRouteState.permissionDenied);
       throw StateError('Audio input permission is not granted.');
@@ -254,6 +257,12 @@ class NativeAudioEngine implements AudioEngine {
   /// Polls native lifecycle and meter telemetry from the non-real-time host side.
   Future<void> pollNow() async {
     _ensureUsable();
+    final permission = currentPermissionState;
+    if (!permission.canCapture) {
+      _applyPermissionState(permission);
+      return;
+    }
+
     final status = bindings.captureStatus();
     final previousRoute = _routeState;
     final previousCallbacks = _lastCallbackCount;
@@ -316,6 +325,26 @@ class NativeAudioEngine implements AudioEngine {
     _emitMeterSnapshots();
     _lastCallbackCount = status.callbackCount;
     _lastXrunCount = status.xrunCount;
+  }
+
+  void _applyPermissionState(AudioPermissionState permission) {
+    switch (permission) {
+      case AudioPermissionState.granted:
+        if (_channels.isEmpty) {
+          _state = EngineState.idle;
+          _setRouteState(AudioRouteState.idle);
+        }
+      case AudioPermissionState.denied:
+      case AudioPermissionState.restricted:
+        _state = EngineState.degraded;
+        _setRouteState(AudioRouteState.permissionDenied);
+      case AudioPermissionState.unavailable:
+        _state = EngineState.failed;
+        _setRouteState(AudioRouteState.failed);
+      case AudioPermissionState.unknown:
+        _state = EngineState.idle;
+        _setRouteState(AudioRouteState.idle);
+    }
   }
 
   void _emitMeterSnapshots() {
