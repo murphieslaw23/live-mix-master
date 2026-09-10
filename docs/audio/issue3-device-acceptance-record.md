@@ -4,16 +4,15 @@ Status: **PENDING REAL DEVICE RUN**
 
 This file is a non-secret evidence template. Do not mark it PASS until `docs/audio/macos-device-e2e.md` has been executed on a real macOS host with a physical input or BlackHole-compatible endpoint.
 
-## Hosted preflight identity
+## Hosted preflight evidence
 
-- verified PR head SHA: `a6611e5f19fa63878a7f8ac8e8c260866594b960`
-- Standard CI: #214 (`34490780750`) — GREEN
-- macOS Desktop CI: #97 (`34490780889`) — GREEN
+The app-side same-process acceptance telemetry implementation was verified on implementation head `a6611e5f19fa63878a7f8ac8e8c260866594b960` with Standard CI #214 (`34490780750`) and macOS Desktop CI #97 (`34490780889`) GREEN. The final documentation-only successor head is verified separately in PR #15 and Issue #3; do not copy hosted values into the real-device fields below.
+
 - same-process acceptance telemetry contract: GREEN
-- macOS hosted suite: 111 tests passed; 2 built-library-dependent tests skipped in the pre-build suite and exercised later by the dedicated FFI smoke
+- macOS hosted suite on implementation head: 111 tests passed; 2 built-library-dependent tests skipped in the pre-build suite and exercised later by the dedicated FFI smoke
 - native CTest: 9/9 passed
 - dedicated built-dylib Dart FFI smoke: 3/3 passed
-- hosted evidence artifact: `issue3-macos-launch-evidence`, ID `10157730428`, SHA-256 `07f0467d75078cf384deae9936fe43c7c32b2a63fa96c12ca0b60c5161318f6b`
+- implementation-head hosted evidence artifact: `issue3-macos-launch-evidence`, ID `10157730428`, SHA-256 `07f0467d75078cf384deae9936fe43c7c32b2a63fa96c12ca0b60c5161318f6b`
 
 Hosted preflight evidence does not satisfy the device E2E fields below.
 
