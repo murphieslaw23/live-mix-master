@@ -36,13 +36,18 @@ test('recording starts only after the Worker is ready and then enables post-mast
 
   assert.match(
     gateway,
-    /Future<void> startRecording\(\)[\s\S]*type': 'start'[\s\S]*await[\s\S]*_recorderStartCompleter[\s\S]*type': 'recording'[\s\S]*enabled': true/,
+    /Future<void> startRecording\(\)[\s\S]*type': 'start'[\s\S]*await[\s\S]*_recorderStartCompleter[\s\S]*_setWorkletRecording\(workletNode, enabled: true\)/,
     'operator start must await recordingStarted before enabling worklet PCM',
   );
   assert.match(
     gateway,
     /case 'recordingStarted':[\s\S]*_recorderStartCompleter/,
     'Worker readiness must resolve the start handshake',
+  );
+  assert.match(
+    gateway,
+    /void _setWorkletRecording\([\s\S]*type': 'recording'[\s\S]*enabled': enabled/,
+    'recording helper must send the worklet protocol message',
   );
 });
 
@@ -51,7 +56,7 @@ test('stop, failure, and export are explicit fail-closed operator transitions', 
 
   assert.match(
     gateway,
-    /Future<BrowserRecordingArtifact> stopRecording\(\)[\s\S]*enabled': false[\s\S]*type': 'stop'[\s\S]*return await/,
+    /Future<BrowserRecordingArtifact> stopRecording\(\)[\s\S]*_setWorkletRecording\(workletNode, enabled: false\)[\s\S]*type': 'stop'[\s\S]*return await/,
     'stop must disable PCM before asking the Worker to finalize',
   );
   assert.match(
