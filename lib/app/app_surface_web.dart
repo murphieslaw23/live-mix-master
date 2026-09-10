@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../audio/web/browser_capture_controller.dart';
 import '../audio/web/browser_capture_runtime.dart';
+import '../audio/web/browser_recording_controller.dart';
 import '../design/live_mix_tokens.dart';
 
 class WebReleaseShell extends StatefulWidget {
   const WebReleaseShell({
     super.key,
     this.controller,
+    this.recordingController,
   });
 
   final BrowserCaptureController? controller;
+  final BrowserRecordingController? recordingController;
 
   @override
   State<WebReleaseShell> createState() => _WebReleaseShellState();
@@ -18,22 +21,39 @@ class WebReleaseShell extends StatefulWidget {
 
 class _WebReleaseShellState extends State<WebReleaseShell> {
   late final BrowserCaptureController _controller;
+  late final BrowserRecordingController _recordingController;
 
   @override
   void initState() {
     super.initState();
-    _controller = widget.controller ?? createBrowserCaptureController();
+    if (widget.controller == null && widget.recordingController == null) {
+      final runtime = createBrowserWebRuntime();
+      _controller = runtime.captureController;
+      _recordingController = runtime.recordingController;
+    } else {
+      _controller = widget.controller ?? createBrowserCaptureController();
+      _recordingController =
+          widget.recordingController ?? createBrowserRecordingController();
+    }
     _controller.addListener(_handleControllerState);
+    _recordingController.addListener(_handleRecordingState);
     _controller.probe();
   }
 
   @override
   void dispose() {
     _controller.removeListener(_handleControllerState);
+    _recordingController.removeListener(_handleRecordingState);
     super.dispose();
   }
 
   void _handleControllerState(BrowserCaptureState _) {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _handleRecordingState(BrowserRecordingState _) {
     if (mounted) {
       setState(() {});
     }
@@ -46,9 +66,11 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
   @override
   Widget build(BuildContext context) {
     final state = _controller.state;
+    final recordingState = _recordingController.state;
     final capabilities = state.capabilities;
     final microphoneAvailable = capabilities?.microphoneCaptureAvailable ?? false;
     final displayAvailable = capabilities?.displayCaptureAvailable ?? false;
+    final captureActive = state.status == BrowserCaptureStatus.active;
 
     return Scaffold(
       backgroundColor: LiveMixTokens.surfaceBase,
@@ -93,6 +115,11 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                               label: _statusLabel(state.status),
                               color: _statusColor(state.status),
                             ),
+                            _statusBadge(
+                              icon: _recordingStatusIcon(recordingState.status),
+                              label: _recordingStatusLabel(recordingState.status),
+                              color: _recordingStatusColor(recordingState.status),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -120,6 +147,14 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                         : null,
                   ),
                   const SizedBox(height: 16),
+                  _RecordingControlPanel(
+                    state: recordingState,
+                    captureActive: captureActive,
+                    onStart: () => _run(_recordingController.startRecording),
+                    onStop: () => _run(_recordingController.stopRecording),
+                    onDownload: () => _run(_recordingController.exportRecording),
+                  ),
+                  const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
@@ -128,7 +163,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'W2 CAPTURE PATH — BROWSER MEDIA PERMISSIONS AND SOURCE LIFECYCLE ACTIVE. AUDIOWORKLET DSP FOLLOWS IN W3.',
+                      'W3 CAPTURE + AUDIOWORKLET DSP + OPERATOR-CONTROLLED WAV RECORDING ACTIVE.',
                       style: LiveMixTextStyles.uiLabel.copyWith(
                         color: LiveMixTokens.textSecondary,
                       ),
@@ -201,6 +236,58 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
       case BrowserCaptureStatus.requesting:
       case BrowserCaptureStatus.idle:
       case BrowserCaptureStatus.permissionRequired:
+        return LiveMixTokens.accentCopper;
+    }
+  }
+
+  static String _recordingStatusLabel(BrowserRecordingStatus status) {
+    switch (status) {
+      case BrowserRecordingStatus.idle:
+        return 'RECORDING IDLE';
+      case BrowserRecordingStatus.starting:
+        return 'RECORDING STARTING';
+      case BrowserRecordingStatus.recording:
+        return 'RECORDING ACTIVE';
+      case BrowserRecordingStatus.stopping:
+        return 'FINALIZING WAV';
+      case BrowserRecordingStatus.readyToExport:
+        return 'WAV READY';
+      case BrowserRecordingStatus.exporting:
+        return 'EXPORTING WAV';
+      case BrowserRecordingStatus.error:
+        return 'RECORDING ERROR';
+    }
+  }
+
+  static IconData _recordingStatusIcon(BrowserRecordingStatus status) {
+    switch (status) {
+      case BrowserRecordingStatus.recording:
+        return Icons.fiber_manual_record;
+      case BrowserRecordingStatus.readyToExport:
+        return Icons.download_done;
+      case BrowserRecordingStatus.starting:
+      case BrowserRecordingStatus.stopping:
+      case BrowserRecordingStatus.exporting:
+        return Icons.sync;
+      case BrowserRecordingStatus.error:
+        return Icons.warning_amber_rounded;
+      case BrowserRecordingStatus.idle:
+        return Icons.radio_button_unchecked;
+    }
+  }
+
+  static Color _recordingStatusColor(BrowserRecordingStatus status) {
+    switch (status) {
+      case BrowserRecordingStatus.recording:
+        return LiveMixTokens.meterNominal;
+      case BrowserRecordingStatus.readyToExport:
+        return LiveMixTokens.accentOchre;
+      case BrowserRecordingStatus.error:
+        return LiveMixTokens.statusWarn;
+      case BrowserRecordingStatus.starting:
+      case BrowserRecordingStatus.stopping:
+      case BrowserRecordingStatus.exporting:
+      case BrowserRecordingStatus.idle:
         return LiveMixTokens.accentCopper;
     }
   }
@@ -336,6 +423,140 @@ class _CaptureControlPanel extends StatelessWidget {
       case BrowserCaptureStatus.idle:
       case BrowserCaptureStatus.permissionRequired:
       case BrowserCaptureStatus.requesting:
+        return LiveMixTokens.textSecondary;
+    }
+  }
+}
+
+class _RecordingControlPanel extends StatelessWidget {
+  const _RecordingControlPanel({
+    required this.state,
+    required this.captureActive,
+    required this.onStart,
+    required this.onStop,
+    required this.onDownload,
+  });
+
+  final BrowserRecordingState state;
+  final bool captureActive;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final canStart = captureActive &&
+        (state.status == BrowserRecordingStatus.idle ||
+            state.status == BrowserRecordingStatus.readyToExport ||
+            state.status == BrowserRecordingStatus.error);
+    final canStop = state.status == BrowserRecordingStatus.recording;
+    final canDownload = state.artifact != null &&
+        state.status != BrowserRecordingStatus.starting &&
+        state.status != BrowserRecordingStatus.recording &&
+        state.status != BrowserRecordingStatus.stopping &&
+        state.status != BrowserRecordingStatus.exporting;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            state.message,
+            key: const ValueKey('browser-recording-state'),
+            style: LiveMixTextStyles.uiLabel.copyWith(
+              color: _messageColor(state.status),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _recordingButton(
+                icon: Icons.fiber_manual_record,
+                label: 'START RECORDING',
+                enabled: canStart,
+                onPressed: onStart,
+              ),
+              _recordingButton(
+                icon: Icons.stop_circle_outlined,
+                label: 'STOP RECORDING',
+                enabled: canStop,
+                onPressed: onStop,
+              ),
+              _recordingButton(
+                icon: Icons.download,
+                label: 'DOWNLOAD WAV',
+                enabled: canDownload,
+                onPressed: onDownload,
+              ),
+            ],
+          ),
+          if (!captureActive) ...[
+            const SizedBox(height: 12),
+            Text(
+              'CONNECT A BROWSER AUDIO SOURCE BEFORE RECORDING.',
+              style: LiveMixTextStyles.numericTelemetry.copyWith(
+                fontSize: 12,
+                color: LiveMixTokens.textSecondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static Widget _recordingButton({
+    required IconData icon,
+    required String label,
+    required bool enabled,
+    required VoidCallback onPressed,
+  }) {
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: '$label: ${enabled ? 'AVAILABLE' : 'UNAVAILABLE'}',
+      child: OutlinedButton.icon(
+        onPressed: enabled ? onPressed : null,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(190, 52),
+          foregroundColor: LiveMixTokens.textPrimary,
+          side: BorderSide(
+            color: enabled
+                ? LiveMixTokens.accentCopper
+                : LiveMixTokens.textSecondary,
+            width: 2,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          textStyle: LiveMixTextStyles.uiLabel,
+        ),
+      ),
+    );
+  }
+
+  static Color _messageColor(BrowserRecordingStatus status) {
+    switch (status) {
+      case BrowserRecordingStatus.recording:
+        return LiveMixTokens.meterNominal;
+      case BrowserRecordingStatus.readyToExport:
+        return LiveMixTokens.accentOchre;
+      case BrowserRecordingStatus.error:
+        return LiveMixTokens.statusWarn;
+      case BrowserRecordingStatus.starting:
+      case BrowserRecordingStatus.stopping:
+      case BrowserRecordingStatus.exporting:
+      case BrowserRecordingStatus.idle:
         return LiveMixTokens.textSecondary;
     }
   }
