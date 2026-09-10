@@ -354,7 +354,7 @@ class _CapabilityPanel extends StatelessWidget {
             label: 'MIC / USB INPUT',
             state: _availability(
               capabilities?.microphoneCaptureAvailable,
-              available: 'PERMISSION GATED',
+              availableLabel: 'PERMISSION GATED',
             ),
             color: LiveMixTokens.accentCopper,
           ),
@@ -364,7 +364,7 @@ class _CapabilityPanel extends StatelessWidget {
             label: 'TAB / WINDOW AUDIO',
             state: _availability(
               capabilities?.displayCaptureAvailable,
-              available: 'USER SELECTED',
+              availableLabel: 'USER SELECTED',
             ),
             color: LiveMixTokens.accentOchre,
           ),
@@ -380,7 +380,10 @@ class _CapabilityPanel extends StatelessWidget {
     );
   }
 
-  static String _availability(bool? available, {required String availableLabel}) {
+  static String _availability(
+    bool? available, {
+    required String availableLabel,
+  }) {
     if (available == null) {
       return 'PROBING';
     }
