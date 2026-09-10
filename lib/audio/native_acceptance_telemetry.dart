@@ -35,6 +35,42 @@ class AcceptanceTelemetrySnapshot {
 
   bool get cleanHandoff =>
       recorderRejectedBlocks == 0 && fingerprintRejectedBlocks == 0;
+
+  /// Deterministic, non-secret evidence suitable for pasting into the
+  /// Issue #3 acceptance record.
+  ///
+  /// The snapshot type deliberately contains no endpoint UID, filesystem
+  /// path, credential, account, or hardware serial fields, so this formatter
+  /// cannot accidentally serialize them.
+  String toEvidenceMarkdown() {
+    final rate = sampleRate == null
+        ? 'PENDING ACTIVE ROUTE'
+        : '${sampleRate!.toStringAsFixed(0)} Hz';
+    final frames = bufferFrames?.toString() ?? 'PENDING';
+    final channels = inputChannels?.toString() ?? 'PENDING';
+    final flags = formatFlags?.toString() ?? 'PENDING';
+    final state = captureState?.name ?? 'unknown';
+    final overflow = cleanHandoff ? 'CLEAN' : 'REJECTED BLOCKS';
+
+    return <String>[
+      '## Same-process E2E telemetry',
+      '',
+      '- capture state: $state',
+      '- sample rate: $rate',
+      '- buffer frames: $frames',
+      '- input channels: $channels',
+      '- format flags: $flags',
+      '- callback count: $callbackCount',
+      '- average callback duration (us): ${averageCallbackUs.toStringAsFixed(1)}',
+      '- maximum callback duration (us): ${maxCallbackUs.toStringAsFixed(1)}',
+      '- xrun count: $xrunCount',
+      '- recorder queue depth observed: $recorderQueueDepth',
+      '- fingerprint queue depth observed: $fingerprintQueueDepth',
+      '- recorder rejected blocks: $recorderRejectedBlocks',
+      '- fingerprint rejected blocks: $fingerprintRejectedBlocks',
+      '- queue overflow result: $overflow',
+    ].join('\n');
+  }
 }
 
 abstract interface class AcceptanceTelemetrySource {
