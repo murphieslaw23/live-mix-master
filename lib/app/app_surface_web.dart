@@ -4,16 +4,19 @@ import '../audio/web/browser_capture_controller.dart';
 import '../audio/web/browser_capture_runtime.dart';
 import '../audio/web/browser_recording_controller.dart';
 import '../design/live_mix_tokens.dart';
+import '../services/web/browser_fingerprint_lookup_controller.dart';
 
 class WebReleaseShell extends StatefulWidget {
   const WebReleaseShell({
     super.key,
     this.controller,
     this.recordingController,
+    this.fingerprintController,
   });
 
   final BrowserCaptureController? controller;
   final BrowserRecordingController? recordingController;
+  final BrowserFingerprintLookupController? fingerprintController;
 
   @override
   State<WebReleaseShell> createState() => _WebReleaseShellState();
@@ -22,6 +25,8 @@ class WebReleaseShell extends StatefulWidget {
 class _WebReleaseShellState extends State<WebReleaseShell> {
   late final BrowserCaptureController _controller;
   late final BrowserRecordingController _recordingController;
+  late final BrowserFingerprintLookupController _fingerprintController;
+  late final bool _ownsFingerprintController;
 
   @override
   void initState() {
@@ -35,8 +40,12 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
       _recordingController =
           widget.recordingController ?? createBrowserRecordingController();
     }
+    _ownsFingerprintController = widget.fingerprintController == null;
+    _fingerprintController =
+        widget.fingerprintController ?? BrowserFingerprintLookupController();
     _controller.addListener(_handleControllerState);
     _recordingController.addListener(_handleRecordingState);
+    _fingerprintController.addListener(_handleFingerprintState);
     _controller.probe();
   }
 
@@ -44,6 +53,10 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
   void dispose() {
     _controller.removeListener(_handleControllerState);
     _recordingController.removeListener(_handleRecordingState);
+    _fingerprintController.removeListener(_handleFingerprintState);
+    if (_ownsFingerprintController) {
+      _fingerprintController.dispose();
+    }
     super.dispose();
   }
 
@@ -59,6 +72,12 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
     }
   }
 
+  void _handleFingerprintState(BrowserFingerprintLookupState _) {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<void> _run(Future<void> Function() action) async {
     await action();
   }
@@ -67,6 +86,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
   Widget build(BuildContext context) {
     final state = _controller.state;
     final recordingState = _recordingController.state;
+    final fingerprintState = _fingerprintController.state;
     final capabilities = state.capabilities;
     final microphoneAvailable = capabilities?.microphoneCaptureAvailable ?? false;
     final displayAvailable = capabilities?.displayCaptureAvailable ?? false;
@@ -155,6 +175,8 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                     onDownload: () => _run(_recordingController.exportRecording),
                   ),
                   const SizedBox(height: 16),
+                  _FingerprintStatusPanel(state: fingerprintState),
+                  const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
@@ -163,7 +185,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'W3 CAPTURE + AUDIOWORKLET DSP + OPERATOR-CONTROLLED WAV RECORDING ACTIVE.',
+                      'W4 WEB AUDIO + RECORDING + SERVER-SIDE FINGERPRINT PROVIDER BOUNDARY ACTIVE.',
                       style: LiveMixTextStyles.uiLabel.copyWith(
                         color: LiveMixTokens.textSecondary,
                       ),
@@ -557,6 +579,73 @@ class _RecordingControlPanel extends StatelessWidget {
       case BrowserRecordingStatus.stopping:
       case BrowserRecordingStatus.exporting:
       case BrowserRecordingStatus.idle:
+        return LiveMixTokens.textSecondary;
+    }
+  }
+}
+
+class _FingerprintStatusPanel extends StatelessWidget {
+  const _FingerprintStatusPanel({required this.state});
+
+  final BrowserFingerprintLookupState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            _icon(state.status),
+            color: _color(state.status),
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              state.message,
+              key: const ValueKey('browser-fingerprint-state'),
+              style: LiveMixTextStyles.uiLabel.copyWith(
+                color: _color(state.status),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static IconData _icon(BrowserFingerprintLookupStatus status) {
+    switch (status) {
+      case BrowserFingerprintLookupStatus.matched:
+        return Icons.check_circle_outline;
+      case BrowserFingerprintLookupStatus.lookingUp:
+        return Icons.sync;
+      case BrowserFingerprintLookupStatus.noMatch:
+        return Icons.search_off;
+      case BrowserFingerprintLookupStatus.failed:
+        return Icons.warning_amber_rounded;
+      case BrowserFingerprintLookupStatus.idle:
+        return Icons.fingerprint;
+    }
+  }
+
+  static Color _color(BrowserFingerprintLookupStatus status) {
+    switch (status) {
+      case BrowserFingerprintLookupStatus.matched:
+        return LiveMixTokens.meterNominal;
+      case BrowserFingerprintLookupStatus.noMatch:
+        return LiveMixTokens.accentOchre;
+      case BrowserFingerprintLookupStatus.failed:
+        return LiveMixTokens.statusWarn;
+      case BrowserFingerprintLookupStatus.lookingUp:
+      case BrowserFingerprintLookupStatus.idle:
         return LiveMixTokens.textSecondary;
     }
   }
