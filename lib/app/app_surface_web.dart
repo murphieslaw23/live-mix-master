@@ -1,12 +1,53 @@
 import 'package:flutter/material.dart';
 
+import '../audio/web/browser_capture_controller.dart';
+import '../audio/web/browser_capture_runtime.dart';
 import '../design/live_mix_tokens.dart';
 
-class WebReleaseShell extends StatelessWidget {
-  const WebReleaseShell({super.key});
+class WebReleaseShell extends StatefulWidget {
+  const WebReleaseShell({
+    super.key,
+    this.controller,
+  });
+
+  final BrowserCaptureController? controller;
+
+  @override
+  State<WebReleaseShell> createState() => _WebReleaseShellState();
+}
+
+class _WebReleaseShellState extends State<WebReleaseShell> {
+  late final BrowserCaptureController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.controller ?? createBrowserCaptureController();
+    _probe();
+  }
+
+  Future<void> _probe() async {
+    await _controller.probe();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() {});
+    await action();
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final state = _controller.state;
+    final capabilities = state.capabilities;
+    final microphoneAvailable = capabilities?.microphoneCaptureAvailable ?? false;
+    final displayAvailable = capabilities?.displayCaptureAvailable ?? false;
+
     return Scaffold(
       backgroundColor: LiveMixTokens.surfaceBase,
       body: SafeArea(
@@ -46,9 +87,9 @@ class WebReleaseShell extends StatelessWidget {
                               color: LiveMixTokens.accentCopper,
                             ),
                             _statusBadge(
-                              icon: Icons.lock_outline,
-                              label: 'SOURCE PERMISSION REQUIRED',
-                              color: LiveMixTokens.statusWarn,
+                              icon: _statusIcon(state.status),
+                              label: _statusLabel(state.status),
+                              color: _statusColor(state.status),
                             ),
                           ],
                         ),
@@ -63,7 +104,19 @@ class WebReleaseShell extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const _CapabilityPanel(),
+                  _CapabilityPanel(capabilities: capabilities),
+                  const SizedBox(height: 16),
+                  _CaptureControlPanel(
+                    state: state,
+                    microphoneAvailable: microphoneAvailable,
+                    displayAvailable: displayAvailable,
+                    onMicrophone: microphoneAvailable
+                        ? () => _run(_controller.requestMicrophone)
+                        : null,
+                    onDisplay: displayAvailable
+                        ? () => _run(_controller.requestDisplayAudio)
+                        : null,
+                  ),
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(18),
@@ -73,7 +126,7 @@ class WebReleaseShell extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'W1 FOUNDATION — BROWSER CAPTURE, AUDIOWORKLET DSP AND LIVE ROUTING FOLLOW IN W2/W3.',
+                      'W2 CAPTURE PATH — BROWSER MEDIA PERMISSIONS AND SOURCE LIFECYCLE ACTIVE. AUDIOWORKLET DSP FOLLOWS IN W3.',
                       style: LiveMixTextStyles.uiLabel.copyWith(
                         color: LiveMixTokens.textSecondary,
                       ),
@@ -86,6 +139,63 @@ class WebReleaseShell extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _statusLabel(BrowserCaptureStatus status) {
+    switch (status) {
+      case BrowserCaptureStatus.idle:
+      case BrowserCaptureStatus.permissionRequired:
+        return 'SOURCE PERMISSION REQUIRED';
+      case BrowserCaptureStatus.requesting:
+        return 'REQUESTING SOURCE';
+      case BrowserCaptureStatus.active:
+        return 'CAPTURE ACTIVE';
+      case BrowserCaptureStatus.permissionDenied:
+        return 'PERMISSION DENIED';
+      case BrowserCaptureStatus.noAudioTrack:
+        return 'NO AUDIO TRACK';
+      case BrowserCaptureStatus.unsupported:
+        return 'SOURCE UNSUPPORTED';
+      case BrowserCaptureStatus.reconnectRequired:
+        return 'RECONNECT REQUIRED';
+      case BrowserCaptureStatus.error:
+        return 'CAPTURE ERROR';
+    }
+  }
+
+  static IconData _statusIcon(BrowserCaptureStatus status) {
+    switch (status) {
+      case BrowserCaptureStatus.active:
+        return Icons.graphic_eq;
+      case BrowserCaptureStatus.requesting:
+        return Icons.sync;
+      case BrowserCaptureStatus.permissionDenied:
+      case BrowserCaptureStatus.noAudioTrack:
+      case BrowserCaptureStatus.unsupported:
+      case BrowserCaptureStatus.reconnectRequired:
+      case BrowserCaptureStatus.error:
+        return Icons.warning_amber_rounded;
+      case BrowserCaptureStatus.idle:
+      case BrowserCaptureStatus.permissionRequired:
+        return Icons.lock_outline;
+    }
+  }
+
+  static Color _statusColor(BrowserCaptureStatus status) {
+    switch (status) {
+      case BrowserCaptureStatus.active:
+        return LiveMixTokens.statusOk;
+      case BrowserCaptureStatus.permissionDenied:
+      case BrowserCaptureStatus.noAudioTrack:
+      case BrowserCaptureStatus.unsupported:
+      case BrowserCaptureStatus.reconnectRequired:
+      case BrowserCaptureStatus.error:
+        return LiveMixTokens.statusWarn;
+      case BrowserCaptureStatus.requesting:
+      case BrowserCaptureStatus.idle:
+      case BrowserCaptureStatus.permissionRequired:
+        return LiveMixTokens.accentCopper;
+    }
   }
 
   static Widget _statusBadge({
@@ -115,8 +225,20 @@ class WebReleaseShell extends StatelessWidget {
   }
 }
 
-class _CapabilityPanel extends StatelessWidget {
-  const _CapabilityPanel();
+class _CaptureControlPanel extends StatelessWidget {
+  const _CaptureControlPanel({
+    required this.state,
+    required this.microphoneAvailable,
+    required this.displayAvailable,
+    required this.onMicrophone,
+    required this.onDisplay,
+  });
+
+  final BrowserCaptureState state;
+  final bool microphoneAvailable;
+  final bool displayAvailable;
+  final VoidCallback? onMicrophone;
+  final VoidCallback? onDisplay;
 
   @override
   Widget build(BuildContext context) {
@@ -127,23 +249,127 @@ class _CapabilityPanel extends StatelessWidget {
         border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: const Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            state.message,
+            key: const ValueKey('browser-capture-state'),
+            style: LiveMixTextStyles.uiLabel.copyWith(
+              color: _messageColor(state.status),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _captureButton(
+                icon: Icons.mic_none,
+                label: 'CONNECT MIC / USB',
+                onPressed: onMicrophone,
+                available: microphoneAvailable,
+              ),
+              _captureButton(
+                icon: Icons.tab,
+                label: 'SHARE TAB / WINDOW',
+                onPressed: onDisplay,
+                available: displayAvailable,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _captureButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    required bool available,
+  }) {
+    return Semantics(
+      button: true,
+      enabled: available,
+      label: '$label: ${available ? 'AVAILABLE' : 'UNAVAILABLE'}',
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(220, 52),
+          foregroundColor: LiveMixTokens.textPrimary,
+          side: BorderSide(
+            color: available
+                ? LiveMixTokens.accentCopper
+                : LiveMixTokens.textSecondary,
+            width: 2,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+          ),
+          textStyle: LiveMixTextStyles.uiLabel,
+        ),
+      ),
+    );
+  }
+
+  static Color _messageColor(BrowserCaptureStatus status) {
+    switch (status) {
+      case BrowserCaptureStatus.active:
+        return LiveMixTokens.statusOk;
+      case BrowserCaptureStatus.permissionDenied:
+      case BrowserCaptureStatus.noAudioTrack:
+      case BrowserCaptureStatus.unsupported:
+      case BrowserCaptureStatus.reconnectRequired:
+      case BrowserCaptureStatus.error:
+        return LiveMixTokens.statusWarn;
+      case BrowserCaptureStatus.idle:
+      case BrowserCaptureStatus.permissionRequired:
+      case BrowserCaptureStatus.requesting:
+        return LiveMixTokens.textSecondary;
+    }
+  }
+}
+
+class _CapabilityPanel extends StatelessWidget {
+  const _CapabilityPanel({required this.capabilities});
+
+  final BrowserAudioCapabilities? capabilities;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
         children: [
           _CapabilityRow(
             icon: Icons.mic_none,
             label: 'MIC / USB INPUT',
-            state: 'PERMISSION GATED',
+            state: _availability(
+              capabilities?.microphoneCaptureAvailable,
+              available: 'PERMISSION GATED',
+            ),
             color: LiveMixTokens.accentCopper,
           ),
-          SizedBox(height: 10),
+          const SizedBox(height: 10),
           _CapabilityRow(
             icon: Icons.tab,
             label: 'TAB / WINDOW AUDIO',
-            state: 'USER SELECTED',
+            state: _availability(
+              capabilities?.displayCaptureAvailable,
+              available: 'USER SELECTED',
+            ),
             color: LiveMixTokens.accentOchre,
           ),
-          SizedBox(height: 10),
-          _CapabilityRow(
+          const SizedBox(height: 10),
+          const _CapabilityRow(
             icon: Icons.desktop_windows_outlined,
             label: 'SYSTEM AUDIO',
             state: 'BROWSER / OS DEPENDENT',
@@ -152,6 +378,13 @@ class _CapabilityPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _availability(bool? available, {required String availableLabel}) {
+    if (available == null) {
+      return 'PROBING';
+    }
+    return available ? availableLabel : 'NOT EXPOSED';
   }
 }
 
