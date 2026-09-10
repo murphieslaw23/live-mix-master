@@ -45,7 +45,7 @@ export class LiveMixMasterWavWriter {
 
   appendInterleaved(samples) {
     if (this._finalized) {
-      throw new StateError('WAV writer is already finalized');
+      throw new Error('WAV writer is already finalized');
     }
     if (!(samples instanceof Float32Array)) {
       throw new TypeError('samples must be a Float32Array');
@@ -105,4 +105,67 @@ export class LiveMixMasterWavWriter {
 
     return output;
   }
+}
+
+export function createLiveMixMasterRecorderWorkerHandler(postMessage) {
+  if (typeof postMessage !== 'function') {
+    throw new TypeError('postMessage must be a function');
+  }
+
+  let writer = null;
+  let failed = false;
+
+  return (event) => {
+    const message = event?.data ?? event;
+    if (message == null || typeof message !== 'object') {
+      return;
+    }
+
+    if (message.type === 'start') {
+      try {
+        writer = new LiveMixMasterWavWriter({
+          sampleRate: message.sampleRate,
+          channels: message.channels,
+          sampleFormat: message.sampleFormat,
+          maxBytes: message.maxBytes,
+        });
+        failed = false;
+        postMessage({ type: 'recordingStarted' });
+      } catch (_) {
+        writer = null;
+        failed = true;
+        postMessage({
+          type: 'recordingError',
+          reason: 'WRITE_FAILED',
+          failureCode: 'writeFailed',
+        });
+      }
+      return;
+    }
+
+    if (message.type === 'pcm') {
+      if (failed || writer == null) {
+        return;
+      }
+
+      try {
+        writer.appendInterleaved(message.samples);
+        postMessage({
+          type: 'pcmAck',
+          sequence: message.sequence,
+          frames: message.samples.length / writer.channels,
+        });
+      } catch (error) {
+        writer = null;
+        failed = true;
+        const storageFull =
+          error instanceof RangeError && error.message === 'WAV_MAX_BYTES_EXCEEDED';
+        postMessage({
+          type: 'recordingError',
+          reason: storageFull ? 'STORAGE_FULL' : 'WRITE_FAILED',
+          failureCode: storageFull ? 'storageFull' : 'writeFailed',
+        });
+      }
+    }
+  };
 }
