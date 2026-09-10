@@ -1,41 +1,43 @@
 import 'package:flutter/material.dart';
 
-import 'audio/native_library_loader.dart';
+import 'app/app_surface.dart';
+import 'audio/audio_engine_factory.dart';
+import 'audio/audio_engine_port.dart';
 import 'design/live_mix_tokens.dart';
-import 'features/mixer/mixer_desk_view.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  final nativeLibraryResult = NativeLibraryLoader.tryLoad();
-  runApp(LiveMixMasterApp(nativeLibraryResult: nativeLibraryResult));
+  final audioEngine = createAudioEnginePort();
+  final audioEngineResult = audioEngine.initialize();
+  runApp(LiveMixMasterApp(audioEngineResult: audioEngineResult));
 }
 
 class LiveMixMasterApp extends StatelessWidget {
   const LiveMixMasterApp({
     Key? key,
-    this.nativeLibraryResult,
+    this.audioEngineResult,
   }) : super(key: key);
 
-  final NativeLibraryLoadResult? nativeLibraryResult;
+  final AudioEngineBootstrapResult? audioEngineResult;
 
   @override
   Widget build(BuildContext context) {
-    final result = nativeLibraryResult;
+    final result = audioEngineResult;
     return MaterialApp(
       title: 'LiveMixMaster',
       debugShowCheckedModeBanner: false,
       theme: LiveMixTheme.dark(),
-      home: result == null || result.isLoaded
-          ? const MixerDeskView()
-          : _NativeEngineUnavailable(result: result),
+      home: result == null || result.isAvailable
+          ? buildPrimaryOperatorSurface()
+          : _AudioEngineUnavailable(result: result),
     );
   }
 }
 
-class _NativeEngineUnavailable extends StatelessWidget {
-  const _NativeEngineUnavailable({required this.result});
+class _AudioEngineUnavailable extends StatelessWidget {
+  const _AudioEngineUnavailable({required this.result});
 
-  final NativeLibraryLoadResult result;
+  final AudioEngineBootstrapResult result;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +58,7 @@ class _NativeEngineUnavailable extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'NATIVE ENGINE UNAVAILABLE',
+                  'AUDIO ENGINE UNAVAILABLE',
                   style: LiveMixTextStyles.sectionDisplay,
                 ),
                 const SizedBox(height: 16),
@@ -64,14 +66,16 @@ class _NativeEngineUnavailable extends StatelessWidget {
                   result.message,
                   style: LiveMixTextStyles.body,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Searched paths:\n${result.searchedPaths.join('\n')}',
-                  style: LiveMixTextStyles.numericTelemetry.copyWith(
-                    fontSize: 12,
-                    color: LiveMixTokens.textSecondary,
+                if (result.diagnostics.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Diagnostics:\n${result.diagnostics.join('\n')}',
+                    style: LiveMixTextStyles.numericTelemetry.copyWith(
+                      fontSize: 12,
+                      color: LiveMixTokens.textSecondary,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
