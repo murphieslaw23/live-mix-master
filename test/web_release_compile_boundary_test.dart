@@ -54,6 +54,45 @@ void main() {
 
     expect(find.text('CAPTURE ACTIVE — USB INTERFACE'), findsOneWidget);
   });
+
+  testWidgets('web shell reacts to ended lifecycle without another user action', (tester) async {
+    final gateway = _LifecycleShellGateway();
+    final controller = BrowserCaptureController(gateway: gateway);
+
+    await tester.pumpWidget(
+      MaterialApp(home: WebReleaseShell(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CONNECT MIC / USB'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('CAPTURE ACTIVE — USB INTERFACE'), findsOneWidget);
+
+    gateway.endActiveTrack();
+    await tester.pump();
+
+    expect(find.text('CAPTURE ENDED — RECONNECT REQUIRED'), findsOneWidget);
+  });
+
+  testWidgets('web shell surfaces device inventory change while retaining source', (tester) async {
+    final gateway = _LifecycleShellGateway();
+    final controller = BrowserCaptureController(gateway: gateway);
+
+    await tester.pumpWidget(
+      MaterialApp(home: WebReleaseShell(controller: controller)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CONNECT MIC / USB'));
+    await tester.pumpAndSettle();
+
+    gateway.changeDeviceInventory();
+    await tester.pump();
+
+    expect(
+      find.text('AUDIO DEVICE LIST CHANGED — VERIFY SOURCE / RECONNECT IF NEEDED'),
+      findsOneWidget,
+    );
+  });
 }
 
 class _ShellGateway implements BrowserMediaGateway {
@@ -82,4 +121,24 @@ class _ShellGateway implements BrowserMediaGateway {
   Future<BrowserCaptureAttempt> requestDisplayAudio() async {
     return const BrowserCaptureAttempt.noAudioTrack();
   }
+}
+
+class _LifecycleShellGateway extends _ShellGateway
+    implements BrowserMediaLifecycleGateway {
+  void Function()? _onEnded;
+  void Function()? _onDeviceChange;
+
+  @override
+  void setTrackEndedHandler(void Function() handler) {
+    _onEnded = handler;
+  }
+
+  @override
+  void setDeviceChangeHandler(void Function() handler) {
+    _onDeviceChange = handler;
+  }
+
+  void endActiveTrack() => _onEnded?.call();
+
+  void changeDeviceInventory() => _onDeviceChange?.call();
 }
