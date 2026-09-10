@@ -42,15 +42,17 @@ void main() {
 
     test('same-process Flutter runtime exposes non-secret acceptance telemetry', () {
       final telemetryFile = File('lib/audio/native_acceptance_telemetry.dart');
+      final panelFile =
+          File('lib/features/mixer/native_acceptance_telemetry_panel.dart');
       final main = File('lib/main.dart').readAsStringSync();
-      final mixer = File('lib/features/mixer/mixer_desk_view.dart')
-          .readAsStringSync();
       final guide = File('docs/audio/macos-device-e2e.md').readAsStringSync();
 
       expect(telemetryFile.existsSync(), isTrue);
+      expect(panelFile.existsSync(), isTrue);
       final telemetry = telemetryFile.existsSync()
           ? telemetryFile.readAsStringSync()
           : '';
+      final panel = panelFile.existsSync() ? panelFile.readAsStringSync() : '';
 
       expect(telemetry, contains('AcceptanceTelemetrySnapshot'));
       expect(telemetry, contains('callbackCount'));
@@ -65,16 +67,16 @@ void main() {
       expect(telemetry, contains('NativePcmRuntimePump'));
 
       expect(main, contains('NativeRuntimeAcceptanceTelemetry'));
-      expect(main, contains('acceptanceTelemetry:'));
+      expect(main, contains('NativeAcceptanceTelemetryPanel'));
+      expect(main, contains('telemetrySource:'));
 
-      expect(mixer, contains('acceptanceTelemetry'));
-      expect(mixer, contains('E2E TELEMETRY'));
-      expect(mixer, contains('CALLBACKS'));
-      expect(mixer, contains('AVG CALLBACK'));
-      expect(mixer, contains('MAX CALLBACK'));
-      expect(mixer, contains('XRUNS'));
-      expect(mixer, contains('REC REJECT'));
-      expect(mixer, contains('FP REJECT'));
+      expect(panel, contains('E2E TELEMETRY'));
+      expect(panel, contains('CALLBACKS'));
+      expect(panel, contains('AVG CALLBACK'));
+      expect(panel, contains('MAX CALLBACK'));
+      expect(panel, contains('XRUNS'));
+      expect(panel, contains('REC REJECT'));
+      expect(panel, contains('FP REJECT'));
 
       expect(guide, contains('E2E TELEMETRY'));
       expect(guide, contains('same Flutter app process'));
