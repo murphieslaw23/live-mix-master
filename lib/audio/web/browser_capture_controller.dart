@@ -12,6 +12,7 @@ enum BrowserCaptureStatus {
   noAudioTrack,
   unsupported,
   reconnectRequired,
+  deviceInventoryChanged,
   error,
 }
 
@@ -96,7 +97,11 @@ abstract interface class BrowserMediaGateway {
 
 abstract interface class BrowserMediaLifecycleGateway {
   void setTrackEndedHandler(void Function() handler);
+
+  void setDeviceChangeHandler(void Function() handler);
 }
+
+typedef BrowserCaptureStateListener = void Function(BrowserCaptureState state);
 
 class BrowserCaptureState {
   const BrowserCaptureState({
@@ -137,38 +142,57 @@ class BrowserCaptureController {
   BrowserCaptureController({required BrowserMediaGateway gateway})
       : _gateway = gateway {
     if (gateway is BrowserMediaLifecycleGateway) {
-      (gateway as BrowserMediaLifecycleGateway)
-          .setTrackEndedHandler(handleTrackEnded);
+      final lifecycleGateway = gateway as BrowserMediaLifecycleGateway;
+      lifecycleGateway.setTrackEndedHandler(handleTrackEnded);
+      lifecycleGateway.setDeviceChangeHandler(handleDeviceChange);
     }
   }
 
   final BrowserMediaGateway _gateway;
+  final List<BrowserCaptureStateListener> _listeners =
+      <BrowserCaptureStateListener>[];
 
   BrowserCaptureState _state = const BrowserCaptureState.idle();
 
   BrowserCaptureState get state => _state;
 
+  void addListener(BrowserCaptureStateListener listener) {
+    if (!_listeners.contains(listener)) {
+      _listeners.add(listener);
+    }
+  }
+
+  void removeListener(BrowserCaptureStateListener listener) {
+    _listeners.remove(listener);
+  }
+
   Future<void> probe() async {
     try {
       final capabilities = await _gateway.probeCapabilities();
       if (!capabilities.hasCapturePath) {
-        _state = BrowserCaptureState(
-          status: BrowserCaptureStatus.unsupported,
-          capabilities: capabilities,
-          message: 'BROWSER AUDIO CAPTURE NOT EXPOSED BY THIS BROWSER / OS',
+        _setState(
+          BrowserCaptureState(
+            status: BrowserCaptureStatus.unsupported,
+            capabilities: capabilities,
+            message: 'BROWSER AUDIO CAPTURE NOT EXPOSED BY THIS BROWSER / OS',
+          ),
         );
         return;
       }
 
-      _state = BrowserCaptureState(
-        status: BrowserCaptureStatus.permissionRequired,
-        capabilities: capabilities,
-        message: 'SOURCE PERMISSION REQUIRED',
+      _setState(
+        BrowserCaptureState(
+          status: BrowserCaptureStatus.permissionRequired,
+          capabilities: capabilities,
+          message: 'SOURCE PERMISSION REQUIRED',
+        ),
       );
     } on Object catch (error) {
-      _state = BrowserCaptureState(
-        status: BrowserCaptureStatus.error,
-        message: _sanitizedFailure('CAPABILITY PROBE FAILED', error),
+      _setState(
+        BrowserCaptureState(
+          status: BrowserCaptureStatus.error,
+          message: _sanitizedFailure('CAPABILITY PROBE FAILED', error),
+        ),
       );
     }
   }
@@ -188,10 +212,21 @@ class BrowserCaptureController {
   }
 
   void handleTrackEnded() {
-    _state = _state.copyWith(
-      status: BrowserCaptureStatus.reconnectRequired,
-      message: 'CAPTURE ENDED — RECONNECT REQUIRED',
-      clearSource: true,
+    _setState(
+      _state.copyWith(
+        status: BrowserCaptureStatus.reconnectRequired,
+        message: 'CAPTURE ENDED — RECONNECT REQUIRED',
+        clearSource: true,
+      ),
+    );
+  }
+
+  void handleDeviceChange() {
+    _setState(
+      _state.copyWith(
+        status: BrowserCaptureStatus.deviceInventoryChanged,
+        message: 'AUDIO DEVICE LIST CHANGED — VERIFY SOURCE / RECONNECT IF NEEDED',
+      ),
     );
   }
 
@@ -199,22 +234,26 @@ class BrowserCaptureController {
     required Future<BrowserCaptureAttempt> Function() request,
     required BrowserCaptureKind fallbackKind,
   }) async {
-    _state = _state.copyWith(
-      status: BrowserCaptureStatus.requesting,
-      message: fallbackKind == BrowserCaptureKind.microphone
-          ? 'REQUESTING MIC / USB AUDIO'
-          : 'REQUESTING TAB / WINDOW AUDIO',
-      clearSource: true,
+    _setState(
+      _state.copyWith(
+        status: BrowserCaptureStatus.requesting,
+        message: fallbackKind == BrowserCaptureKind.microphone
+            ? 'REQUESTING MIC / USB AUDIO'
+            : 'REQUESTING TAB / WINDOW AUDIO',
+        clearSource: true,
+      ),
     );
 
     try {
       final attempt = await request();
       _applyAttempt(attempt);
     } on Object catch (error) {
-      _state = _state.copyWith(
-        status: BrowserCaptureStatus.error,
-        message: _sanitizedFailure('BROWSER CAPTURE FAILED', error),
-        clearSource: true,
+      _setState(
+        _state.copyWith(
+          status: BrowserCaptureStatus.error,
+          message: _sanitizedFailure('BROWSER CAPTURE FAILED', error),
+          clearSource: true,
+        ),
       );
     }
   }
@@ -224,44 +263,63 @@ class BrowserCaptureController {
       case BrowserCaptureAttemptStatus.connected:
         final source = attempt.source;
         if (source == null) {
-          _state = _state.copyWith(
-            status: BrowserCaptureStatus.error,
-            message: 'BROWSER CAPTURE FAILED — SOURCE METADATA MISSING',
-            clearSource: true,
+          _setState(
+            _state.copyWith(
+              status: BrowserCaptureStatus.error,
+              message: 'BROWSER CAPTURE FAILED — SOURCE METADATA MISSING',
+              clearSource: true,
+            ),
           );
           return;
         }
-        _state = _state.copyWith(
-          status: BrowserCaptureStatus.active,
-          source: source,
-          message: 'CAPTURE ACTIVE — ${source.label}',
+        _setState(
+          _state.copyWith(
+            status: BrowserCaptureStatus.active,
+            source: source,
+            message: 'CAPTURE ACTIVE — ${source.label}',
+          ),
         );
       case BrowserCaptureAttemptStatus.permissionDenied:
-        _state = _state.copyWith(
-          status: BrowserCaptureStatus.permissionDenied,
-          message: 'AUDIO PERMISSION DENIED — ALLOW ACCESS AND RETRY',
-          clearSource: true,
+        _setState(
+          _state.copyWith(
+            status: BrowserCaptureStatus.permissionDenied,
+            message: 'AUDIO PERMISSION DENIED — ALLOW ACCESS AND RETRY',
+            clearSource: true,
+          ),
         );
       case BrowserCaptureAttemptStatus.noAudioTrack:
-        _state = _state.copyWith(
-          status: BrowserCaptureStatus.noAudioTrack,
-          message: 'NO AUDIO TRACK RETURNED — SELECT A SOURCE THAT SHARES AUDIO',
-          clearSource: true,
+        _setState(
+          _state.copyWith(
+            status: BrowserCaptureStatus.noAudioTrack,
+            message: 'NO AUDIO TRACK RETURNED — SELECT A SOURCE THAT SHARES AUDIO',
+            clearSource: true,
+          ),
         );
       case BrowserCaptureAttemptStatus.unsupported:
-        _state = _state.copyWith(
-          status: BrowserCaptureStatus.unsupported,
-          message: 'REQUESTED AUDIO SOURCE NOT EXPOSED BY THIS BROWSER / OS',
-          clearSource: true,
+        _setState(
+          _state.copyWith(
+            status: BrowserCaptureStatus.unsupported,
+            message: 'REQUESTED AUDIO SOURCE NOT EXPOSED BY THIS BROWSER / OS',
+            clearSource: true,
+          ),
         );
       case BrowserCaptureAttemptStatus.failed:
-        _state = _state.copyWith(
-          status: BrowserCaptureStatus.error,
-          message: attempt.message == null || attempt.message!.trim().isEmpty
-              ? 'BROWSER CAPTURE FAILED'
-              : 'BROWSER CAPTURE FAILED — ${attempt.message!.trim()}',
-          clearSource: true,
+        _setState(
+          _state.copyWith(
+            status: BrowserCaptureStatus.error,
+            message: attempt.message == null || attempt.message!.trim().isEmpty
+                ? 'BROWSER CAPTURE FAILED'
+                : 'BROWSER CAPTURE FAILED — ${attempt.message!.trim()}',
+            clearSource: true,
+          ),
         );
+    }
+  }
+
+  void _setState(BrowserCaptureState nextState) {
+    _state = nextState;
+    for (final listener in List<BrowserCaptureStateListener>.of(_listeners)) {
+      listener(_state);
     }
   }
 
