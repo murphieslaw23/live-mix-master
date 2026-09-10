@@ -6,10 +6,13 @@ import 'package:web/web.dart' as web;
 import 'browser_capture_controller.dart';
 import 'browser_media_gateway.dart';
 
-class WebBrowserMediaClient implements BrowserMediaClient {
+class WebBrowserMediaClient
+    implements BrowserMediaClient, BrowserMediaDeviceChangeClient {
   WebBrowserMediaClient();
 
   web.MediaStream? _activeStream;
+  void Function()? _deviceChangeHandler;
+  bool _deviceChangeListenerInstalled = false;
 
   @override
   Future<BrowserAudioCapabilities> probeCapabilities() async {
@@ -30,6 +33,27 @@ class WebBrowserMediaClient implements BrowserMediaClient {
       displayCaptureAvailable: devices.has('getDisplayMedia'),
       systemAudioGuaranteed: false,
     );
+  }
+
+  @override
+  void setDeviceChangeHandler(void Function() handler) {
+    _deviceChangeHandler = handler;
+    if (_deviceChangeListenerInstalled) {
+      return;
+    }
+
+    final navigator = web.window.navigator;
+    if (!navigator.has('mediaDevices')) {
+      return;
+    }
+
+    navigator.mediaDevices.addEventListener(
+      'devicechange',
+      ((web.Event _) {
+        _deviceChangeHandler?.call();
+      }).toJS,
+    );
+    _deviceChangeListenerInstalled = true;
   }
 
   @override
