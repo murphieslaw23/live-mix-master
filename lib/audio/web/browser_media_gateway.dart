@@ -73,7 +73,8 @@ class DefaultBrowserMediaGateway
     _deviceChangeHandler = handler;
     final client = _client;
     if (client is BrowserMediaDeviceChangeClient) {
-      client.setDeviceChangeHandler(_handleDeviceChange);
+      (client as BrowserMediaDeviceChangeClient)
+          .setDeviceChangeHandler(_handleDeviceChange);
     }
   }
 
