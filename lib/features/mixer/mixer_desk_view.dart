@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../audio/audio_engine_bridge.dart';
 import '../../design/live_mix_tokens.dart';
 import '../../design/widgets/lmm_controls.dart';
 import '../../design/widgets/lmm_state_widgets.dart';
 import '../../services/fingerprint_service.dart';
 import '../../services/lossless_recording_writer.dart';
+import '../patchbay/audio_route_recovery_banner.dart';
 import '../patchbay/patchbay_routing_modal.dart';
 
 class MixerDeskView extends StatefulWidget {
@@ -12,10 +16,12 @@ class MixerDeskView extends StatefulWidget {
     super.key,
     this.fingerprintService,
     this.recordingWriter,
+    this.audioEngine,
   });
 
   final FingerprintService? fingerprintService;
   final LosslessRecordingWriter? recordingWriter;
+  final AudioEngine? audioEngine;
 
   @override
   State<MixerDeskView> createState() => _MixerDeskViewState();
@@ -62,6 +68,9 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   ];
 
   final List<IdentifiedTrack> _playlistHistory = [];
+  StreamSubscription<AudioRouteState>? _routeStateSubscription;
+  List<AudioInputEndpoint> _audioInputs = const <AudioInputEndpoint>[];
+  AudioRouteState _audioRouteState = AudioRouteState.idle;
   IdentifiedTrack? _currentTrack;
   bool _isAnalyzing = false;
   double _masterFader = 0.90;
@@ -74,6 +83,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   void initState() {
     super.initState();
     _subscribeServices();
+    _subscribeAudioEngine();
   }
 
   void _subscribeServices() {
@@ -99,6 +109,22 @@ class _MixerDeskViewState extends State<MixerDeskView> {
         _recordingSizeMb = stats.currentFileSizeMb;
       });
     });
+  }
+
+  void _subscribeAudioEngine() {
+    final engine = widget.audioEngine;
+    if (engine == null) return;
+    _audioRouteState = engine.routeState;
+    _routeStateSubscription = engine.routeStates.listen((state) {
+      if (!mounted || state == _audioRouteState) return;
+      setState(() => _audioRouteState = state);
+    });
+  }
+
+  @override
+  void dispose() {
+    _routeStateSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _handleToggleRecording() async {
@@ -130,31 +156,169 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     }
   }
 
+  Future<void> _refreshAudioInputs() async {
+    final engine = widget.audioEngine;
+    if (engine == null) return;
+    final inputs = await engine.refreshInputDevices();
+    if (!mounted) return;
+    setState(() {
+      _audioInputs = List<AudioInputEndpoint>.unmodifiable(inputs);
+      _audioRouteState = engine.routeState;
+    });
+  }
+
+  List<AudioEndpoint> _livePatchbayEndpoints() {
+    return _audioInputs
+        .map(
+          (input) => AudioEndpoint(
+            id: input.uid,
+            name: input.name,
+            type: AudioSourceType.hardwareInput,
+            channelCount: input.inputChannels,
+            deviceDriver:
+                'CoreAudio • ${input.nominalSampleRate.toStringAsFixed(0)} Hz • ${input.bufferFrames} frames',
+          ),
+        )
+        .toList(growable: false);
+  }
+
   Future<void> _openPatchbayModal() async {
+    final engine = widget.audioEngine;
+    if (engine != null) {
+      await _refreshAudioInputs();
+      if (!mounted) return;
+    }
+
+    void onConfigured(PatchbayChannelResult result) {
+      final channelId = 'ch_${DateTime.now().millisecondsSinceEpoch}';
+      final chLeft = (result.channelPairIndex * 2) + 1;
+      final chRight = (result.channelPairIndex * 2) + 2;
+      setState(() {
+        _channels.add(
+          ChannelData(
+            id: channelId,
+            name: result.channelName,
+            source: '${result.endpoint.name} (Ch $chLeft-$chRight)',
+            fader: 0.80,
+            trimDb: result.initialTrimDb,
+            accentColor: result.channelColor,
+            state: LmmChannelStripState.active,
+            nativeBound: engine != null,
+          ),
+        );
+      });
+
+      if (engine != null) {
+        unawaited(
+          _bindNativeChannel(
+            engine,
+            channelId: channelId,
+            result: result,
+          ),
+        );
+      }
+    }
+
+    if (engine == null) {
+      await PatchbayRoutingModal.show(
+        context,
+        onChannelConfigured: onConfigured,
+      );
+      return;
+    }
+
     await PatchbayRoutingModal.show(
       context,
-      onChannelConfigured: (result) {
-        setState(() {
-          final chLeft = (result.channelPairIndex * 2) + 1;
-          final chRight = (result.channelPairIndex * 2) + 2;
-          _channels.add(
-            ChannelData(
-              id: 'ch_${DateTime.now().millisecondsSinceEpoch}',
-              name: result.channelName,
-              source: '${result.endpoint.name} (Ch $chLeft-$chRight)',
-              fader: 0.80,
-              trimDb: result.initialTrimDb,
-              accentColor: result.channelColor,
-              state: LmmChannelStripState.active,
-            ),
-          );
-        });
+      onChannelConfigured: onConfigured,
+      endpoints: _livePatchbayEndpoints(),
+      routeState: _audioRouteState,
+      onRecoveryRequested: () {
+        unawaited(_refreshAudioInputs());
       },
     );
   }
 
+  Future<void> _bindNativeChannel(
+    AudioEngine engine, {
+    required String channelId,
+    required PatchbayChannelResult result,
+  }) async {
+    try {
+      await engine.addChannel(
+        InputChannelConfig(
+          id: channelId,
+          name: result.channelName,
+          kind: AudioInputKind.hardware,
+          endpointId: result.endpoint.id,
+          trimDb: result.initialTrimDb,
+          fader: .80,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        final index = _channels.indexWhere((channel) => channel.id == channelId);
+        if (index >= 0) {
+          _channels[index].state = LmmChannelStripState.disconnected;
+        }
+        _audioRouteState = engine.routeState;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Audio route error: $error'),
+          backgroundColor: LiveMixTokens.meterClip,
+        ),
+      );
+    }
+  }
+
   void _removeChannel(String channelId) {
-    setState(() => _channels.removeWhere((channel) => channel.id == channelId));
+    final index = _channels.indexWhere((channel) => channel.id == channelId);
+    if (index < 0) return;
+    final channel = _channels[index];
+    setState(() => _channels.removeAt(index));
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.removeChannel(channelId));
+    }
+  }
+
+  void _setChannelFader(ChannelData channel, double value) {
+    setState(() => channel.fader = value);
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.setFader(channel.id, value));
+    }
+  }
+
+  void _setChannelMute(ChannelData channel, bool value) {
+    setState(() {
+      channel.isMuted = value;
+      channel.state = value
+          ? LmmChannelStripState.muted
+          : channel.isSolo
+              ? LmmChannelStripState.solo
+              : LmmChannelStripState.active;
+    });
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.setMute(channel.id, value));
+    }
+  }
+
+  void _setChannelSolo(ChannelData channel, bool value) {
+    setState(() {
+      channel.isSolo = value;
+      channel.state = value
+          ? LmmChannelStripState.solo
+          : channel.isMuted
+              ? LmmChannelStripState.muted
+              : LmmChannelStripState.active;
+    });
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.setSolo(channel.id, value));
+    }
   }
 
   @override
@@ -168,6 +332,18 @@ class _MixerDeskViewState extends State<MixerDeskView> {
         child: Column(
           children: [
             _buildTopActionBar(),
+            if (widget.audioEngine != null &&
+                _audioRouteState != AudioRouteState.idle &&
+                _audioRouteState != AudioRouteState.active)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: AudioRouteRecoveryBanner(
+                  state: _audioRouteState,
+                  onRecoveryRequested: () {
+                    unawaited(_openPatchbayModal());
+                  },
+                ),
+              ),
             _buildLiveFingerprintBanner(),
             if (showDesktopSessionPanel) _buildDesktopFingerprintPanel(),
             Expanded(
@@ -560,7 +736,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 LmmFader(
                   label: 'FADER',
                   value: channel.fader,
-                  onChanged: (value) => setState(() => channel.fader = value),
+                  onChanged: (value) => _setChannelFader(channel, value),
                 ),
               ],
             ),
@@ -572,10 +748,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 child: LmmToggleControl(
                   label: 'MUTE',
                   value: channel.isMuted,
-                  onChanged: (value) => setState(() {
-                    channel.isMuted = value;
-                    channel.state = value ? LmmChannelStripState.muted : LmmChannelStripState.active;
-                  }),
+                  onChanged: (value) => _setChannelMute(channel, value),
                 ),
               ),
               const SizedBox(width: 4),
@@ -583,10 +756,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 child: LmmToggleControl(
                   label: 'SOLO',
                   value: channel.isSolo,
-                  onChanged: (value) => setState(() {
-                    channel.isSolo = value;
-                    if (value) channel.state = LmmChannelStripState.solo;
-                  }),
+                  onChanged: (value) => _setChannelSolo(channel, value),
                 ),
               ),
             ],
@@ -766,6 +936,7 @@ class ChannelData {
     this.accentColor = LiveMixTokens.accentOchre,
     this.isMuted = false,
     this.isSolo = false,
+    this.nativeBound = false,
   });
 
   final String id;
@@ -776,5 +947,6 @@ class ChannelData {
   Color accentColor;
   bool isMuted;
   bool isSolo;
+  bool nativeBound;
   LmmChannelStripState state;
 }
