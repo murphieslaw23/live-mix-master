@@ -6,7 +6,7 @@ This file is a non-secret evidence template. Do not mark it PASS until `docs/aud
 
 ## Hosted preflight evidence
 
-The app-side same-process acceptance telemetry implementation and its non-secret **COPY EVIDENCE** formatter/UI action are hosted-verified. The final copy-evidence implementation head `4bf8921016d3dbee920a6ec4d63b055dd4486069` passed Standard CI #220 (`34493904574`) and macOS Desktop CI #103 (`34493904540`). Do not copy hosted values into the real-device fields below.
+The app-side same-process acceptance telemetry implementation and its non-secret **COPY EVIDENCE** formatter/UI action are hosted-verified. The copy-evidence implementation head `4bf8921016d3dbee920a6ec4d63b055dd4486069` passed Standard CI #220 (`34493904574`) and macOS Desktop CI #103 (`34493904540`). Do not copy hosted values into the real-device fields below.
 
 - same-process acceptance telemetry contract: GREEN
 - deterministic non-secret Markdown evidence formatter: GREEN
