@@ -81,10 +81,16 @@ void main() {
         );
       }
 
-      final capture = File('native/macos/coreaudio_capture.mm').readAsStringSync();
-      final engine = File('native/live_mixer_engine.cpp').readAsStringSync();
-      expect(capture, contains('is_always_lock_free'));
-      expect(engine, contains('is_always_lock_free'));
+      final source = File('native/tests/realtime_atomic_contract_tests.cpp');
+      expect(source.existsSync(), isTrue);
+      final atomics = source.readAsStringSync();
+      expect(atomics, contains('is_always_lock_free'));
+      expect(atomics, contains('std::atomic<float>'));
+      expect(atomics, contains('std::atomic<double>'));
+      expect(atomics, contains('std::atomic<std::uint64_t>'));
+
+      final cmake = File('native/CMakeLists.txt').readAsStringSync();
+      expect(cmake, contains('realtime_atomic_contract_tests'));
     });
 
     test('builds a native macOS probe around the production ABI', () {
