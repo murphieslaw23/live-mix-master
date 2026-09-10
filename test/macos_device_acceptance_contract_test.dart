@@ -80,6 +80,11 @@ void main() {
           reason: 'DSP safety evidence must include "$required"',
         );
       }
+
+      final capture = File('native/macos/coreaudio_capture.mm').readAsStringSync();
+      final engine = File('native/live_mixer_engine.cpp').readAsStringSync();
+      expect(capture, contains('is_always_lock_free'));
+      expect(engine, contains('is_always_lock_free'));
     });
 
     test('builds a native macOS probe around the production ABI', () {
