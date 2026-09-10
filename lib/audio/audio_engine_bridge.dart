@@ -4,6 +4,36 @@ enum AudioInputKind { hardware, applicationLoopback }
 
 enum EngineState { idle, preparing, running, degraded, failed }
 
+enum AudioRouteState {
+  idle,
+  preparing,
+  active,
+  noDevice,
+  permissionDenied,
+  noSignal,
+  deviceLost,
+  formatError,
+  overrun,
+  recovered,
+  failed,
+}
+
+class AudioInputEndpoint {
+  const AudioInputEndpoint({
+    required this.uid,
+    required this.name,
+    required this.inputChannels,
+    required this.nominalSampleRate,
+    required this.bufferFrames,
+  });
+
+  final String uid;
+  final String name;
+  final int inputChannels;
+  final double nominalSampleRate;
+  final int bufferFrames;
+}
+
 class InputChannelConfig {
   const InputChannelConfig({
     required this.id,
