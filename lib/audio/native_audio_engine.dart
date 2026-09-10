@@ -27,6 +27,8 @@ class NativeAudioEngine implements AudioEngine {
       StreamController<MasterMeterSnapshot>.broadcast();
   final StreamController<TrackMatch> _trackMatches =
       StreamController<TrackMatch>.broadcast();
+  final StreamController<AudioRouteState> _routeStates =
+      StreamController<AudioRouteState>.broadcast();
 
   final Map<String, InputChannelConfig> _channels =
       <String, InputChannelConfig>{};
@@ -43,7 +45,12 @@ class NativeAudioEngine implements AudioEngine {
   @override
   EngineState get state => _state;
 
+  @override
   AudioRouteState get routeState => _routeState;
+
+  @override
+  Stream<AudioRouteState> get routeStates => _routeStates.stream;
+
   NativeCaptureStatus? get captureStatus => _captureStatus;
   List<AudioInputEndpoint> get inputDevices => List.unmodifiable(_inputs);
 
@@ -64,28 +71,28 @@ class NativeAudioEngine implements AudioEngine {
   }) async {
     _ensureUsable();
     _state = EngineState.preparing;
-    _routeState = AudioRouteState.preparing;
+    _setRouteState(AudioRouteState.preparing);
 
     if (!bindings.initialize(sampleRate, framesPerBuffer)) {
       _state = EngineState.failed;
-      _routeState = AudioRouteState.failed;
+      _setRouteState(AudioRouteState.failed);
       throw StateError('Native audio engine initialization failed.');
     }
 
     switch (permissionState) {
       case AudioPermissionState.granted:
         _state = EngineState.idle;
-        _routeState = AudioRouteState.idle;
+        _setRouteState(AudioRouteState.idle);
       case AudioPermissionState.denied:
       case AudioPermissionState.restricted:
         _state = EngineState.degraded;
-        _routeState = AudioRouteState.permissionDenied;
+        _setRouteState(AudioRouteState.permissionDenied);
       case AudioPermissionState.unavailable:
         _state = EngineState.failed;
-        _routeState = AudioRouteState.failed;
+        _setRouteState(AudioRouteState.failed);
       case AudioPermissionState.unknown:
         _state = EngineState.idle;
-        _routeState = AudioRouteState.idle;
+        _setRouteState(AudioRouteState.idle);
     }
 
     if (pollInterval case final interval?) {
@@ -97,6 +104,7 @@ class NativeAudioEngine implements AudioEngine {
     }
   }
 
+  @override
   Future<List<AudioInputEndpoint>> refreshInputDevices() async {
     _ensureUsable();
     final records = bindings.listInputDevices();
@@ -114,12 +122,12 @@ class NativeAudioEngine implements AudioEngine {
 
     if (_inputs.isEmpty && permissionState.canCapture) {
       _state = EngineState.degraded;
-      _routeState = AudioRouteState.noDevice;
+      _setRouteState(AudioRouteState.noDevice);
     } else if (_inputs.isNotEmpty &&
         permissionState.canCapture &&
         _channels.isEmpty) {
       _state = EngineState.idle;
-      _routeState = AudioRouteState.idle;
+      _setRouteState(AudioRouteState.idle);
     }
     return inputDevices;
   }
@@ -129,17 +137,17 @@ class NativeAudioEngine implements AudioEngine {
     _ensureUsable();
     if (!permissionState.canCapture) {
       _state = EngineState.degraded;
-      _routeState = AudioRouteState.permissionDenied;
+      _setRouteState(AudioRouteState.permissionDenied);
       throw StateError('Audio input permission is not granted.');
     }
     if (!_inputs.any((input) => input.uid == channel.endpointId)) {
       _state = EngineState.degraded;
-      _routeState = AudioRouteState.noDevice;
+      _setRouteState(AudioRouteState.noDevice);
       throw StateError('Selected audio endpoint is not available.');
     }
 
     _state = EngineState.preparing;
-    _routeState = AudioRouteState.preparing;
+    _setRouteState(AudioRouteState.preparing);
 
     final configured = bindings.addChannel(channel.id) &&
         bindings.setFader(channel.id, channel.fader) &&
@@ -149,7 +157,7 @@ class NativeAudioEngine implements AudioEngine {
         bindings.captureStart(channel.endpointId);
     if (!configured) {
       _state = EngineState.failed;
-      _routeState = AudioRouteState.failed;
+      _setRouteState(AudioRouteState.failed);
       throw StateError('Native capture route configuration failed.');
     }
 
@@ -173,7 +181,7 @@ class NativeAudioEngine implements AudioEngine {
       _lastXrunCount = 0;
       _stagnantPolls = 0;
       _state = EngineState.idle;
-      _routeState = AudioRouteState.idle;
+      _setRouteState(AudioRouteState.idle);
     }
   }
 
@@ -255,23 +263,23 @@ class NativeAudioEngine implements AudioEngine {
     switch (status.state) {
       case NativeCaptureState.idle:
         _state = EngineState.idle;
-        _routeState = AudioRouteState.idle;
+        _setRouteState(AudioRouteState.idle);
         _stagnantPolls = 0;
       case NativeCaptureState.starting:
         _state = EngineState.preparing;
-        _routeState = AudioRouteState.preparing;
+        _setRouteState(AudioRouteState.preparing);
         _stagnantPolls = 0;
       case NativeCaptureState.deviceRemoved:
         _state = EngineState.degraded;
-        _routeState = AudioRouteState.deviceLost;
+        _setRouteState(AudioRouteState.deviceLost);
         _stagnantPolls = 0;
       case NativeCaptureState.formatChanged:
         _state = EngineState.degraded;
-        _routeState = AudioRouteState.formatError;
+        _setRouteState(AudioRouteState.formatError);
         _stagnantPolls = 0;
       case NativeCaptureState.failed:
         _state = EngineState.failed;
-        _routeState = AudioRouteState.failed;
+        _setRouteState(AudioRouteState.failed);
         _stagnantPolls = 0;
       case NativeCaptureState.running:
         final xrunAdvanced = status.xrunCount > previousXruns;
@@ -280,14 +288,16 @@ class NativeAudioEngine implements AudioEngine {
 
         if (xrunAdvanced) {
           _state = EngineState.degraded;
-          _routeState = AudioRouteState.overrun;
+          _setRouteState(AudioRouteState.overrun);
           _stagnantPolls = 0;
         } else if (callbacksAdvanced) {
           _state = EngineState.running;
           _stagnantPolls = 0;
-          _routeState = _requiresRecoveryPulse(previousRoute)
-              ? AudioRouteState.recovered
-              : AudioRouteState.active;
+          _setRouteState(
+            _requiresRecoveryPulse(previousRoute)
+                ? AudioRouteState.recovered
+                : AudioRouteState.active,
+          );
         } else {
           _stagnantPolls += 1;
           final threshold = previousRoute == AudioRouteState.recovered
@@ -295,10 +305,10 @@ class NativeAudioEngine implements AudioEngine {
               : noSignalPollThreshold;
           if (_stagnantPolls >= threshold) {
             _state = EngineState.degraded;
-            _routeState = AudioRouteState.noSignal;
+            _setRouteState(AudioRouteState.noSignal);
           } else {
             _state = EngineState.running;
-            _routeState = AudioRouteState.active;
+            _setRouteState(AudioRouteState.active);
           }
         }
     }
@@ -342,6 +352,14 @@ class NativeAudioEngine implements AudioEngine {
     );
   }
 
+  void _setRouteState(AudioRouteState next) {
+    if (_routeState == next) return;
+    _routeState = next;
+    if (!_disposed) {
+      _routeStates.add(next);
+    }
+  }
+
   static bool _requiresRecoveryPulse(AudioRouteState state) => switch (state) {
         AudioRouteState.noSignal ||
         AudioRouteState.deviceLost ||
@@ -358,6 +376,7 @@ class NativeAudioEngine implements AudioEngine {
     _pollTimer?.cancel();
     bindings.captureStop();
     _disposed = true;
+    await _routeStates.close();
     await _channelMeters.close();
     await _masterMeters.close();
     await _trackMatches.close();
