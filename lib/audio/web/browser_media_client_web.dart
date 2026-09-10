@@ -14,6 +14,8 @@ class WebBrowserMediaClient
   void Function()? _deviceChangeHandler;
   bool _deviceChangeListenerInstalled = false;
 
+  web.MediaStream? get activeStream => _activeStream;
+
   @override
   Future<BrowserAudioCapabilities> probeCapabilities() async {
     final navigator = web.window.navigator;
