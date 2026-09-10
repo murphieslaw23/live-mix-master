@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
@@ -9,6 +10,7 @@ import 'browser_capture_controller.dart';
 typedef BrowserActiveStreamProvider = web.MediaStream? Function();
 
 const int _recorderMaxBytes = 64 * 1024 * 1024;
+const Duration _recorderStopTimeout = Duration(seconds: 2);
 
 class WebAudioWorkletGateway implements BrowserAudioProcessingGateway {
   WebAudioWorkletGateway({required BrowserActiveStreamProvider activeStream})
@@ -21,6 +23,7 @@ class WebAudioWorkletGateway implements BrowserAudioProcessingGateway {
   web.AudioWorkletNode? _workletNode;
   web.MediaStreamAudioDestinationNode? _destinationNode;
   web.Worker? _recorderWorker;
+  Completer<void>? _recorderStopCompleter;
 
   @override
   Future<BrowserAudioProcessingAttempt> start(BrowserCaptureSource source) async {
@@ -81,6 +84,12 @@ class WebAudioWorkletGateway implements BrowserAudioProcessingGateway {
             case 'pcmAck':
               workletNode.port.postMessage(message);
               break;
+            case 'recordingStopped':
+              final completer = _recorderStopCompleter;
+              if (completer != null && !completer.isCompleted) {
+                completer.complete();
+              }
+              break;
             case 'recordingError':
               workletNode.port.postMessage(
                 <String, Object?>{
@@ -88,6 +97,10 @@ class WebAudioWorkletGateway implements BrowserAudioProcessingGateway {
                   'enabled': false,
                 }.jsify(),
               );
+              final completer = _recorderStopCompleter;
+              if (completer != null && !completer.isCompleted) {
+                completer.complete();
+              }
               break;
             default:
               break;
@@ -146,7 +159,22 @@ class WebAudioWorkletGateway implements BrowserAudioProcessingGateway {
     sourceNode?.disconnect();
     workletNode?.disconnect();
     destinationNode?.disconnect();
+
     if (recorderWorker != null) {
+      final stopCompleter = Completer<void>();
+      _recorderStopCompleter = stopCompleter;
+      recorderWorker.postMessage(
+        <String, Object?>{'type': 'stop'}.jsify(),
+      );
+      try {
+        await stopCompleter.future.timeout(_recorderStopTimeout);
+      } on TimeoutException {
+        // Fail closed: a non-responsive Worker cannot block graph teardown.
+      } finally {
+        if (identical(_recorderStopCompleter, stopCompleter)) {
+          _recorderStopCompleter = null;
+        }
+      }
       recorderWorker.terminate();
     }
 
