@@ -215,7 +215,7 @@ class BrowserCaptureController {
     _setState(
       _state.copyWith(
         status: BrowserCaptureStatus.reconnectRequired,
-        message: 'CAPTURE ENDED — RECONNECT REQUIRED',
+        message: 'CAPTURE ENDED / ACCESS REVOKED — RECONNECT REQUIRED',
         clearSource: true,
       ),
     );
