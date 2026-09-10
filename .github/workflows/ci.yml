@@ -120,6 +120,8 @@ jobs:
           cache: true
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
+      - name: Verify AudioWorklet processor contract
+        run: node --test test/web_audio_worklet_processor_test.mjs
       - name: Verify web platform, capture, and DSP contracts
         run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart test/browser_media_gateway_test.dart test/web_dsp_kernel_test.dart
       - name: Build Flutter Web release artifact
