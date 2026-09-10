@@ -137,7 +137,8 @@ class BrowserCaptureController {
   BrowserCaptureController({required BrowserMediaGateway gateway})
       : _gateway = gateway {
     if (gateway is BrowserMediaLifecycleGateway) {
-      gateway.setTrackEndedHandler(handleTrackEnded);
+      (gateway as BrowserMediaLifecycleGateway)
+          .setTrackEndedHandler(handleTrackEnded);
     }
   }
 
@@ -268,7 +269,10 @@ class BrowserCaptureController {
     final compact = error
         .toString()
         .replaceAll(RegExp(r'\s+'), ' ')
-        .replaceAll(RegExp(r'(?i)(token|password|authorization)=?[^ ,;]+'), r'$1=[REDACTED]')
+        .replaceAll(
+          RegExp(r'(?i)(token|password|authorization)=?[^ ,;]+'),
+          r'$1=[REDACTED]',
+        )
         .trim();
     return compact.isEmpty ? prefix : '$prefix — $compact';
   }
