@@ -120,6 +120,11 @@ jobs:
           cache: true
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
+      - name: Verify native DSP parity vectors
+        run: |
+          mkdir -p build/native-parity
+          c++ -std=c++17 -O2 -I native native/tests/dsp_parity_vectors_test.cpp -o build/native-parity/dsp-parity
+          build/native-parity/dsp-parity test/fixtures/dsp_parity_vectors.tsv
       - name: Verify AudioWorklet processor contract
         run: node --test test/web_audio_worklet_processor_test.mjs
       - name: Verify Web Audio graph integration contract
