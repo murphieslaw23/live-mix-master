@@ -106,10 +106,29 @@ void main() {
       expect(controller.state.status, BrowserCaptureStatus.reconnectRequired);
       expect(controller.state.source, isNull);
     });
+
+    test('devicechange propagates without falsely dropping active source', () async {
+      final client = _FakeClient(
+        microphoneResult: const BrowserRawCapture.success(
+          id: 'origin-scoped-3',
+          label: 'Field Interface',
+          hasAudioTrack: true,
+        ),
+      );
+      final gateway = DefaultBrowserMediaGateway(client: client);
+      final controller = BrowserCaptureController(gateway: gateway);
+
+      await controller.requestMicrophone();
+      client.changeDeviceInventory();
+
+      expect(controller.state.status, BrowserCaptureStatus.deviceInventoryChanged);
+      expect(controller.state.source?.label, 'Field Interface');
+      expect(controller.state.message, contains('DEVICE LIST CHANGED'));
+    });
   });
 }
 
-class _FakeClient implements BrowserMediaClient {
+class _FakeClient implements BrowserMediaClient, BrowserMediaDeviceChangeClient {
   _FakeClient({
     this.capabilities = const BrowserAudioCapabilities(
       mediaDevicesAvailable: true,
@@ -129,6 +148,7 @@ class _FakeClient implements BrowserMediaClient {
   final BrowserRawCapture microphoneResult;
   final BrowserRawCapture displayResult;
   void Function()? _onEnded;
+  void Function()? _onDeviceChange;
 
   @override
   Future<BrowserAudioCapabilities> probeCapabilities() async => capabilities;
@@ -145,5 +165,12 @@ class _FakeClient implements BrowserMediaClient {
     return displayResult;
   }
 
+  @override
+  void setDeviceChangeHandler(void Function() handler) {
+    _onDeviceChange = handler;
+  }
+
   void endActiveTrack() => _onEnded?.call();
+
+  void changeDeviceInventory() => _onDeviceChange?.call();
 }
