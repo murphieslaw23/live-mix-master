@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import * as recorderWorker from '../web/audio/livemixmaster-recorder-worker.js';
 
 const { LiveMixMasterWavWriter } = recorderWorker;
+const recorderWorkerUrl = new URL('../web/audio/livemixmaster-recorder-worker.js', import.meta.url);
 
 function ascii(bytes, start, length) {
   return String.fromCharCode(...bytes.subarray(start, start + length));
@@ -108,5 +110,15 @@ test('Worker protocol ACKs accepted PCM and fails closed when storage capacity i
     messages.some((message) => message.type === 'pcmAck' && message.sequence >= 8),
     false,
     'rejected PCM must never be ACKed after fail-closed storage failure',
+  );
+});
+
+test('Recorder module installs its protocol handler in a real Worker global scope', async () => {
+  const source = await readFile(recorderWorkerUrl, 'utf8');
+
+  assert.match(
+    source,
+    /typeof self !== 'undefined'[\s\S]*self\.addEventListener\([\s\S]*'message'[\s\S]*createLiveMixMasterRecorderWorkerHandler/,
+    'module Worker must install the exported recorder protocol handler at runtime',
   );
 });
