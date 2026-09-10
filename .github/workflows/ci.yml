@@ -121,7 +121,7 @@ jobs:
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - name: Verify web platform and browser-capture contracts
-        run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart
+        run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart test/browser_media_gateway_test.dart
       - name: Build Flutter Web release artifact
         run: flutter build web --release
       - name: Upload Flutter Web artifact
