@@ -1,7 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/audio/web/browser_recording_controller.dart';
 
-class FakeBrowserRecordingGateway implements BrowserRecordingGateway {
+class FakeBrowserRecordingGateway
+    implements BrowserRecordingGateway, BrowserRecordingLifecycleGateway {
   BrowserRecordingException? startFailure;
   BrowserRecordingException? stopFailure;
   BrowserRecordingException? exportFailure;
@@ -14,6 +15,18 @@ class FakeBrowserRecordingGateway implements BrowserRecordingGateway {
   int starts = 0;
   int stops = 0;
   int exports = 0;
+  void Function(BrowserRecordingException failure)? _failureHandler;
+
+  @override
+  void setRecordingFailureHandler(
+    void Function(BrowserRecordingException failure) handler,
+  ) {
+    _failureHandler = handler;
+  }
+
+  void emitFailure(BrowserRecordingException failure) {
+    _failureHandler?.call(failure);
+  }
 
   @override
   Future<void> startRecording() async {
@@ -92,6 +105,28 @@ void main() {
       expect(controller.state.status, BrowserRecordingStatus.error);
       expect(controller.state.message, 'RECORDING FAILED — STORAGE FULL');
       expect(controller.state.artifact, isNull);
+    });
+
+    test('asynchronous worker/backpressure failure updates operator state and listeners', () async {
+      final gateway = FakeBrowserRecordingGateway();
+      final controller = BrowserRecordingController(gateway: gateway);
+      final observed = <BrowserRecordingStatus>[];
+      controller.addListener((state) => observed.add(state.status));
+
+      await controller.startRecording();
+      expect(controller.state.status, BrowserRecordingStatus.recording);
+
+      gateway.emitFailure(
+        const BrowserRecordingException(
+          BrowserRecordingFailure.backpressure,
+          'RECORDING FAILED — AUDIO BACKPRESSURE',
+        ),
+      );
+
+      expect(controller.state.status, BrowserRecordingStatus.error);
+      expect(controller.state.message, 'RECORDING FAILED — AUDIO BACKPRESSURE');
+      expect(controller.state.artifact, isNull);
+      expect(observed, contains(BrowserRecordingStatus.error));
     });
   });
 }
