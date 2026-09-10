@@ -169,3 +169,14 @@ export function createLiveMixMasterRecorderWorkerHandler(postMessage) {
     }
   };
 }
+
+if (
+  typeof self !== 'undefined' &&
+  typeof self.addEventListener === 'function' &&
+  typeof self.postMessage === 'function'
+) {
+  self.addEventListener(
+    'message',
+    createLiveMixMasterRecorderWorkerHandler((message) => self.postMessage(message)),
+  );
+}
