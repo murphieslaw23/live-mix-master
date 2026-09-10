@@ -38,9 +38,10 @@ void main() {
       final path = Platform.environment['LMM_NATIVE_LIBRARY'];
       if (path == null || path.isEmpty) {
         markTestSkipped('requires a built native engine via LMM_NATIVE_LIBRARY');
+        return;
       }
 
-      final bindings = FfiAudioPermissionBindings(DynamicLibrary.open(path!));
+      final bindings = FfiAudioPermissionBindings(DynamicLibrary.open(path));
       expect(AudioPermissionState.values, contains(bindings.status));
     });
   });
