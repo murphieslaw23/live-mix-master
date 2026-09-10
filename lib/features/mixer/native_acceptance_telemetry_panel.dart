@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../audio/native_acceptance_telemetry.dart';
 import '../../design/live_mix_tokens.dart';
@@ -48,6 +49,11 @@ class _NativeAcceptanceTelemetryPanelState
       if (!mounted) return;
       setState(() => _snapshot = widget.telemetrySource.snapshot);
     });
+  }
+
+  Future<void> _copyEvidence() async {
+    final evidence = widget.telemetrySource.snapshot.toEvidenceMarkdown();
+    await Clipboard.setData(ClipboardData(text: evidence));
   }
 
   @override
@@ -125,6 +131,14 @@ class _NativeAcceptanceTelemetryPanelState
                     _metric('FP REJECT', '${snapshot.fingerprintRejectedBlocks}'),
                   ],
                 ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: _copyEvidence,
+              child: Text(
+                'COPY EVIDENCE',
+                style: LiveMixTextStyles.uiLabel.copyWith(fontSize: 9),
               ),
             ),
           ],
