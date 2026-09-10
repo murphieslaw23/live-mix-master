@@ -23,22 +23,24 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
   void initState() {
     super.initState();
     _controller = widget.controller ?? createBrowserCaptureController();
-    _probe();
+    _controller.addListener(_handleControllerState);
+    _controller.probe();
   }
 
-  Future<void> _probe() async {
-    await _controller.probe();
+  @override
+  void dispose() {
+    _controller.removeListener(_handleControllerState);
+    super.dispose();
+  }
+
+  void _handleControllerState(BrowserCaptureState _) {
     if (mounted) {
       setState(() {});
     }
   }
 
   Future<void> _run(Future<void> Function() action) async {
-    setState(() {});
     await action();
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   @override
@@ -158,6 +160,8 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
         return 'SOURCE UNSUPPORTED';
       case BrowserCaptureStatus.reconnectRequired:
         return 'RECONNECT REQUIRED';
+      case BrowserCaptureStatus.deviceInventoryChanged:
+        return 'DEVICE LIST CHANGED';
       case BrowserCaptureStatus.error:
         return 'CAPTURE ERROR';
     }
@@ -169,6 +173,8 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
         return Icons.graphic_eq;
       case BrowserCaptureStatus.requesting:
         return Icons.sync;
+      case BrowserCaptureStatus.deviceInventoryChanged:
+        return Icons.usb_rounded;
       case BrowserCaptureStatus.permissionDenied:
       case BrowserCaptureStatus.noAudioTrack:
       case BrowserCaptureStatus.unsupported:
@@ -189,6 +195,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
       case BrowserCaptureStatus.noAudioTrack:
       case BrowserCaptureStatus.unsupported:
       case BrowserCaptureStatus.reconnectRequired:
+      case BrowserCaptureStatus.deviceInventoryChanged:
       case BrowserCaptureStatus.error:
         return LiveMixTokens.statusWarn;
       case BrowserCaptureStatus.requesting:
@@ -323,6 +330,7 @@ class _CaptureControlPanel extends StatelessWidget {
       case BrowserCaptureStatus.noAudioTrack:
       case BrowserCaptureStatus.unsupported:
       case BrowserCaptureStatus.reconnectRequired:
+      case BrowserCaptureStatus.deviceInventoryChanged:
       case BrowserCaptureStatus.error:
         return LiveMixTokens.statusWarn;
       case BrowserCaptureStatus.idle:
