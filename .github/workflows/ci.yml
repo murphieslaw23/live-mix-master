@@ -122,6 +122,8 @@ jobs:
       - run: flutter pub get
       - name: Verify AudioWorklet processor contract
         run: node --test test/web_audio_worklet_processor_test.mjs
+      - name: Verify Web Audio graph integration contract
+        run: node --test test/web_audio_graph_integration_test.mjs
       - name: Verify web platform, capture, and DSP contracts
         run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart test/browser_media_gateway_test.dart test/web_dsp_kernel_test.dart test/browser_audio_processing_controller_test.dart
       - name: Build Flutter Web release artifact
