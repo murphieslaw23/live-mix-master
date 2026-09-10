@@ -4,6 +4,7 @@ import 'package:live_mix_master/app/app_surface_web.dart';
 import 'package:live_mix_master/audio/audio_engine_factory.dart';
 import 'package:live_mix_master/audio/audio_engine_port.dart';
 import 'package:live_mix_master/audio/web/browser_capture_controller.dart';
+import 'package:live_mix_master/audio/web/browser_recording_controller.dart';
 
 void main() {
   test('VM bootstrap selects the desktop native backend', () {
@@ -96,6 +97,44 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('web shell drives explicit record stop and download operator flow', (tester) async {
+    final captureController = BrowserCaptureController(gateway: _ShellGateway());
+    final recordingGateway = _ShellRecordingGateway();
+    final recordingController = BrowserRecordingController(gateway: recordingGateway);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WebReleaseShell(
+          controller: captureController,
+          recordingController: recordingController,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('START RECORDING'), findsOneWidget);
+
+    await tester.tap(find.text('CONNECT MIC / USB'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('START RECORDING'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RECORDING ACTIVE — POST-MASTER PCM TO WAV'), findsOneWidget);
+    expect(find.text('STOP RECORDING'), findsOneWidget);
+
+    await tester.tap(find.text('STOP RECORDING'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('WAV FINALIZED — acceptance.wav — 50 BYTES'), findsOneWidget);
+    expect(find.text('DOWNLOAD WAV'), findsOneWidget);
+
+    await tester.tap(find.text('DOWNLOAD WAV'));
+    await tester.pumpAndSettle();
+
+    expect(recordingGateway.exports, 1);
+    expect(find.text('WAV DOWNLOAD REQUESTED — acceptance.wav'), findsOneWidget);
+  });
 }
 
 class _ShellGateway implements BrowserMediaGateway {
@@ -144,4 +183,25 @@ class _LifecycleShellGateway extends _ShellGateway
   void endActiveTrack() => _onEnded?.call();
 
   void changeDeviceInventory() => _onDeviceChange?.call();
+}
+
+class _ShellRecordingGateway implements BrowserRecordingGateway {
+  int exports = 0;
+
+  @override
+  Future<void> startRecording() async {}
+
+  @override
+  Future<BrowserRecordingArtifact> stopRecording() async {
+    return const BrowserRecordingArtifact(
+      fileName: 'acceptance.wav',
+      bytesWritten: 50,
+      dataBytes: 6,
+    );
+  }
+
+  @override
+  Future<void> exportRecording(BrowserRecordingArtifact artifact) async {
+    exports += 1;
+  }
 }
