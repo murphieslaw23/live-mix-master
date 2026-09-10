@@ -243,7 +243,7 @@ class NativeAudioEngine implements AudioEngine {
         ),
       );
 
-  /// Polls native lifecycle telemetry from the non-real-time host side.
+  /// Polls native lifecycle and meter telemetry from the non-real-time host side.
   Future<void> pollNow() async {
     _ensureUsable();
     final status = bindings.captureStatus();
@@ -303,8 +303,43 @@ class NativeAudioEngine implements AudioEngine {
         }
     }
 
+    _emitMeterSnapshots();
     _lastCallbackCount = status.callbackCount;
     _lastXrunCount = status.xrunCount;
+  }
+
+  void _emitMeterSnapshots() {
+    final channels = <ChannelMeterSnapshot>[];
+    for (final channelId in _channels.keys) {
+      final native = bindings.channelMeter(channelId);
+      if (native == null) continue;
+      channels.add(
+        ChannelMeterSnapshot(
+          channelId: channelId,
+          meter: StereoMeter(
+            peakLeft: native.peakLeft,
+            peakRight: native.peakRight,
+            rmsLeft: native.rmsLeft,
+            rmsRight: native.rmsRight,
+            clipping: native.clipping,
+          ),
+        ),
+      );
+    }
+    _channelMeters.add(List<ChannelMeterSnapshot>.unmodifiable(channels));
+
+    final nativeMaster = bindings.masterMeter();
+    if (nativeMaster == null) return;
+    _masterMeters.add(
+      MasterMeterSnapshot(
+        momentaryLufs: double.nan,
+        shortTermLufs: double.nan,
+        integratedLufs: double.nan,
+        truePeakLeft: nativeMaster.truePeakLeft,
+        truePeakRight: nativeMaster.truePeakRight,
+        limiterActive: nativeMaster.limiterActive,
+      ),
+    );
   }
 
   static bool _requiresRecoveryPulse(AudioRouteState state) => switch (state) {
