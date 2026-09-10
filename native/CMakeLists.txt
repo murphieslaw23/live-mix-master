@@ -82,6 +82,18 @@ if(BUILD_TESTING)
         COMMAND device_catalog_contract_tests $<TARGET_FILE:live_mixer_engine>
     )
 
+    if(APPLE)
+        add_executable(audio_permission_contract_tests
+            tests/audio_permission_contract_tests.cpp
+        )
+        target_include_directories(audio_permission_contract_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        add_dependencies(audio_permission_contract_tests live_mixer_engine)
+        add_test(
+            NAME audio_permission_contract_tests
+            COMMAND audio_permission_contract_tests $<TARGET_FILE:live_mixer_engine>
+        )
+    endif()
+
     add_executable(capture_state_tests
         tests/capture_state_tests.cpp
     )
