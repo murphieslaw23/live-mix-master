@@ -222,6 +222,71 @@ void main() {
 
       await engine.dispose();
     });
+
+    test('poll emits compact channel and master meter snapshots', () async {
+      final bindings = _FakeNativeAudioBindings(
+        devices: const [
+          NativeInputDevice(
+            objectId: 9,
+            uid: 'coreaudio:meter-test',
+            name: 'Meter Test Input',
+            inputChannels: 2,
+            nominalSampleRate: 48000,
+            bufferFrames: 256,
+          ),
+        ],
+      )
+        ..channelMeters['meter-channel'] = const NativeChannelMeter(
+          peakLeft: .75,
+          peakRight: .5,
+          rmsLeft: .3,
+          rmsRight: .2,
+          clipping: false,
+        )
+        ..master = const NativeMasterMeter(
+          truePeakLeft: .9,
+          truePeakRight: .8,
+          limiterActive: true,
+        );
+      final engine = NativeAudioEngine(
+        bindings: bindings,
+        permissionState: AudioPermissionState.granted,
+        pollInterval: null,
+      );
+      await engine.initialize();
+      await engine.refreshInputDevices();
+      await engine.addChannel(
+        const InputChannelConfig(
+          id: 'meter-channel',
+          name: 'METER',
+          kind: AudioInputKind.hardware,
+          endpointId: 'coreaudio:meter-test',
+        ),
+      );
+
+      bindings.status = _status(NativeCaptureState.running, callbacks: 1);
+      final channelEvent = engine.channelMeters.first;
+      final masterEvent = engine.masterMeters.first;
+      await engine.pollNow();
+
+      final channels = await channelEvent;
+      final master = await masterEvent;
+      expect(channels, hasLength(1));
+      expect(channels.single.channelId, 'meter-channel');
+      expect(channels.single.meter.peakLeft, .75);
+      expect(channels.single.meter.peakRight, .5);
+      expect(channels.single.meter.rmsLeft, .3);
+      expect(channels.single.meter.rmsRight, .2);
+      expect(channels.single.meter.clipping, isFalse);
+      expect(master.truePeakLeft, .9);
+      expect(master.truePeakRight, .8);
+      expect(master.limiterActive, isTrue);
+      expect(master.momentaryLufs.isNaN, isTrue);
+      expect(master.shortTermLufs.isNaN, isTrue);
+      expect(master.integratedLufs.isNaN, isTrue);
+
+      await engine.dispose();
+    });
   });
 }
 
@@ -247,6 +312,9 @@ class _FakeNativeAudioBindings implements NativeAudioBindings {
 
   final List<NativeInputDevice> devices;
   final List<String> calls = <String>[];
+  final Map<String, NativeChannelMeter> channelMeters =
+      <String, NativeChannelMeter>{};
+  NativeMasterMeter? master;
   NativeCaptureStatus status = const NativeCaptureStatus(
     state: NativeCaptureState.idle,
     sampleRate: 0,
@@ -322,8 +390,8 @@ class _FakeNativeAudioBindings implements NativeAudioBindings {
   NativeCaptureStatus captureStatus() => status;
 
   @override
-  NativeChannelMeter? channelMeter(String id) => null;
+  NativeChannelMeter? channelMeter(String id) => channelMeters[id];
 
   @override
-  NativeMasterMeter? masterMeter() => null;
+  NativeMasterMeter? masterMeter() => master;
 }
