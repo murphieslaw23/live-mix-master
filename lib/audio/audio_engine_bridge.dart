@@ -114,11 +114,14 @@ class TrackMatch {
 
 abstract interface class AudioEngine {
   EngineState get state;
+  AudioRouteState get routeState;
+  Stream<AudioRouteState> get routeStates;
   Stream<List<ChannelMeterSnapshot>> get channelMeters;
   Stream<MasterMeterSnapshot> get masterMeters;
   Stream<TrackMatch> get trackMatches;
 
   Future<void> initialize({int sampleRate = 48000, int framesPerBuffer = 256});
+  Future<List<AudioInputEndpoint>> refreshInputDevices();
   Future<void> addChannel(InputChannelConfig channel);
   Future<void> removeChannel(String channelId);
   Future<void> setTrim(String channelId, double db);
