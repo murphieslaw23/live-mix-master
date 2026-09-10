@@ -72,6 +72,21 @@ function recordingFailureMessage(error) {
   };
 }
 
+function recordingStoppedMessage(result) {
+  if (result instanceof Uint8Array) {
+    return {
+      type: 'recordingStopped',
+      bytesWritten: result.byteLength,
+      dataBytes: Math.max(0, result.byteLength - WAV_HEADER_BYTES),
+    };
+  }
+  return {
+    type: 'recordingStopped',
+    bytesWritten: result?.bytesWritten ?? 0,
+    dataBytes: result?.dataBytes ?? 0,
+  };
+}
+
 function defaultMemoryWriterFactory(options) {
   return new LiveMixMasterWavWriter(options);
 }
@@ -283,12 +298,36 @@ export function createLiveMixMasterRecorderWorkerHandler(
   let writer = null;
   let failed = false;
   let startGeneration = 0;
+  let pendingGeneration = null;
+  let stopRequestedGeneration = null;
+
+  const finalizeWriter = (candidate) => {
+    try {
+      const result = candidate?.finalize?.();
+      postMessage(recordingStoppedMessage(result));
+    } catch (error) {
+      postMessage(recordingFailureMessage(error));
+    }
+  };
 
   const activateWriter = (candidate, generation) => {
     if (generation !== startGeneration) {
-      candidate?.finalize?.();
+      try {
+        candidate?.finalize?.();
+      } catch (_) {
+        // A stale writer is closed best-effort and never becomes active.
+      }
       return;
     }
+
+    pendingGeneration = null;
+    if (stopRequestedGeneration === generation) {
+      writer = null;
+      failed = true;
+      finalizeWriter(candidate);
+      return;
+    }
+
     writer = candidate;
     failed = false;
     postMessage({ type: 'recordingStarted' });
@@ -298,6 +337,7 @@ export function createLiveMixMasterRecorderWorkerHandler(
     if (generation !== startGeneration) {
       return;
     }
+    pendingGeneration = null;
     writer = null;
     failed = true;
     postMessage(recordingFailureMessage(error));
@@ -313,6 +353,8 @@ export function createLiveMixMasterRecorderWorkerHandler(
       const generation = ++startGeneration;
       writer = null;
       failed = false;
+      pendingGeneration = null;
+      stopRequestedGeneration = null;
       try {
         const candidate = writerFactory({
           sampleRate: message.sampleRate,
@@ -321,6 +363,7 @@ export function createLiveMixMasterRecorderWorkerHandler(
           maxBytes: message.maxBytes,
         });
         if (candidate && typeof candidate.then === 'function') {
+          pendingGeneration = generation;
           candidate.then(
             (resolvedWriter) => activateWriter(resolvedWriter, generation),
             (error) => failWriter(error, generation),
@@ -330,6 +373,21 @@ export function createLiveMixMasterRecorderWorkerHandler(
         }
       } catch (error) {
         failWriter(error, generation);
+      }
+      return;
+    }
+
+    if (message.type === 'stop') {
+      const generation = startGeneration;
+      stopRequestedGeneration = generation;
+      const currentWriter = writer;
+      writer = null;
+      failed = true;
+
+      if (currentWriter != null) {
+        finalizeWriter(currentWriter);
+      } else if (pendingGeneration !== generation) {
+        postMessage(recordingStoppedMessage(null));
       }
       return;
     }
