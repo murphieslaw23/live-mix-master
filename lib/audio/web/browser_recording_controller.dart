@@ -74,9 +74,10 @@ typedef BrowserRecordingStateListener = void Function(BrowserRecordingState stat
 class BrowserRecordingController {
   BrowserRecordingController({required BrowserRecordingGateway gateway})
       : _gateway = gateway {
-    if (gateway is BrowserRecordingLifecycleGateway) {
-      gateway.setRecordingFailureHandler(_handleGatewayFailure);
-    }
+    final lifecycleGateway = gateway is BrowserRecordingLifecycleGateway
+        ? gateway as BrowserRecordingLifecycleGateway
+        : null;
+    lifecycleGateway?.setRecordingFailureHandler(_handleGatewayFailure);
   }
 
   final BrowserRecordingGateway _gateway;
