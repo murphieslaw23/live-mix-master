@@ -75,6 +75,11 @@ jobs:
           test -f build/native/liblive_mixer_engine.dylib
           ctest --test-dir build/native --output-on-failure
 
+      - name: Run Dart FFI native ABI smoke
+        env:
+          LMM_NATIVE_LIBRARY: ${{ github.workspace }}/build/native/liblive_mixer_engine.dylib
+        run: flutter test --reporter expanded test/native_audio_ffi_bindings_test.dart
+
       - name: Build Flutter debug app
         run: flutter build macos --debug
 
