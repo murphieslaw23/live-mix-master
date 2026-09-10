@@ -38,6 +38,12 @@ if(APPLE)
             ${AUDIO_TOOLBOX}
             ${AV_FOUNDATION}
     )
+
+    add_executable(macos_device_probe
+        tools/macos_device_probe.cpp
+    )
+    target_include_directories(macos_device_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(macos_device_probe PRIVATE live_mixer_engine)
 elseif(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_link_libraries(live_mixer_engine PRIVATE Threads::Threads asound)
@@ -94,6 +100,14 @@ if(BUILD_TESTING)
         add_test(
             NAME audio_permission_contract_tests
             COMMAND audio_permission_contract_tests $<TARGET_FILE:live_mixer_engine>
+        )
+
+        add_executable(realtime_atomic_contract_tests
+            tests/realtime_atomic_contract_tests.cpp
+        )
+        add_test(
+            NAME realtime_atomic_contract_tests
+            COMMAND realtime_atomic_contract_tests
         )
     endif()
 

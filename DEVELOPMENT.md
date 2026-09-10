@@ -4,7 +4,7 @@
 
 The first verified desktop host is macOS. Windows and Linux remain planned targets and are not implied as runnable by this document.
 
-Issue #2 validates a local debug-development baseline only. Distribution signing, notarization, App Store packaging, physical audio capture, loopback capture, recording correctness, fingerprint-provider E2E, and broadcast-delivery E2E are separate gates.
+Issue #2 validates the clean-clone desktop baseline. Issue #3 adds Core Audio source/capture and native PCM-path contracts, but physical/BlackHole device acceptance remains a separate real-host gate.
 
 ## Prerequisites
 
@@ -76,13 +76,7 @@ The Flutter debug bundle is expected at:
 build/macos/Build/Products/Debug/live_mix_master.app
 ```
 
-The permanent macOS CI workflow copies the native debug engine to:
-
-```text
-build/macos/Build/Products/Debug/live_mix_master.app/Contents/Frameworks/liblive_mixer_engine.dylib
-```
-
-and then launches the application executable as a process-level smoke test.
+The permanent macOS CI workflow copies the native debug engine into the app bundle and then launches the executable as a process-level smoke test.
 
 ## Tests
 
@@ -113,12 +107,34 @@ Native build verification:
 cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/native --config Debug --parallel
 test -f build/native/liblive_mixer_engine.dylib
+ctest --test-dir build/native --output-on-failure
 ```
+
+## Issue #3 macOS device acceptance
+
+The exact physical/virtual endpoint procedure and evidence boundary are defined in [`docs/audio/macos-device-e2e.md`](docs/audio/macos-device-e2e.md).
+
+After the native build, enumerate the Core Audio catalog without assuming a display name:
+
+```sh
+build/native/macos_device_probe --list
+```
+
+On a real host, an optional native diagnostic can drain the production recorder/fingerprint SPSC queues for 10 seconds:
+
+```sh
+build/native/macos_device_probe --capture '<stable-uid>' 10
+```
+
+For a physical microphone/interface, the canonical permission and route acceptance must use the Flutter macOS application (`flutter run -d macos`) because TCC authorization for a terminal process is not equivalent to the sandboxed app. The final run must cover visible meters, fader/mute/solo, at least 10 seconds of recording, callback/xrun/overflow telemetry, independent WAV inspection, device disconnect, rediscovery by stable UID, and reconnect. Fill only non-secret results into `docs/audio/issue3-device-acceptance-record.md`.
+
+The current limiter is a deterministic sample limiter with a 0.98 linear ceiling. The existing ABI names `true_peak_left/right` do not prove oversampled True Peak/dBTP; do not cite them as such in acceptance evidence.
 
 ## Known limits
 
 - macOS is the only desktop runner verified by Issue #2.
-- The generated debug runner is sandboxed; audio-input and loopback permission/capture work belongs to Issue #3.
-- The native C++ engine is still a prototype; this baseline verifies build/load/host startup, not device-backed PCM correctness.
-- Recording, fingerprinting, and broadcast-metadata modules have source/contract tests, but real service/device E2E remains outside this baseline.
-- Signing/notarization/distribution are not part of Issue #2.
+- Issue #3 Core Audio and PCM-path code is CI-backed, but no physical-input or BlackHole real-device acceptance is claimed until the record is completed.
+- Windows and Linux device capture remain unverified.
+- Standards-based True Peak/dBTP and LUFS conformance are not provided by the current sample-peak limiter/meter fields.
+- Recording, fingerprinting, and broadcast-metadata modules have source/contract tests, but provider/device E2E remains outside the current hosted-CI evidence.
+- Signing/notarization/distribution are not part of this gate.

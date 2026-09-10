@@ -75,6 +75,10 @@ jobs:
           test -f build/native/liblive_mixer_engine.dylib
           ctest --test-dir build/native --output-on-failure
 
+      - name: Record Core Audio discovery probe
+        run: |
+          build/native/macos_device_probe --list | tee /tmp/live-mix-master-device-probe.log
+
       - name: Run Dart FFI native ABI smoke
         env:
           LMM_NATIVE_LIBRARY: ${{ github.workspace }}/build/native/liblive_mixer_engine.dylib
@@ -118,6 +122,7 @@ jobs:
           name: issue3-macos-launch-evidence
           path: |
             /tmp/live-mix-master-launch.log
+            /tmp/live-mix-master-device-probe.log
             build/macos/Build/Products/Debug/live_mix_master.app/Contents/Frameworks/liblive_mixer_engine.dylib
           if-no-files-found: warn
           retention-days: 14

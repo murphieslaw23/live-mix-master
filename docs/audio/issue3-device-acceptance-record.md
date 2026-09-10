@@ -1,0 +1,73 @@
+# Issue #3 macOS device acceptance record
+
+Status: **PENDING REAL DEVICE RUN**
+
+This file is a non-secret evidence template. Do not mark it PASS until `docs/audio/macos-device-e2e.md` has been executed on a real macOS host with a physical input or BlackHole-compatible endpoint.
+
+## Build/runtime identity
+
+- PR head SHA: PENDING
+- macOS version: PENDING
+- architecture: PENDING
+- Flutter version: 3.47.2
+- evidence date/time: PENDING
+
+## Endpoint and negotiated format
+
+- source class (physical input / BlackHole): PENDING
+- endpoint display label: PENDING
+- endpoint UID: PENDING
+- sample rate: PENDING
+- buffer frames: PENDING
+- input channels: PENDING
+- channel layout/format flags: PENDING
+
+## Live-path observations
+
+- visible channel meters: PENDING
+- fader behavior: PENDING
+- MUTE semantics: PENDING
+- SOLO semantics: PENDING
+- limiter activation under intentional over-ceiling signal: PENDING
+- post-limiter sample peak <= 0.98: PENDING
+
+## Callback and bounded-handoff telemetry
+
+- average callback duration (us): PENDING
+- maximum callback duration (us): PENDING
+- callback count: PENDING
+- xrun count: PENDING
+- recorder rejected blocks: PENDING
+- fingerprint rejected blocks: PENDING
+- queue overflow result: PENDING
+
+A clean acceptance run expects both rejected-block counters to remain zero. Non-zero counters fail the clean run and require investigation; they must never be hidden or rewritten as success.
+
+## Recording
+
+- recording duration: PENDING
+- WAV opens independently: PENDING
+- WAV format matches expected writer output: PENDING
+- non-silent program audio present where expected: PENDING
+- non-secret artifact/evidence name: PENDING
+
+## disconnect/reconnect
+
+- removal trigger used: PENDING
+- device-loss state observed: PENDING
+- stale audio prevented: PENDING
+- endpoint rediscovered by stable UID: PENDING
+- route reconnected and meters recovered: PENDING
+- disconnect/reconnect result: PENDING
+
+## DSP conformance note
+
+The current `true_peak_left/right` ABI fields are post-limiter **sample-peak** values. They are not an oversampled dBTP measurement. This record must not claim standards-based True Peak or LUFS conformance unless that implementation and its tests are added separately.
+
+## Final result
+
+- Final result: PENDING
+- Issue #3 evidence comment: PENDING
+- Reviewer/verification note: PENDING
+
+Forbidden evidence: credentials, access tokens, private keys, home-directory paths, hardware serial numbers, unrelated device identifiers, or raw logs containing secrets.
