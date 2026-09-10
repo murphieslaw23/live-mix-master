@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { LiveMixMasterWavWriter } from '../web/audio/livemixmaster-recorder-worker.js';
+import * as recorderWorker from '../web/audio/livemixmaster-recorder-worker.js';
+
+const { LiveMixMasterWavWriter } = recorderWorker;
 
 function ascii(bytes, start, length) {
   return String.fromCharCode(...bytes.subarray(start, start + length));
@@ -48,4 +50,63 @@ test('Web recording worker produces an independently valid >=10s 48kHz stereo PC
   const durationSeconds = view.getUint32(40, true) / byteRate;
   assert.equal(byteRate, sampleRate * channels * 3);
   assert.ok(durationSeconds >= 10, `expected >=10 s WAV, got ${durationSeconds}`);
+});
+
+test('Worker protocol ACKs accepted PCM and fails closed when storage capacity is exceeded', () => {
+  assert.equal(
+    typeof recorderWorker.createLiveMixMasterRecorderWorkerHandler,
+    'function',
+    'recorder Worker message handler must exist',
+  );
+
+  const messages = [];
+  const handle = recorderWorker.createLiveMixMasterRecorderWorkerHandler(
+    (message) => messages.push(message),
+  );
+
+  handle({
+    data: {
+      type: 'start',
+      sampleRate: 48000,
+      channels: 2,
+      sampleFormat: 'pcm24',
+      maxBytes: 50,
+    },
+  });
+  handle({
+    data: {
+      type: 'pcm',
+      sequence: 7,
+      samples: new Float32Array([0.25, -0.25]),
+    },
+  });
+
+  assert.deepEqual(messages[0], { type: 'recordingStarted' });
+  assert.deepEqual(messages[1], { type: 'pcmAck', sequence: 7, frames: 1 });
+
+  handle({
+    data: {
+      type: 'pcm',
+      sequence: 8,
+      samples: new Float32Array([0, 0]),
+    },
+  });
+  handle({
+    data: {
+      type: 'pcm',
+      sequence: 9,
+      samples: new Float32Array([0, 0]),
+    },
+  });
+
+  assert.deepEqual(messages[2], {
+    type: 'recordingError',
+    reason: 'STORAGE_FULL',
+    failureCode: 'storageFull',
+  });
+  assert.equal(
+    messages.some((message) => message.type === 'pcmAck' && message.sequence >= 8),
+    false,
+    'rejected PCM must never be ACKed after fail-closed storage failure',
+  );
 });
