@@ -143,6 +143,8 @@ jobs:
         run: node --test test/web_recorder_pipeline_integration_test.mjs
       - name: Verify server-side fingerprint provider proxy contract
         run: node --test test/web_fingerprint_proxy_test.mjs
+      - name: Verify Flutter fingerprint proxy client contract
+        run: flutter test test/web_fingerprint_proxy_client_test.dart
       - name: Verify web platform, capture, DSP, and recording state contracts
         run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart test/browser_media_gateway_test.dart test/web_dsp_kernel_test.dart test/browser_audio_processing_controller_test.dart test/browser_recording_controller_test.dart
       - name: Build Flutter Web release artifact
