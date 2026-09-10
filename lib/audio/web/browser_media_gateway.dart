@@ -50,6 +50,10 @@ abstract interface class BrowserMediaClient {
   });
 }
 
+abstract interface class BrowserMediaDeviceChangeClient {
+  void setDeviceChangeHandler(void Function() handler);
+}
+
 class DefaultBrowserMediaGateway
     implements BrowserMediaGateway, BrowserMediaLifecycleGateway {
   DefaultBrowserMediaGateway({required BrowserMediaClient client})
@@ -57,10 +61,20 @@ class DefaultBrowserMediaGateway
 
   final BrowserMediaClient _client;
   void Function()? _trackEndedHandler;
+  void Function()? _deviceChangeHandler;
 
   @override
   void setTrackEndedHandler(void Function() handler) {
     _trackEndedHandler = handler;
+  }
+
+  @override
+  void setDeviceChangeHandler(void Function() handler) {
+    _deviceChangeHandler = handler;
+    final client = _client;
+    if (client is BrowserMediaDeviceChangeClient) {
+      client.setDeviceChangeHandler(_handleDeviceChange);
+    }
   }
 
   @override
@@ -81,6 +95,8 @@ class DefaultBrowserMediaGateway
   }
 
   void _handleTrackEnded() => _trackEndedHandler?.call();
+
+  void _handleDeviceChange() => _deviceChangeHandler?.call();
 
   BrowserCaptureAttempt _map(
     BrowserRawCapture raw,
