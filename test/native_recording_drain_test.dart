@@ -28,12 +28,12 @@ void main() {
       );
       final drain = NativeRecordingDrain(bindings: bindings, writer: writer);
 
-      bindings.blocks.add(_block(sequence: 1, value: .1));
+      bindings.recordingBlocks.add(_block(sequence: 1, value: .1));
       expect(drain.drainNow(), 1);
       expect(drain.discardedBlocks, 1);
 
       final path = await writer.startRecording();
-      bindings.blocks
+      bindings.recordingBlocks
         ..add(_block(sequence: 2, value: .25))
         ..add(_block(sequence: 3, value: -.5));
 
@@ -64,14 +64,14 @@ void main() {
         writer: writer,
         maxBlocksPerDrain: 2,
       );
-      bindings.blocks.addAll([
+      bindings.recordingBlocks.addAll([
         _block(sequence: 1, value: .1),
         _block(sequence: 2, value: .2),
         _block(sequence: 3, value: .3),
       ]);
 
       expect(drain.drainNow(), 2);
-      expect(bindings.blocks, hasLength(1));
+      expect(bindings.recordingBlocks, hasLength(1));
       expect(drain.status.recorderRejectedBlocks, 4);
       expect(drain.status.fingerprintRejectedBlocks, 1);
     });
@@ -96,12 +96,17 @@ class _FakePcmHandoffBindings implements NativePcmHandoffBindings {
     ),
   });
 
-  final List<NativePcmBlock> blocks = <NativePcmBlock>[];
+  final List<NativePcmBlock> recordingBlocks = <NativePcmBlock>[];
+  final List<NativePcmBlock> fingerprintBlocks = <NativePcmBlock>[];
 
   @override
   final NativePcmHandoffStatus status;
 
   @override
   NativePcmBlock? popRecordingBlock() =>
-      blocks.isEmpty ? null : blocks.removeAt(0);
+      recordingBlocks.isEmpty ? null : recordingBlocks.removeAt(0);
+
+  @override
+  NativePcmBlock? popFingerprintBlock() =>
+      fingerprintBlocks.isEmpty ? null : fingerprintBlocks.removeAt(0);
 }
