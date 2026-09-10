@@ -15,7 +15,6 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
 
     final engine = _MeterEngine();
     await tester.pumpWidget(MaterialApp(home: MixerDeskView(audioEngine: engine)));
@@ -46,6 +45,7 @@ void main() {
     expect(meters, findsWidgets);
     expect(tester.getSemantics(meters.last).value, '25 percent');
 
+    semantics.dispose();
     await engine.dispose();
   });
 }
