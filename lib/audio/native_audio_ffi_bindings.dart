@@ -153,8 +153,8 @@ typedef _ChannelMeterDart = bool Function(
 );
 typedef _MasterMeterNative = Bool Function(Pointer<_LmmMasterMeterSnapshot>);
 typedef _MasterMeterDart = bool Function(Pointer<_LmmMasterMeterSnapshot>);
-typedef _PopRecordingPcmNative = Bool Function(Pointer<_LmmPcmBlock>);
-typedef _PopRecordingPcmDart = bool Function(Pointer<_LmmPcmBlock>);
+typedef _PopPcmNative = Bool Function(Pointer<_LmmPcmBlock>);
+typedef _PopPcmDart = bool Function(Pointer<_LmmPcmBlock>);
 typedef _PcmHandoffStatusNative = Bool Function(Pointer<_LmmPcmHandoffStatus>);
 typedef _PcmHandoffStatusDart = bool Function(Pointer<_LmmPcmHandoffStatus>);
 
@@ -194,8 +194,12 @@ class FfiNativeAudioBindings
             _ChannelMeterDart>('lmm_get_channel_meter'),
         _getMasterMeter = library.lookupFunction<_MasterMeterNative,
             _MasterMeterDart>('lmm_get_master_meter'),
-        _popRecordingPcm = library.lookupFunction<_PopRecordingPcmNative,
-            _PopRecordingPcmDart>('lmm_pop_recording_pcm'),
+        _popRecordingPcm = library.lookupFunction<_PopPcmNative, _PopPcmDart>(
+          'lmm_pop_recording_pcm',
+        ),
+        _popFingerprintPcm = library.lookupFunction<_PopPcmNative, _PopPcmDart>(
+          'lmm_pop_fingerprint_pcm',
+        ),
         _getPcmHandoffStatus = library.lookupFunction<_PcmHandoffStatusNative,
             _PcmHandoffStatusDart>('lmm_get_pcm_handoff_status');
 
@@ -212,7 +216,8 @@ class FfiNativeAudioBindings
   final _CaptureStatusDart _captureGetStatus;
   final _ChannelMeterDart _getChannelMeter;
   final _MasterMeterDart _getMasterMeter;
-  final _PopRecordingPcmDart _popRecordingPcm;
+  final _PopPcmDart _popRecordingPcm;
+  final _PopPcmDart _popFingerprintPcm;
   final _PcmHandoffStatusDart _getPcmHandoffStatus;
 
   @override
@@ -351,10 +356,15 @@ class FfiNativeAudioBindings
   }
 
   @override
-  NativePcmBlock? popRecordingBlock() {
+  NativePcmBlock? popRecordingBlock() => _popPcm(_popRecordingPcm);
+
+  @override
+  NativePcmBlock? popFingerprintBlock() => _popPcm(_popFingerprintPcm);
+
+  NativePcmBlock? _popPcm(_PopPcmDart pop) {
     final out = calloc<_LmmPcmBlock>();
     try {
-      if (!_popRecordingPcm(out)) return null;
+      if (!pop(out)) return null;
       final value = out.ref;
       if (value.frames > _pcmBlockFrames) {
         throw StateError('Native PCM block exceeds $_pcmBlockFrames frames.');
