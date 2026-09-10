@@ -50,10 +50,6 @@ abstract interface class BrowserMediaClient {
   });
 }
 
-abstract interface class BrowserMediaLifecycleGateway {
-  void setTrackEndedHandler(void Function() handler);
-}
-
 class DefaultBrowserMediaGateway
     implements BrowserMediaGateway, BrowserMediaLifecycleGateway {
   DefaultBrowserMediaGateway({required BrowserMediaClient client})
