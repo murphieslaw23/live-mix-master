@@ -133,6 +133,8 @@ jobs:
         run: node --test test/web_wav_recorder_worker_test.mjs
       - name: Verify finalized recording export contract
         run: node --test test/web_recorder_export_test.mjs
+      - name: Verify operator-controlled recording gateway
+        run: node --test test/web_recording_operator_gateway_test.mjs
       - name: Verify graceful recorder finalization contract
         run: node --test test/web_recorder_finalize_test.mjs
       - name: Verify Worklet-to-Worker recorder pipeline contract
