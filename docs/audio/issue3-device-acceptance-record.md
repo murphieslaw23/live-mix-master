@@ -6,13 +6,15 @@ This file is a non-secret evidence template. Do not mark it PASS until `docs/aud
 
 ## Hosted preflight evidence
 
-The app-side same-process acceptance telemetry implementation was verified on implementation head `a6611e5f19fa63878a7f8ac8e8c260866594b960` with Standard CI #214 (`34490780750`) and macOS Desktop CI #97 (`34490780889`) GREEN. The final documentation-only successor head is verified separately in PR #15 and Issue #3; do not copy hosted values into the real-device fields below.
+The app-side same-process acceptance telemetry implementation and its non-secret **COPY EVIDENCE** formatter/UI action are hosted-verified. The final copy-evidence head `4bf8921016d3dbee920a6ec4d63b055dd4486069` passed Standard CI #220 (`34493904574`) and macOS Desktop CI #103 (`34493904540`). Do not copy hosted values into the real-device fields below.
 
 - same-process acceptance telemetry contract: GREEN
-- macOS hosted suite on implementation head: 111 tests passed; 2 built-library-dependent tests skipped in the pre-build suite and exercised later by the dedicated FFI smoke
+- deterministic non-secret Markdown evidence formatter: GREEN
+- `COPY EVIDENCE` clipboard action: GREEN
+- macOS hosted suite on final copy-evidence head: 113 tests passed; 2 built-library-dependent tests skipped in the pre-build suite and exercised later by the dedicated FFI smoke
 - native CTest: 9/9 passed
 - dedicated built-dylib Dart FFI smoke: 3/3 passed
-- implementation-head hosted evidence artifact: `issue3-macos-launch-evidence`, ID `10157730428`, SHA-256 `07f0467d75078cf384deae9936fe43c7c32b2a63fa96c12ca0b60c5161318f6b`
+- final hosted evidence artifact: `issue3-macos-launch-evidence`, ID `10159005712`, SHA-256 `1e405a2125a981a9dc2567af0caa535bd1f47f0ac4fcd73bf2b3f1db10e50dcf`
 
 Hosted preflight evidence does not satisfy the device E2E fields below.
 
@@ -45,17 +47,9 @@ Hosted preflight evidence does not satisfy the device E2E fields below.
 
 ## Same-process E2E telemetry
 
-Read these values from the **E2E TELEMETRY** surface in the same Flutter app process used for this acceptance run. Do not replace them with values from the standalone CLI probe.
+Use **COPY EVIDENCE** in the running Flutter app and paste the generated `## Same-process E2E telemetry` block below. The copied block deliberately excludes endpoint UIDs, filesystem paths, credentials, account data, and hardware serial numbers. Do not replace these values with standalone CLI-probe output.
 
-- average callback duration (us): PENDING
-- maximum callback duration (us): PENDING
-- callback count: PENDING
-- xrun count: PENDING
-- recorder queue depth observed: PENDING
-- fingerprint queue depth observed: PENDING
-- recorder rejected blocks: PENDING
-- fingerprint rejected blocks: PENDING
-- queue overflow result: PENDING
+PENDING REAL DEVICE RUN
 
 A clean acceptance run expects both rejected-block counters to remain zero. Non-zero counters fail the clean run and require investigation; they must never be hidden or rewritten as success.
 
