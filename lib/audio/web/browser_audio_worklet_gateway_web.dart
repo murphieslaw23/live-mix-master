@@ -37,9 +37,7 @@ class WebAudioWorkletGateway implements BrowserAudioProcessingGateway {
 
     final context = web.AudioContext();
     try {
-      await context.audioWorklet
-          .addModule('audio/livemixmaster-worklet.js')
-          .toDart;
+      await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;
 
       final sourceNode = context.createMediaStreamSource(stream);
       final workletNode = web.AudioWorkletNode(context, 'livemixmaster-dsp');
