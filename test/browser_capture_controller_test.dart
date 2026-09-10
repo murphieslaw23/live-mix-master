@@ -97,6 +97,47 @@ void main() {
       expect(controller.state.source, isNull);
       expect(controller.state.message, contains('CAPTURE ENDED'));
     });
+
+    test('listeners receive asynchronous lifecycle state changes', () async {
+      final gateway = _LifecycleGateway(
+        microphoneAttempt: const BrowserCaptureAttempt.connected(
+          BrowserCaptureSource(
+            kind: BrowserCaptureKind.microphone,
+            id: 'origin-scoped-device',
+            label: 'USB AUDIO',
+          ),
+        ),
+      );
+      final controller = BrowserCaptureController(gateway: gateway);
+      final statuses = <BrowserCaptureStatus>[];
+      controller.addListener((state) => statuses.add(state.status));
+
+      await controller.requestMicrophone();
+      gateway.endActiveTrack();
+
+      expect(statuses, contains(BrowserCaptureStatus.active));
+      expect(statuses.last, BrowserCaptureStatus.reconnectRequired);
+    });
+
+    test('device inventory changes are explicit without inventing disconnect', () async {
+      final gateway = _LifecycleGateway(
+        microphoneAttempt: const BrowserCaptureAttempt.connected(
+          BrowserCaptureSource(
+            kind: BrowserCaptureKind.microphone,
+            id: 'origin-scoped-device',
+            label: 'USB AUDIO',
+          ),
+        ),
+      );
+      final controller = BrowserCaptureController(gateway: gateway);
+      await controller.requestMicrophone();
+
+      gateway.changeDeviceInventory();
+
+      expect(controller.state.status, BrowserCaptureStatus.deviceInventoryChanged);
+      expect(controller.state.source?.label, 'USB AUDIO');
+      expect(controller.state.message, contains('DEVICE LIST CHANGED'));
+    });
   });
 }
 
@@ -124,4 +165,29 @@ class _FakeGateway implements BrowserMediaGateway {
 
   @override
   Future<BrowserCaptureAttempt> requestDisplayAudio() async => displayAttempt;
+}
+
+class _LifecycleGateway extends _FakeGateway implements BrowserMediaLifecycleGateway {
+  _LifecycleGateway({
+    super.capabilities,
+    super.microphoneAttempt,
+    super.displayAttempt,
+  });
+
+  void Function()? _onEnded;
+  void Function()? _onDeviceChange;
+
+  @override
+  void setTrackEndedHandler(void Function() handler) {
+    _onEnded = handler;
+  }
+
+  @override
+  void setDeviceChangeHandler(void Function() handler) {
+    _onDeviceChange = handler;
+  }
+
+  void endActiveTrack() => _onEnded?.call();
+
+  void changeDeviceInventory() => _onDeviceChange?.call();
 }
