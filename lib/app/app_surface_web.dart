@@ -184,7 +184,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
   static Color _statusColor(BrowserCaptureStatus status) {
     switch (status) {
       case BrowserCaptureStatus.active:
-        return LiveMixTokens.statusOk;
+        return LiveMixTokens.meterNominal;
       case BrowserCaptureStatus.permissionDenied:
       case BrowserCaptureStatus.noAudioTrack:
       case BrowserCaptureStatus.unsupported:
@@ -318,7 +318,7 @@ class _CaptureControlPanel extends StatelessWidget {
   static Color _messageColor(BrowserCaptureStatus status) {
     switch (status) {
       case BrowserCaptureStatus.active:
-        return LiveMixTokens.statusOk;
+        return LiveMixTokens.meterNominal;
       case BrowserCaptureStatus.permissionDenied:
       case BrowserCaptureStatus.noAudioTrack:
       case BrowserCaptureStatus.unsupported:
