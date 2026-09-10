@@ -131,6 +131,8 @@ jobs:
         run: node --test test/web_audio_graph_integration_test.mjs
       - name: Verify >=10s Web WAV worker contract
         run: node --test test/web_wav_recorder_worker_test.mjs
+      - name: Verify finalized recording export contract
+        run: node --test test/web_recorder_export_test.mjs
       - name: Verify graceful recorder finalization contract
         run: node --test test/web_recorder_finalize_test.mjs
       - name: Verify Worklet-to-Worker recorder pipeline contract
