@@ -40,7 +40,7 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     final meters = find.bySemanticsLabel('channel level meter');
     expect(meters, findsWidgets);
