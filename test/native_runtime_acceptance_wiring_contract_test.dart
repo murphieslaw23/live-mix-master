@@ -39,5 +39,45 @@ void main() {
       expect(mixer, isNot(contains("'-14.2 LUFS'")));
       expect(mixer, isNot(contains("'-6.0 dBTP'")));
     });
+
+    test('same-process Flutter runtime exposes non-secret acceptance telemetry', () {
+      final telemetryFile = File('lib/audio/native_acceptance_telemetry.dart');
+      final main = File('lib/main.dart').readAsStringSync();
+      final mixer = File('lib/features/mixer/mixer_desk_view.dart')
+          .readAsStringSync();
+      final guide = File('docs/audio/macos-device-e2e.md').readAsStringSync();
+
+      expect(telemetryFile.existsSync(), isTrue);
+      final telemetry = telemetryFile.existsSync()
+          ? telemetryFile.readAsStringSync()
+          : '';
+
+      expect(telemetry, contains('AcceptanceTelemetrySnapshot'));
+      expect(telemetry, contains('callbackCount'));
+      expect(telemetry, contains('averageCallbackUs'));
+      expect(telemetry, contains('maxCallbackUs'));
+      expect(telemetry, contains('xrunCount'));
+      expect(telemetry, contains('recorderQueueDepth'));
+      expect(telemetry, contains('fingerprintQueueDepth'));
+      expect(telemetry, contains('recorderRejectedBlocks'));
+      expect(telemetry, contains('fingerprintRejectedBlocks'));
+      expect(telemetry, contains('NativeAudioEngine'));
+      expect(telemetry, contains('NativePcmRuntimePump'));
+
+      expect(main, contains('NativeRuntimeAcceptanceTelemetry'));
+      expect(main, contains('acceptanceTelemetry:'));
+
+      expect(mixer, contains('acceptanceTelemetry'));
+      expect(mixer, contains('E2E TELEMETRY'));
+      expect(mixer, contains('CALLBACKS'));
+      expect(mixer, contains('AVG CALLBACK'));
+      expect(mixer, contains('MAX CALLBACK'));
+      expect(mixer, contains('XRUNS'));
+      expect(mixer, contains('REC REJECT'));
+      expect(mixer, contains('FP REJECT'));
+
+      expect(guide, contains('E2E TELEMETRY'));
+      expect(guide, contains('same Flutter app process'));
+    });
   });
 }
