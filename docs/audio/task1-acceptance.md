@@ -1,0 +1,1 @@
+Task 1 acceptance: the new deterministic DSP and SPSC queue tests fail for the intended missing-capability reasons before implementation, then pass unchanged after the minimal native implementation. No Core Audio device success is inferred from this gate.

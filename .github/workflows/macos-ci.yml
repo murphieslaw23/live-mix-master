@@ -68,11 +68,24 @@ jobs:
           test -n "$TEST_FILES"
           flutter test --reporter expanded $TEST_FILES
 
-      - name: Build native debug engine
+      - name: Build and test native debug engine
         run: |
           cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
           cmake --build build/native --config Debug --parallel
           test -f build/native/liblive_mixer_engine.dylib
+          ctest --test-dir build/native --output-on-failure
+
+      - name: Record Core Audio discovery probe
+        run: |
+          build/native/macos_device_probe --list | tee /tmp/live-mix-master-device-probe.log
+
+      - name: Run Dart FFI native ABI smoke
+        env:
+          LMM_NATIVE_LIBRARY: ${{ github.workspace }}/build/native/liblive_mixer_engine.dylib
+        run: |
+          flutter test --reporter expanded \
+            test/native_audio_ffi_bindings_test.dart \
+            test/native_audio_permission_ffi_test.dart
 
       - name: Build Flutter debug app
         run: flutter build macos --debug
@@ -106,9 +119,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: issue2-macos-launch-evidence
+          name: issue3-macos-launch-evidence
           path: |
             /tmp/live-mix-master-launch.log
+            /tmp/live-mix-master-device-probe.log
             build/macos/Build/Products/Debug/live_mix_master.app/Contents/Frameworks/liblive_mixer_engine.dylib
           if-no-files-found: warn
           retention-days: 14

@@ -26,6 +26,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LiveMixMaster needs audio input to monitor, meter, mix, and record the sources you explicitly select.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

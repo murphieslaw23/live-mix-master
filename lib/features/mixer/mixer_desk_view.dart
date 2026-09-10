@@ -1,10 +1,15 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../../audio/audio_engine_bridge.dart';
 import '../../design/live_mix_tokens.dart';
 import '../../design/widgets/lmm_controls.dart';
 import '../../design/widgets/lmm_state_widgets.dart';
 import '../../services/fingerprint_service.dart';
 import '../../services/lossless_recording_writer.dart';
+import '../patchbay/audio_route_recovery_banner.dart';
 import '../patchbay/patchbay_routing_modal.dart';
 
 class MixerDeskView extends StatefulWidget {
@@ -12,10 +17,12 @@ class MixerDeskView extends StatefulWidget {
     super.key,
     this.fingerprintService,
     this.recordingWriter,
+    this.audioEngine,
   });
 
   final FingerprintService? fingerprintService;
   final LosslessRecordingWriter? recordingWriter;
+  final AudioEngine? audioEngine;
 
   @override
   State<MixerDeskView> createState() => _MixerDeskViewState();
@@ -62,6 +69,12 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   ];
 
   final List<IdentifiedTrack> _playlistHistory = [];
+  StreamSubscription<AudioRouteState>? _routeStateSubscription;
+  StreamSubscription<List<ChannelMeterSnapshot>>? _channelMeterSubscription;
+  StreamSubscription<MasterMeterSnapshot>? _masterMeterSubscription;
+  List<AudioInputEndpoint> _audioInputs = const <AudioInputEndpoint>[];
+  AudioRouteState _audioRouteState = AudioRouteState.idle;
+  MasterMeterSnapshot? _masterMeter;
   IdentifiedTrack? _currentTrack;
   bool _isAnalyzing = false;
   double _masterFader = 0.90;
@@ -74,6 +87,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   void initState() {
     super.initState();
     _subscribeServices();
+    _subscribeAudioEngine();
   }
 
   void _subscribeServices() {
@@ -99,6 +113,52 @@ class _MixerDeskViewState extends State<MixerDeskView> {
         _recordingSizeMb = stats.currentFileSizeMb;
       });
     });
+  }
+
+  void _subscribeAudioEngine() {
+    final engine = widget.audioEngine;
+    if (engine == null) return;
+    _audioRouteState = engine.routeState;
+    _routeStateSubscription = engine.routeStates.listen((state) {
+      if (!mounted || state == _audioRouteState) return;
+      setState(() => _audioRouteState = state);
+    });
+    _channelMeterSubscription = engine.channelMeters.listen((snapshots) {
+      if (!mounted) return;
+      var changed = false;
+      for (final snapshot in snapshots) {
+        final index = _channels.indexWhere(
+          (channel) => channel.id == snapshot.channelId,
+        );
+        if (index < 0) continue;
+
+        final channel = _channels[index];
+        final meter = snapshot.meter;
+        final peakLeft = meter.peakLeft.abs();
+        final peakRight = meter.peakRight.abs();
+        final peak = peakLeft >= peakRight ? peakLeft : peakRight;
+        channel.meterLevel = peak.clamp(0.0, 1.0).toDouble();
+        if (!channel.isMuted && !channel.isSolo) {
+          channel.state = meter.clipping
+              ? LmmChannelStripState.clipping
+              : LmmChannelStripState.active;
+        }
+        changed = true;
+      }
+      if (changed) setState(() {});
+    });
+    _masterMeterSubscription = engine.masterMeters.listen((snapshot) {
+      if (!mounted) return;
+      setState(() => _masterMeter = snapshot);
+    });
+  }
+
+  @override
+  void dispose() {
+    _routeStateSubscription?.cancel();
+    _channelMeterSubscription?.cancel();
+    _masterMeterSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _handleToggleRecording() async {
@@ -130,31 +190,169 @@ class _MixerDeskViewState extends State<MixerDeskView> {
     }
   }
 
+  Future<void> _refreshAudioInputs() async {
+    final engine = widget.audioEngine;
+    if (engine == null) return;
+    final inputs = await engine.refreshInputDevices();
+    if (!mounted) return;
+    setState(() {
+      _audioInputs = List<AudioInputEndpoint>.unmodifiable(inputs);
+      _audioRouteState = engine.routeState;
+    });
+  }
+
+  List<AudioEndpoint> _livePatchbayEndpoints() {
+    return _audioInputs
+        .map(
+          (input) => AudioEndpoint(
+            id: input.uid,
+            name: input.name,
+            type: AudioSourceType.hardwareInput,
+            channelCount: input.inputChannels,
+            deviceDriver:
+                'CoreAudio • ${input.nominalSampleRate.toStringAsFixed(0)} Hz • ${input.bufferFrames} frames',
+          ),
+        )
+        .toList(growable: false);
+  }
+
   Future<void> _openPatchbayModal() async {
+    final engine = widget.audioEngine;
+    if (engine != null) {
+      await _refreshAudioInputs();
+      if (!mounted) return;
+    }
+
+    void onConfigured(PatchbayChannelResult result) {
+      final channelId = 'ch_${DateTime.now().millisecondsSinceEpoch}';
+      final chLeft = (result.channelPairIndex * 2) + 1;
+      final chRight = (result.channelPairIndex * 2) + 2;
+      setState(() {
+        _channels.add(
+          ChannelData(
+            id: channelId,
+            name: result.channelName,
+            source: '${result.endpoint.name} (Ch $chLeft-$chRight)',
+            fader: 0.80,
+            trimDb: result.initialTrimDb,
+            accentColor: result.channelColor,
+            state: LmmChannelStripState.active,
+            nativeBound: engine != null,
+          ),
+        );
+      });
+
+      if (engine != null) {
+        unawaited(
+          _bindNativeChannel(
+            engine,
+            channelId: channelId,
+            result: result,
+          ),
+        );
+      }
+    }
+
+    if (engine == null) {
+      await PatchbayRoutingModal.show(
+        context,
+        onChannelConfigured: onConfigured,
+      );
+      return;
+    }
+
     await PatchbayRoutingModal.show(
       context,
-      onChannelConfigured: (result) {
-        setState(() {
-          final chLeft = (result.channelPairIndex * 2) + 1;
-          final chRight = (result.channelPairIndex * 2) + 2;
-          _channels.add(
-            ChannelData(
-              id: 'ch_${DateTime.now().millisecondsSinceEpoch}',
-              name: result.channelName,
-              source: '${result.endpoint.name} (Ch $chLeft-$chRight)',
-              fader: 0.80,
-              trimDb: result.initialTrimDb,
-              accentColor: result.channelColor,
-              state: LmmChannelStripState.active,
-            ),
-          );
-        });
+      onChannelConfigured: onConfigured,
+      endpoints: _livePatchbayEndpoints(),
+      routeState: _audioRouteState,
+      onRecoveryRequested: () {
+        unawaited(_refreshAudioInputs());
       },
     );
   }
 
+  Future<void> _bindNativeChannel(
+    AudioEngine engine, {
+    required String channelId,
+    required PatchbayChannelResult result,
+  }) async {
+    try {
+      await engine.addChannel(
+        InputChannelConfig(
+          id: channelId,
+          name: result.channelName,
+          kind: AudioInputKind.hardware,
+          endpointId: result.endpoint.id,
+          trimDb: result.initialTrimDb,
+          fader: .80,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        final index = _channels.indexWhere((channel) => channel.id == channelId);
+        if (index >= 0) {
+          _channels[index].state = LmmChannelStripState.disconnected;
+        }
+        _audioRouteState = engine.routeState;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Audio route error: $error'),
+          backgroundColor: LiveMixTokens.meterClip,
+        ),
+      );
+    }
+  }
+
   void _removeChannel(String channelId) {
-    setState(() => _channels.removeWhere((channel) => channel.id == channelId));
+    final index = _channels.indexWhere((channel) => channel.id == channelId);
+    if (index < 0) return;
+    final channel = _channels[index];
+    setState(() => _channels.removeAt(index));
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.removeChannel(channelId));
+    }
+  }
+
+  void _setChannelFader(ChannelData channel, double value) {
+    setState(() => channel.fader = value);
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.setFader(channel.id, value));
+    }
+  }
+
+  void _setChannelMute(ChannelData channel, bool value) {
+    setState(() {
+      channel.isMuted = value;
+      channel.state = value
+          ? LmmChannelStripState.muted
+          : channel.isSolo
+              ? LmmChannelStripState.solo
+              : LmmChannelStripState.active;
+    });
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.setMute(channel.id, value));
+    }
+  }
+
+  void _setChannelSolo(ChannelData channel, bool value) {
+    setState(() {
+      channel.isSolo = value;
+      channel.state = value
+          ? LmmChannelStripState.solo
+          : channel.isMuted
+              ? LmmChannelStripState.muted
+              : LmmChannelStripState.active;
+    });
+    final engine = widget.audioEngine;
+    if (engine != null && channel.nativeBound) {
+      unawaited(engine.setSolo(channel.id, value));
+    }
   }
 
   @override
@@ -168,6 +366,18 @@ class _MixerDeskViewState extends State<MixerDeskView> {
         child: Column(
           children: [
             _buildTopActionBar(),
+            if (widget.audioEngine != null &&
+                _audioRouteState != AudioRouteState.idle &&
+                _audioRouteState != AudioRouteState.active)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: AudioRouteRecoveryBanner(
+                  state: _audioRouteState,
+                  onRecoveryRequested: () {
+                    unawaited(_openPatchbayModal());
+                  },
+                ),
+              ),
             _buildLiveFingerprintBanner(),
             if (showDesktopSessionPanel) _buildDesktopFingerprintPanel(),
             Expanded(
@@ -200,6 +410,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   }
 
   Widget _buildTopActionBar() {
+    final nativeMode = widget.audioEngine != null;
     return Container(
       constraints: const BoxConstraints(minHeight: 72),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -230,9 +441,9 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 ),
               ),
               const Text('LIVEMIXMASTER', style: LiveMixTextStyles.sectionDisplay),
-              const LmmStatusBadge(
+              LmmStatusBadge(
                 label: 'ENGINE',
-                status: '48 KHZ / 24-BIT',
+                status: nativeMode ? 'CORE AUDIO / NATIVE' : '48 KHZ / 24-BIT',
                 tone: LmmStatusTone.healthy,
                 icon: Icons.graphic_eq,
               ),
@@ -482,6 +693,9 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   }
 
   Widget _buildChannelStrip(ChannelData channel) {
+    final displayedLevel = channel.nativeBound
+        ? channel.meterLevel
+        : channel.previewMeterLevel;
     return Container(
       width: 170,
       padding: const EdgeInsets.all(10),
@@ -555,12 +769,12 @@ class _MixerDeskViewState extends State<MixerDeskView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildLedMeter(level: channel.fader * .9),
+                _buildLedMeter(level: displayedLevel),
                 const SizedBox(width: 8),
                 LmmFader(
                   label: 'FADER',
                   value: channel.fader,
-                  onChanged: (value) => setState(() => channel.fader = value),
+                  onChanged: (value) => _setChannelFader(channel, value),
                 ),
               ],
             ),
@@ -572,10 +786,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 child: LmmToggleControl(
                   label: 'MUTE',
                   value: channel.isMuted,
-                  onChanged: (value) => setState(() {
-                    channel.isMuted = value;
-                    channel.state = value ? LmmChannelStripState.muted : LmmChannelStripState.active;
-                  }),
+                  onChanged: (value) => _setChannelMute(channel, value),
                 ),
               ),
               const SizedBox(width: 4),
@@ -583,10 +794,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
                 child: LmmToggleControl(
                   label: 'SOLO',
                   value: channel.isSolo,
-                  onChanged: (value) => setState(() {
-                    channel.isSolo = value;
-                    if (value) channel.state = LmmChannelStripState.solo;
-                  }),
+                  onChanged: (value) => _setChannelSolo(channel, value),
                 ),
               ),
             ],
@@ -597,9 +805,19 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   }
 
   Widget _buildMasterSection() {
-    final leftDbfs = -60 + (_masterFader * 54);
-    final rightDbfs = leftDbfs - 1.5;
+    final nativeMode = widget.audioEngine != null;
+    final nativeMaster = _masterMeter;
+    final leftDbfs = nativeMode
+        ? _linearToDbfs(nativeMaster?.truePeakLeft ?? 0)
+        : -60 + (_masterFader * 54);
+    final rightDbfs = nativeMode
+        ? _linearToDbfs(nativeMaster?.truePeakRight ?? 0)
+        : leftDbfs - 1.5;
+    final peakDbfs = math.max(leftDbfs, rightDbfs);
+    final limiterActive = nativeMaster?.limiterActive ?? false;
     final extended = MediaQuery.sizeOf(context).width >= 1200;
+    final previewLoudness = '${(-14.2).toStringAsFixed(1)} LUFS';
+    final previewTruePeak = '${(-6.0).toStringAsFixed(1)} dBTP';
 
     return Container(
       width: 300,
@@ -622,13 +840,40 @@ class _MixerDeskViewState extends State<MixerDeskView> {
             leftDbfs: leftDbfs,
             rightDbfs: rightDbfs,
           ),
-          if (extended) ...[
+          if (extended && nativeMode) ...[
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: _masterTelemetry('LOUDNESS', '-14.2 LUFS')),
+                Expanded(
+                  child: _masterTelemetry(
+                    'SAMPLE PEAK',
+                    '${peakDbfs.toStringAsFixed(1)} dBFS',
+                  ),
+                ),
                 const SizedBox(width: 6),
-                Expanded(child: _masterTelemetry('TRUE PEAK', '-6.0 dBTP')),
+                Expanded(
+                  child: _masterTelemetry(
+                    'LIMITER',
+                    limiterActive ? 'ACTIVE' : 'READY',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            LmmStatusBadge(
+              label: 'SAMPLE LIMITER',
+              status: limiterActive ? 'ACTIVE' : 'READY',
+              detail: '0.98 CEILING',
+              tone: limiterActive ? LmmStatusTone.warning : LmmStatusTone.healthy,
+              icon: Icons.shield_outlined,
+            ),
+          ] else if (extended) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: _masterTelemetry('LOUDNESS', previewLoudness)),
+                const SizedBox(width: 6),
+                Expanded(child: _masterTelemetry('TRUE PEAK', previewTruePeak)),
               ],
             ),
             const SizedBox(height: 6),
@@ -654,17 +899,32 @@ class _MixerDeskViewState extends State<MixerDeskView> {
               tone: _isStreaming ? LmmStatusTone.healthy : LmmStatusTone.neutral,
               icon: Icons.wifi_tethering,
             )
+          else if (nativeMode)
+            LmmStatusBadge(
+              label: 'SAMPLE LIMITER',
+              status: limiterActive ? 'ACTIVE' : 'READY',
+              detail: '0.98 CEILING',
+              tone: limiterActive ? LmmStatusTone.warning : LmmStatusTone.healthy,
+              icon: Icons.shield_outlined,
+            )
           else
-            const LmmStatusBadge(
+            LmmStatusBadge(
               label: 'LIMITER',
               status: 'READY',
-              detail: '-14.2 LUFS',
+              detail: previewLoudness,
               tone: LmmStatusTone.healthy,
               icon: Icons.shield_outlined,
             ),
         ],
       ),
     );
+  }
+
+  static double _linearToDbfs(double value) {
+    final amplitude = value.abs();
+    if (!amplitude.isFinite || amplitude <= 0) return -60;
+    final db = 20 * math.log(amplitude) / math.ln10;
+    return db.clamp(-60.0, 0.0).toDouble();
   }
 
   Widget _masterTelemetry(String label, String value) {
@@ -766,7 +1026,10 @@ class ChannelData {
     this.accentColor = LiveMixTokens.accentOchre,
     this.isMuted = false,
     this.isSolo = false,
-  });
+    this.nativeBound = false,
+    double? previewMeterLevel,
+    this.meterLevel = 0,
+  }) : previewMeterLevel = previewMeterLevel ?? fader * .9;
 
   final String id;
   final String name;
@@ -776,5 +1039,8 @@ class ChannelData {
   Color accentColor;
   bool isMuted;
   bool isSolo;
+  bool nativeBound;
+  final double previewMeterLevel;
+  double meterLevel;
   LmmChannelStripState state;
 }

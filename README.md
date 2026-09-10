@@ -6,7 +6,7 @@ LiveMixMaster is a Flutter-driven control surface for live audio input routing, 
 
 - Dynamic hardware and software-loopback input strips
 - Channel trim, fader, mute, solo, and peak/RMS metering
-- Master bus with true-peak safety limiting and loudness telemetry
+- Master bus with deterministic sample-peak limiting; standards-based True Peak/loudness conformance remains unverified
 - Local recording and broadcast output adapters
 - Rolling PCM analysis windows for track-identification providers
 - Session tracklist with manual correction and export
@@ -20,10 +20,13 @@ lib/
   features/mixer/mixer_desk_view.dart
 macos/                             # Committed Flutter 3.47.2 desktop host
 native/
-  live_mixer_engine.cpp           # C ABI and DSP/metering prototype
+  live_mixer_engine.cpp           # C ABI, channel DSP, sample limiter, bounded PCM fan-out
+  macos/                           # Core Audio catalog/capture/permission backend
+  tools/macos_device_probe.cpp    # Non-secret device catalog/live-path diagnostic
 docs/
   product-spec.md
   design/
+  audio/                           # Issue #3 safety and real-device acceptance evidence
 DEVELOPMENT.md                     # Clean-clone macOS development path
 ```
 
@@ -46,7 +49,7 @@ Physical devices + application loopback
 
 | Platform | Committed runner | Native engine build | Physical capture | System/app loopback | Recording | Fingerprinting | Broadcast metadata | E2E verification |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| macOS | Verified | Verified | Pending #3 | Pending #3 | Contract only; E2E pending | Contract only; E2E pending | Contract only; E2E pending | Pending #6 |
+| macOS | Verified | Verified | Pending #3 real-device E2E | Pending #3 BlackHole E2E | Contract only; E2E pending | Contract only; E2E pending | Contract only; E2E pending | Pending #6 |
 | Windows | Not verified | Not verified | Pending | Pending | Not verified | Not verified | Not verified | Not verified |
 | Linux | Not verified | Not verified | Pending | Pending | Not verified | Not verified | Not verified | Not verified |
 
@@ -54,8 +57,10 @@ The initial supported desktop development target is macOS. Windows and Linux rem
 
 ## Development
 
-See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the pinned Flutter 3.47.2 clean-clone workflow, native-library lookup order, focused Issue #2 tests, and current limitations.
+See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the pinned Flutter 3.47.2 clean-clone workflow, native-library lookup order, and current limitations.
+
+For Issue #3 physical-input/BlackHole acceptance, follow [`docs/audio/macos-device-e2e.md`](docs/audio/macos-device-e2e.md). The committed acceptance record remains pending until that procedure runs on a real macOS host.
 
 ## Current status
 
-The repository now contains the repository-first hybrid design contract, responsive Flutter operator UI, a native C ABI/DSP prototype, service/reliability contracts, and a committed macOS desktop host baseline. Production work remains for device-backed capture and loopback, audio-thread-safe production DSP, recording conformance, provider-backed fingerprinting/metadata E2E, persistent operational state, and release-gate verification.
+The branch for Issue #3 now contains Core Audio stable-UID discovery/capture, negotiated PCM conversion, native mixer controls/meters, bounded recorder/fingerprint fan-out, Flutter lifecycle/permission integration, and deterministic native/FFI tests. Hosted CI can verify those contracts and app launch, but physical-input or BlackHole 10-second E2E evidence is still mandatory before Issue #3 or PR #15 can be treated as complete. Standards-based True Peak/dBTP conformance is also not claimed by the current sample-peak limiter.

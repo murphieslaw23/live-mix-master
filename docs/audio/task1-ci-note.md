@@ -1,0 +1,1 @@
+macOS CI must run `ctest --test-dir build/native --output-on-failure` after the Debug native build so the deterministic DSP and SPSC queue contracts are enforced before the Flutter app build/launch steps.
