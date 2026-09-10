@@ -1,6 +1,7 @@
 const WAV_HEADER_BYTES = 44;
 const PCM24_BYTES_PER_SAMPLE = 3;
 const MAX_RIFF_FILE_BYTES = 0xffffffff;
+const WAV_MIME_TYPE = 'audio/wav';
 
 function positiveInteger(value, name) {
   if (!Number.isInteger(value) || value <= 0) {
@@ -72,19 +73,31 @@ function recordingFailureMessage(error) {
   };
 }
 
-function recordingStoppedMessage(result) {
-  if (result instanceof Uint8Array) {
-    return {
-      type: 'recordingStopped',
-      bytesWritten: result.byteLength,
-      dataBytes: Math.max(0, result.byteLength - WAV_HEADER_BYTES),
-    };
-  }
+function recordingExportFailureMessage() {
   return {
-    type: 'recordingStopped',
-    bytesWritten: result?.bytesWritten ?? 0,
-    dataBytes: result?.dataBytes ?? 0,
+    type: 'recordingError',
+    reason: 'EXPORT_FAILED',
+    failureCode: 'exportFailed',
   };
+}
+
+function recordingStoppedMessage(result, writer = null) {
+  const message = result instanceof Uint8Array
+    ? {
+        type: 'recordingStopped',
+        bytesWritten: result.byteLength,
+        dataBytes: Math.max(0, result.byteLength - WAV_HEADER_BYTES),
+      }
+    : {
+        type: 'recordingStopped',
+        bytesWritten: result?.bytesWritten ?? 0,
+        dataBytes: result?.dataBytes ?? 0,
+      };
+
+  if (typeof writer?.fileName === 'string' && writer.fileName.length > 0) {
+    message.fileName = writer.fileName;
+  }
+  return message;
 }
 
 function defaultMemoryWriterFactory(options) {
@@ -97,6 +110,7 @@ export class LiveMixMasterWavWriter {
     channels = 2,
     sampleFormat = 'pcm24',
     maxBytes = Number.MAX_SAFE_INTEGER,
+    fileName = null,
   } = {}) {
     this.sampleRate = positiveInteger(sampleRate, 'sampleRate');
     this.channels = positiveInteger(channels, 'channels');
@@ -108,9 +122,11 @@ export class LiveMixMasterWavWriter {
 
     this.sampleFormat = sampleFormat;
     this.bytesPerSample = PCM24_BYTES_PER_SAMPLE;
+    this.fileName = fileName;
     this._chunks = [];
     this._dataBytes = 0;
     this._finalized = false;
+    this._finalizedBytes = null;
   }
 
   appendInterleaved(samples) {
@@ -156,7 +172,16 @@ export class LiveMixMasterWavWriter {
       offset += chunk.byteLength;
     }
 
+    this._chunks = [];
+    this._finalizedBytes = output;
     return output;
+  }
+
+  async exportFile() {
+    if (!this._finalized || this._finalizedBytes == null) {
+      throw new Error('WAV_NOT_FINALIZED');
+    }
+    return new Blob([this._finalizedBytes], { type: WAV_MIME_TYPE });
   }
 }
 
@@ -167,6 +192,8 @@ export class LiveMixMasterStreamingWavWriter {
     sampleFormat = 'pcm24',
     maxBytes = MAX_RIFF_FILE_BYTES,
     sink,
+    fileName = null,
+    fileHandle = null,
   } = {}) {
     this.sampleRate = positiveInteger(sampleRate, 'sampleRate');
     this.channels = positiveInteger(channels, 'channels');
@@ -183,6 +210,8 @@ export class LiveMixMasterStreamingWavWriter {
 
     this.sampleFormat = sampleFormat;
     this.bytesPerSample = PCM24_BYTES_PER_SAMPLE;
+    this.fileName = fileName;
+    this._fileHandle = fileHandle;
     this._sink = sink;
     this._dataBytes = 0;
     this._finalized = false;
@@ -245,6 +274,16 @@ export class LiveMixMasterStreamingWavWriter {
     }
   }
 
+  async exportFile() {
+    if (!this._finalized) {
+      throw new Error('WAV_NOT_FINALIZED');
+    }
+    if (typeof this._fileHandle?.getFile !== 'function') {
+      throw new Error('WAV_EXPORT_UNAVAILABLE');
+    }
+    return this._fileHandle.getFile();
+  }
+
   _writeExactly(bytes, at) {
     const written = this._sink.write(bytes, { at });
     if (written !== bytes.byteLength) {
@@ -259,12 +298,12 @@ export async function createLiveMixMasterBrowserWavWriter(
 ) {
   const storageManager =
     storage ?? (typeof navigator !== 'undefined' ? navigator.storage : null);
+  const resolvedFileName =
+    fileName ?? `livemixmaster-${Date.now().toString(36)}.wav`;
 
   if (storageManager && typeof storageManager.getDirectory === 'function') {
     try {
       const root = await storageManager.getDirectory();
-      const resolvedFileName =
-        fileName ?? `livemixmaster-${Date.now().toString(36)}.wav`;
       const fileHandle = await root.getFileHandle(resolvedFileName, { create: true });
       if (typeof fileHandle.createSyncAccessHandle === 'function') {
         const accessHandle = await fileHandle.createSyncAccessHandle();
@@ -272,6 +311,8 @@ export async function createLiveMixMasterBrowserWavWriter(
           ...options,
           maxBytes: MAX_RIFF_FILE_BYTES,
           sink: accessHandle,
+          fileName: resolvedFileName,
+          fileHandle,
         });
       }
     } catch (error) {
@@ -281,7 +322,10 @@ export async function createLiveMixMasterBrowserWavWriter(
     }
   }
 
-  return new LiveMixMasterWavWriter(options);
+  return new LiveMixMasterWavWriter({
+    ...options,
+    fileName: resolvedFileName,
+  });
 }
 
 export function createLiveMixMasterRecorderWorkerHandler(
@@ -296,6 +340,7 @@ export function createLiveMixMasterRecorderWorkerHandler(
   }
 
   let writer = null;
+  let lastFinalizedWriter = null;
   let failed = false;
   let startGeneration = 0;
   let pendingGeneration = null;
@@ -304,8 +349,10 @@ export function createLiveMixMasterRecorderWorkerHandler(
   const finalizeWriter = (candidate) => {
     try {
       const result = candidate?.finalize?.();
-      postMessage(recordingStoppedMessage(result));
+      lastFinalizedWriter = candidate ?? null;
+      postMessage(recordingStoppedMessage(result, candidate));
     } catch (error) {
+      lastFinalizedWriter = null;
       postMessage(recordingFailureMessage(error));
     }
   };
@@ -339,6 +386,7 @@ export function createLiveMixMasterRecorderWorkerHandler(
     }
     pendingGeneration = null;
     writer = null;
+    lastFinalizedWriter = null;
     failed = true;
     postMessage(recordingFailureMessage(error));
   };
@@ -352,6 +400,7 @@ export function createLiveMixMasterRecorderWorkerHandler(
     if (message.type === 'start') {
       const generation = ++startGeneration;
       writer = null;
+      lastFinalizedWriter = null;
       failed = false;
       pendingGeneration = null;
       stopRequestedGeneration = null;
@@ -361,6 +410,7 @@ export function createLiveMixMasterRecorderWorkerHandler(
           channels: message.channels,
           sampleFormat: message.sampleFormat,
           maxBytes: message.maxBytes,
+          fileName: message.fileName,
         });
         if (candidate && typeof candidate.then === 'function') {
           pendingGeneration = generation;
@@ -392,6 +442,27 @@ export function createLiveMixMasterRecorderWorkerHandler(
       return;
     }
 
+    if (message.type === 'export') {
+      const candidate = lastFinalizedWriter;
+      if (candidate == null || typeof candidate.exportFile !== 'function') {
+        postMessage(recordingExportFailureMessage());
+        return;
+      }
+
+      Promise.resolve(candidate.exportFile()).then(
+        (file) => {
+          postMessage({
+            type: 'recordingExport',
+            fileName: candidate.fileName ?? 'livemixmaster.wav',
+            file,
+            mimeType: WAV_MIME_TYPE,
+          });
+        },
+        () => postMessage(recordingExportFailureMessage()),
+      );
+      return;
+    }
+
     if (message.type === 'pcm') {
       if (failed || writer == null) {
         return;
@@ -406,6 +477,7 @@ export function createLiveMixMasterRecorderWorkerHandler(
         });
       } catch (error) {
         writer = null;
+        lastFinalizedWriter = null;
         failed = true;
         postMessage(recordingFailureMessage(error));
       }
