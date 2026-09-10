@@ -50,8 +50,7 @@ void main() {
     expect(find.text('SHARE TAB / WINDOW'), findsOneWidget);
     expect(find.text('SOURCE PERMISSION REQUIRED'), findsWidgets);
 
-    await tester.tap(find.text('CONNECT MIC / USB'));
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, 'CONNECT MIC / USB');
 
     expect(find.text('CAPTURE ACTIVE — USB INTERFACE'), findsOneWidget);
   });
@@ -64,8 +63,7 @@ void main() {
       MaterialApp(home: WebReleaseShell(controller: controller)),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CONNECT MIC / USB'));
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, 'CONNECT MIC / USB');
 
     expect(find.text('CAPTURE ACTIVE — USB INTERFACE'), findsOneWidget);
 
@@ -86,8 +84,7 @@ void main() {
       MaterialApp(home: WebReleaseShell(controller: controller)),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CONNECT MIC / USB'));
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, 'CONNECT MIC / USB');
 
     gateway.changeDeviceInventory();
     await tester.pump();
@@ -115,26 +112,30 @@ void main() {
 
     expect(find.text('START RECORDING'), findsOneWidget);
 
-    await tester.tap(find.text('CONNECT MIC / USB'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('START RECORDING'));
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, 'CONNECT MIC / USB');
+    await _tapVisible(tester, 'START RECORDING');
 
     expect(find.text('RECORDING ACTIVE — POST-MASTER PCM TO WAV'), findsOneWidget);
     expect(find.text('STOP RECORDING'), findsOneWidget);
 
-    await tester.tap(find.text('STOP RECORDING'));
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, 'STOP RECORDING');
 
     expect(find.text('WAV FINALIZED — acceptance.wav — 50 BYTES'), findsOneWidget);
     expect(find.text('DOWNLOAD WAV'), findsOneWidget);
 
-    await tester.tap(find.text('DOWNLOAD WAV'));
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, 'DOWNLOAD WAV');
 
     expect(recordingGateway.exports, 1);
     expect(find.text('WAV DOWNLOAD REQUESTED — acceptance.wav'), findsOneWidget);
   });
+}
+
+Future<void> _tapVisible(WidgetTester tester, String label) async {
+  final target = find.text(label);
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  await tester.tap(target);
+  await tester.pumpAndSettle();
 }
 
 class _ShellGateway implements BrowserMediaGateway {
