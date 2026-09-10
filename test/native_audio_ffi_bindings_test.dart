@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/audio/native_audio_bindings.dart';
 import 'package:live_mix_master/audio/native_audio_ffi_bindings.dart';
+import 'package:live_mix_master/audio/native_pcm_handoff_bindings.dart';
 
 void main() {
   final nativeLibraryPath = Platform.environment['LMM_NATIVE_LIBRARY'];
@@ -12,7 +13,7 @@ void main() {
       : false;
 
   test(
-    'DynamicLibrary bindings cover device control capture and meter ABI',
+    'DynamicLibrary bindings cover device control capture meter and PCM handoff ABI',
     () {
       final path = Platform.environment['LMM_NATIVE_LIBRARY'];
       if (path == null || path.isEmpty) {
@@ -20,6 +21,7 @@ void main() {
       }
 
       final bindings = FfiNativeAudioBindings(DynamicLibrary.open(path));
+      final NativePcmHandoffBindings handoff = bindings;
 
       expect(bindings.initialize(48000, 256), isTrue);
 
@@ -58,6 +60,13 @@ void main() {
       expect(bindings.captureStatus().state, NativeCaptureState.failed);
       bindings.captureStop();
       expect(bindings.captureStatus().state, NativeCaptureState.idle);
+
+      expect(handoff.popRecordingBlock(), isNull);
+      final handoffStatus = handoff.status;
+      expect(handoffStatus.recorderQueueDepth, greaterThanOrEqualTo(0));
+      expect(handoffStatus.fingerprintQueueDepth, greaterThanOrEqualTo(0));
+      expect(handoffStatus.recorderRejectedBlocks, greaterThanOrEqualTo(0));
+      expect(handoffStatus.fingerprintRejectedBlocks, greaterThanOrEqualTo(0));
 
       expect(bindings.removeChannel(channelId), isTrue);
     },
