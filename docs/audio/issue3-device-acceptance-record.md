@@ -4,9 +4,22 @@ Status: **PENDING REAL DEVICE RUN**
 
 This file is a non-secret evidence template. Do not mark it PASS until `docs/audio/macos-device-e2e.md` has been executed on a real macOS host with a physical input or BlackHole-compatible endpoint.
 
+## Hosted preflight identity
+
+- verified PR head SHA: `a6611e5f19fa63878a7f8ac8e8c260866594b960`
+- Standard CI: #214 (`34490780750`) — GREEN
+- macOS Desktop CI: #97 (`34490780889`) — GREEN
+- same-process acceptance telemetry contract: GREEN
+- macOS hosted suite: 111 tests passed; 2 built-library-dependent tests skipped in the pre-build suite and exercised later by the dedicated FFI smoke
+- native CTest: 9/9 passed
+- dedicated built-dylib Dart FFI smoke: 3/3 passed
+- hosted evidence artifact: `issue3-macos-launch-evidence`, ID `10157730428`, SHA-256 `07f0467d75078cf384deae9936fe43c7c32b2a63fa96c12ca0b60c5161318f6b`
+
+Hosted preflight evidence does not satisfy the device E2E fields below.
+
 ## Build/runtime identity
 
-- PR head SHA: PENDING
+- PR head SHA: PENDING REAL DEVICE RUN
 - macOS version: PENDING
 - architecture: PENDING
 - Flutter version: 3.47.2
