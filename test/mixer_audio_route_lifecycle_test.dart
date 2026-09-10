@@ -9,6 +9,13 @@ void main() {
   testWidgets(
     'mixer surfaces engine route lifecycle and recovery opens live endpoint patchbay',
     (tester) async {
+      tester.view.physicalSize = const Size(1440, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
       final engine = _FakeAudioEngine(
         inputs: const <AudioInputEndpoint>[
           AudioInputEndpoint(
@@ -40,6 +47,7 @@ void main() {
       expect(find.text('AUDIO PATCHBAY MATRIX & INPUT ROUTING'), findsOneWidget);
       expect(find.text('USB LIVE INPUT'), findsOneWidget);
       expect(find.text('Rekordbox (App Stream Loopback)'), findsNothing);
+      expect(tester.takeException(), isNull);
 
       await engine.dispose();
     },
