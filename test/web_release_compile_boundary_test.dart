@@ -71,7 +71,10 @@ void main() {
     gateway.endActiveTrack();
     await tester.pump();
 
-    expect(find.text('CAPTURE ENDED — RECONNECT REQUIRED'), findsOneWidget);
+    expect(
+      find.text('CAPTURE ENDED / ACCESS REVOKED — RECONNECT REQUIRED'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('web shell surfaces device inventory change while retaining source', (tester) async {
