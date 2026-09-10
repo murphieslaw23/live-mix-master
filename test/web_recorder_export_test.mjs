@@ -81,6 +81,27 @@ test('OPFS writer exposes the finalized File after closing the sync access handl
   assert.equal(await writer.exportFile(), finalizedFile);
 });
 
+test('memory fallback retains only its bounded finalized WAV and exports it as audio/wav', async () => {
+  const writer = await createLiveMixMasterBrowserWavWriter(
+    {
+      sampleRate: 48000,
+      channels: 2,
+      sampleFormat: 'pcm24',
+      maxBytes: 1024,
+    },
+    { storage: {}, fileName: 'fallback.wav' },
+  );
+
+  writer.appendInterleaved(new Float32Array([0.25, -0.25]));
+  const finalized = writer.finalize();
+  const exported = await writer.exportFile();
+
+  assert.equal(writer.fileName, 'fallback.wav');
+  assert.ok(exported instanceof Blob);
+  assert.equal(exported.type, 'audio/wav');
+  assert.equal(exported.size, finalized.byteLength);
+});
+
 test('Worker stop exposes artifact metadata and export returns the finalized File/Blob', async () => {
   const messages = [];
   const finalizedFile = new Blob(['final-wav'], { type: 'audio/wav' });
