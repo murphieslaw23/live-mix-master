@@ -94,6 +94,10 @@ abstract interface class BrowserMediaGateway {
   Future<BrowserCaptureAttempt> requestDisplayAudio();
 }
 
+abstract interface class BrowserMediaLifecycleGateway {
+  void setTrackEndedHandler(void Function() handler);
+}
+
 class BrowserCaptureState {
   const BrowserCaptureState({
     required this.status,
@@ -131,7 +135,11 @@ class BrowserCaptureState {
 
 class BrowserCaptureController {
   BrowserCaptureController({required BrowserMediaGateway gateway})
-      : _gateway = gateway;
+      : _gateway = gateway {
+    if (gateway is BrowserMediaLifecycleGateway) {
+      gateway.setTrackEndedHandler(handleTrackEnded);
+    }
+  }
 
   final BrowserMediaGateway _gateway;
 
