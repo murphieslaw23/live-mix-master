@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'audio/audio_engine_bridge.dart';
+import 'audio/native_acceptance_telemetry.dart';
 import 'audio/native_audio_engine.dart';
 import 'audio/native_audio_ffi_bindings.dart';
 import 'audio/native_audio_permission_bindings.dart';
@@ -14,6 +15,7 @@ import 'audio/native_pcm_runtime_pump.dart';
 import 'audio/native_recording_drain.dart';
 import 'design/live_mix_tokens.dart';
 import 'features/mixer/mixer_desk_view.dart';
+import 'features/mixer/native_acceptance_telemetry_panel.dart';
 import 'services/fingerprint_service.dart';
 import 'services/lossless_recording_writer.dart';
 
@@ -38,12 +40,14 @@ class NativeAppRuntime {
     required this.recordingWriter,
     required this.fingerprintService,
     required this.pcmRuntimePump,
+    required this.acceptanceTelemetry,
   });
 
   final AudioEngine audioEngine;
   final LosslessRecordingWriter recordingWriter;
   final FingerprintService fingerprintService;
   final NativePcmRuntimePump pcmRuntimePump;
+  final AcceptanceTelemetrySource acceptanceTelemetry;
 }
 
 Future<NativeAppRuntime> _prepareNativeAppRuntime(
@@ -57,7 +61,13 @@ Future<NativeAppRuntime> _prepareNativeAppRuntime(
       permissionState: permissionState,
     ),
   );
-  final engine = await runtime.prepare();
+  final preparedEngine = await runtime.prepare();
+  if (preparedEngine is! NativeAudioEngine) {
+    throw StateError(
+      'Native runtime did not return the expected NativeAudioEngine host adapter.',
+    );
+  }
+  final engine = preparedEngine;
 
   final pcmSampleRate = _configuredPcmSampleRate();
   final recordingWriter = LosslessRecordingWriter(
@@ -86,12 +96,17 @@ Future<NativeAppRuntime> _prepareNativeAppRuntime(
     recordingDrain: recordingDrain,
     fingerprintSink: fingerprintService.pushPcmChunk,
   )..start();
+  final acceptanceTelemetry = NativeRuntimeAcceptanceTelemetry(
+    audioEngine: engine,
+    pcmRuntimePump: pcmRuntimePump,
+  );
 
   return NativeAppRuntime(
     audioEngine: engine,
     recordingWriter: recordingWriter,
     fingerprintService: fingerprintService,
     pcmRuntimePump: pcmRuntimePump,
+    acceptanceTelemetry: acceptanceTelemetry,
   );
 }
 
@@ -215,10 +230,19 @@ class _NativeMixerRuntimeHostState extends State<_NativeMixerRuntimeHost> {
 
   @override
   Widget build(BuildContext context) {
-    return MixerDeskView(
-      audioEngine: widget.runtime.audioEngine,
-      recordingWriter: widget.runtime.recordingWriter,
-      fingerprintService: widget.runtime.fingerprintService,
+    return Column(
+      children: [
+        NativeAcceptanceTelemetryPanel(
+          telemetrySource: widget.runtime.acceptanceTelemetry,
+        ),
+        Expanded(
+          child: MixerDeskView(
+            audioEngine: widget.runtime.audioEngine,
+            recordingWriter: widget.runtime.recordingWriter,
+            fingerprintService: widget.runtime.fingerprintService,
+          ),
+        ),
+      ],
     );
   }
 }
