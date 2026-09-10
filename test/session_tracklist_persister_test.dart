@@ -18,7 +18,13 @@ void main() {
     final persister = SessionTracklistPersister(store: store, debounce: const Duration(milliseconds: 10));
     persister.schedule([entry('First')]);
     persister.schedule([entry('Latest')]);
-    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    // `flush` is the persister's completion barrier. If the debounce timer has
+    // already fired it awaits the in-flight write; if not, it cancels the timer
+    // and persists the coalesced latest snapshot immediately. Do not infer
+    // asynchronous file completion from an arbitrary wall-clock delay.
+    await persister.flush();
+
     expect((await store.load()).single.title, 'Latest');
     await persister.dispose();
   });
