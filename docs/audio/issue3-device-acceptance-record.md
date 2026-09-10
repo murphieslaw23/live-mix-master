@@ -31,12 +31,16 @@ This file is a non-secret evidence template. Do not mark it PASS until `docs/aud
 - limiter activation under intentional over-ceiling signal: PENDING
 - post-limiter sample peak <= 0.98: PENDING
 
-## Callback and bounded-handoff telemetry
+## Same-process E2E telemetry
+
+Read these values from the **E2E TELEMETRY** surface in the same Flutter app process used for this acceptance run. Do not replace them with values from the standalone CLI probe.
 
 - average callback duration (us): PENDING
 - maximum callback duration (us): PENDING
 - callback count: PENDING
 - xrun count: PENDING
+- recorder queue depth observed: PENDING
+- fingerprint queue depth observed: PENDING
 - recorder rejected blocks: PENDING
 - fingerprint rejected blocks: PENDING
 - queue overflow result: PENDING
