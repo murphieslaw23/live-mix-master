@@ -7,13 +7,14 @@
   <meta name="description" content="LiveMixMaster browser release — live audio routing, metering and session control with explicit browser capability boundaries.">
   <meta name="theme-color" content="#111315">
   <meta name="color-scheme" content="dark">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="LiveMixMaster">
 
   <link rel="icon" type="image/svg+xml" href="icons/livemixmaster-maskable.svg">
+  <link rel="apple-touch-icon" href="icons/livemixmaster-maskable-192.png">
   <link rel="manifest" href="manifest.json">
 
   <title>LiveMixMaster</title>
@@ -21,5 +22,14 @@
 <body>
   <noscript>LiveMixMaster Web requires JavaScript.</noscript>
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('lmm-service-worker.js', { scope: './' })
+          .catch((error) => console.warn('LiveMixMaster offline shell unavailable:', error));
+      });
+    }
+  </script>
 </body>
 </html>
