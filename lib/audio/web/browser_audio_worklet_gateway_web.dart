@@ -316,6 +316,7 @@ class WebAudioWorkletGateway
     );
 
     try {
+      // Await the recordingExport message from the Worker.
       final blob = await _recorderExportCompleter!.future.timeout(
         _recorderExportTimeout,
       );
