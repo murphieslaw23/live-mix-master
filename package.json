@@ -1,0 +1,13 @@
+{
+  "name": "live-mix-master-web-acceptance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:web:e2e": "playwright test --config=playwright.config.mjs",
+    "test:web:chromium": "playwright test --config=playwright.config.mjs --project=chromium-operator",
+    "test:web:matrix": "playwright test --config=playwright.config.mjs --project=chromium-capability --project=firefox-capability --project=webkit-capability"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
