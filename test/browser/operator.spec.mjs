@@ -50,7 +50,9 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await activateControl(connect);
   await expect(page.getByText(/CAPTURE ACTIVE —/)).toBeVisible();
 
-  const slider = page.getByRole('slider', { name: 'Channel fader' });
+  const slider = page
+    .getByRole('group', { name: /^Channel fader/ })
+    .getByRole('slider');
   const mute = page.getByRole('switch', { name: 'Mute' });
   const solo = page.getByRole('switch', { name: 'Solo' });
   await expect(slider).toBeEnabled();
