@@ -47,11 +47,26 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - name: Validate immutable release inputs
+        shell: bash
         run: |
-          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]
-          [[ "$ARTIFACT_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
-          [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test -n "$VERCEL_TOKEN"
+          set -euo pipefail
+          if ! [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error title=Invalid artifact ID::artifact_id must contain decimal digits only"
+            exit 1
+          fi
+          if ! [[ "$ARTIFACT_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error title=Invalid artifact digest::artifact_digest must be sha256: followed by 64 lowercase hex characters"
+            exit 1
+          fi
+          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Invalid commit SHA::commit_sha must be a 40-character lowercase Git SHA"
+            exit 1
+          fi
+          if [[ -z "$VERCEL_TOKEN" ]]; then
+            echo "::error title=Missing Vercel token::VERCEL_TOKEN did not resolve in this GitHub environment"
+            exit 1
+          fi
+          echo "Immutable release inputs and scoped Vercel token are present."
 
       - name: Check out the exact release source
         uses: actions/checkout@v4
