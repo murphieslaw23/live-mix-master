@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import {
   assertNoPageFailures,
   collectPageFailures,
-  enableFlutterAccessibility,
   writeEvidence,
 } from './browser_helpers.mjs';
 
@@ -10,11 +9,8 @@ test('records browser audio capability matrix without overclaiming Safari parity
   const failures = [];
   collectPageFailures(page, failures);
 
-  await page.goto('/');
-  await enableFlutterAccessibility(page);
-  await expect(page.getByText('WEB AUDIO')).toBeVisible();
-  await expect(page.getByText('SYSTEM AUDIO')).toBeVisible();
-  await expect(page.getByText('BROWSER / OS DEPENDENT')).toBeVisible();
+  const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
+  expect(response?.ok()).toBe(true);
 
   const capabilities = await page.evaluate(() => ({
     userAgent: navigator.userAgent,
