@@ -13,7 +13,8 @@ import 'browser_recording_controller.dart';
 typedef BrowserActiveStreamProvider = web.MediaStream? Function();
 
 const int _recorderMaxBytes = 64 * 1024 * 1024;
-const int _recorderMaxOutstandingPcm = 128;
+const int _recorderRenderQuantumFrames = 128;
+const int _recorderBackpressureBudgetMilliseconds = 500;
 const Duration _recorderHandshakeTimeout = Duration(seconds: 2);
 const Duration _recorderStopTimeout = Duration(seconds: 2);
 const Duration _recorderExportTimeout = Duration(seconds: 2);
@@ -261,7 +262,11 @@ class WebAudioWorkletGateway
       }
     }
 
-    _setWorkletRecording(workletNode, enabled: true);
+    _setWorkletRecording(
+      workletNode,
+      enabled: true,
+      maxOutstandingPcm: _recorderMaxOutstandingPcm(context.sampleRate),
+    );
     _recordingActive = true;
   }
 
@@ -396,17 +401,28 @@ class WebAudioWorkletGateway
     }
   }
 
+  int _recorderMaxOutstandingPcm(num sampleRate) {
+    final framesInBudget =
+        sampleRate * _recorderBackpressureBudgetMilliseconds / 1000;
+    return (framesInBudget / _recorderRenderQuantumFrames)
+        .ceil()
+        .clamp(1, 4096)
+        .toInt();
+  }
+
   void _setWorkletRecording(
     web.AudioWorkletNode workletNode, {
     required bool enabled,
+    int? maxOutstandingPcm,
   }) {
-    workletNode.port.postMessage(
-      <String, Object?>{
-        'type': 'recording',
-        'enabled': enabled,
-        'maxOutstandingPcm': _recorderMaxOutstandingPcm,
-      }.jsify(),
-    );
+    final message = <String, Object?>{
+      'type': 'recording',
+      'enabled': enabled,
+    };
+    if (maxOutstandingPcm != null) {
+      message['maxOutstandingPcm'] = maxOutstandingPcm;
+    }
+    workletNode.port.postMessage(message.jsify());
   }
 
   void _failPendingRecordingOperations(BrowserRecordingException failure) {
