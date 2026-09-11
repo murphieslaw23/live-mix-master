@@ -122,11 +122,11 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await enableFlutterAccessibility(page);
 
   await expect(page.getByText('Session tracklist')).toBeVisible();
-  await expect(page.getByText('Recovered Artist')).toBeVisible();
-  await expect(page.getByText('Recovered Title')).toBeVisible();
-
   const artist = page.getByRole('textbox', { name: 'Artist' });
   const title = page.getByRole('textbox', { name: 'Title' });
+  await expect(artist).toHaveValue('Recovered Artist');
+  await expect(title).toHaveValue('Recovered Title');
+
   await artist.fill('Corrected Artist');
   await title.fill('Corrected Title');
   await activateButton(page, 'Save correction');
