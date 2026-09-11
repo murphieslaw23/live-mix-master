@@ -1,0 +1,28 @@
+name: Web Operator Contract
+
+on:
+  pull_request:
+    paths:
+      - 'lib/app/app_surface_web.dart'
+      - 'lib/audio/web/**'
+      - 'lib/services/web/**'
+      - 'test/browser_capture_disconnect_test.dart'
+      - 'test/web_operator_surface_test.dart'
+      - '.github/workflows/web-operator-contract.yml'
+  workflow_dispatch:
+
+jobs:
+  web-operator-contract:
+    name: Web Operator Surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: bash tool/bootstrap_fonts.sh
+      - run: flutter pub get
+      - run: >-
+          flutter test
+          test/browser_capture_disconnect_test.dart
+          test/web_operator_surface_test.dart
