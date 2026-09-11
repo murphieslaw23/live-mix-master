@@ -23,3 +23,5 @@ jobs:
           node-version: '24'
       - name: Verify independent bounded post-master analysis tap
         run: node --test test/web_fingerprint_analysis_tap_test.mjs
+      - name: Verify live Worklet-to-fingerprint-Worker bridge
+        run: node --test test/web_fingerprint_live_bridge_contract_test.mjs
