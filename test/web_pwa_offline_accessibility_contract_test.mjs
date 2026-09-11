@@ -36,6 +36,20 @@ test('web bootstrap preserves browser zoom and registers an explicit offline-she
   assert.match(index, /lmm-service-worker\.js/);
 });
 
+test('Flutter bootstrap leaves service-worker ownership to the explicit LiveMixMaster worker', () => {
+  assert.ok(
+    existsSync(resolve(root, 'web/flutter_bootstrap.js')),
+    'web/flutter_bootstrap.js must explicitly disable Flutter service-worker registration',
+  );
+
+  const bootstrap = read('web/flutter_bootstrap.js');
+  assert.match(bootstrap, /\{\{flutter_js\}\}/);
+  assert.match(bootstrap, /\{\{flutter_build_config\}\}/);
+  assert.match(bootstrap, /_flutter\.loader\.load\(\s*\)\s*;/);
+  assert.doesNotMatch(bootstrap, /serviceWorkerSettings/);
+  assert.doesNotMatch(bootstrap, /flutter_service_worker/);
+});
+
 test('offline-shell worker caches same-origin app resources but never caches API traffic', () => {
   assert.ok(
     existsSync(resolve(root, 'web/lmm-service-worker.js')),
