@@ -11,7 +11,7 @@ class _UnsupportedBrowserFingerprintPreparationGateway
     required List<double> interleavedSamples,
     required int sampleRate,
     int channels = 2,
-  }) {
+  }) async {
     throw const BrowserFingerprintPreparationException(
       BrowserFingerprintPreparationFailure.unsupported,
       'FINGERPRINT PREPARATION UNSUPPORTED ON THIS PLATFORM',
