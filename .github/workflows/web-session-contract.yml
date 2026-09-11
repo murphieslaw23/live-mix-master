@@ -1,0 +1,29 @@
+name: Web Session Contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-session-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-session-contract:
+    name: Browser Session Recovery + Export
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          cache: true
+      - run: bash tool/bootstrap_fonts.sh
+      - run: flutter pub get
+      - run: flutter test test/session_tracklist_test.dart test/browser_session_controller_test.dart test/browser_session_tracklist_repository_contract_test.dart test/web_release_compile_boundary_test.dart
