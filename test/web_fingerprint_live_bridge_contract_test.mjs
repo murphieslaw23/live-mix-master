@@ -53,6 +53,21 @@ test('WebAudioWorkletGateway relays analysis PCM and ACKs independently from rec
   );
 });
 
+test('fingerprint preparation failures reach the visible lookup state', async () => {
+  const audioGateway = await readFile(audioGatewayUrl, 'utf8');
+  const runtime = await readFile(runtimeUrl, 'utf8');
+  const lookupController = await readFile(lookupControllerUrl, 'utf8');
+
+  assert.match(audioGateway, /fingerprintPreparationUnavailableHandler/);
+  assert.match(
+    audioGateway,
+    /onUnavailable:\s*\(\)\s*\{[\s\S]*fingerprintPreparationUnavailableHandler/,
+  );
+  assert.match(runtime, /fingerprintPreparationUnavailableHandler/);
+  assert.match(runtime, /reportPreparationUnavailable/);
+  assert.match(lookupController, /reportPreparationUnavailable/);
+});
+
 test('default Web runtime and UI share lookup state while injected controllers remain isolated', async () => {
   const runtime = await readFile(runtimeUrl, 'utf8');
   const lookupController = await readFile(lookupControllerUrl, 'utf8');
