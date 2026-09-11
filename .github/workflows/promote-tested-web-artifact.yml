@@ -125,7 +125,7 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
           vercel_curl() {
-            npx --yes vercel@48.2.8 curl "$1" --deployment "$DEPLOY_URL" --token "$VERCEL_TOKEN"
+            npx --yes vercel@48.2.8 curl "${DEPLOY_URL%/}$1"
           }
           vercel_curl / >/dev/null
           FINGERPRINT_BODY="$(vercel_curl /api/fingerprint-lookup)"
@@ -146,6 +146,6 @@ jobs:
             echo "- Artifact digest: `$ARTIFACT_DIGEST`"
             echo "- Deployment URL: $DEPLOY_URL"
             echo "- Shell: passed"
-            echo "- Fingerprint route: GET 405 (route present; no provider request made)"
-            echo "- Broadcast route: GET 405 (route present; no destination request made)"
+            echo "- Fingerprint route: authenticated preview GET reached invalid-request handler; no provider request made"
+            echo "- Broadcast route: authenticated preview GET reached invalid-request handler; no destination request made"
           } >> "$GITHUB_STEP_SUMMARY"
