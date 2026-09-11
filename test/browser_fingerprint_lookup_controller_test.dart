@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/app/app_surface_web.dart';
@@ -105,15 +103,9 @@ void main() {
   });
 
   testWidgets(
-    'WebReleaseShell persists a matched fingerprint into the session tracklist',
+    'WebReleaseShell forwards a matched fingerprint to the session tracklist',
     (tester) async {
-      final repository = _SessionRepository();
-      final sessionController = BrowserSessionController(
-        repository: repository,
-        downloadGateway: const _NoopDownloadGateway(),
-        createSessionId: () => 'web-session',
-        clock: () => DateTime.utc(2026, 9, 11, 12),
-      );
+      final sessionController = _RecordingSessionPort();
       final fingerprintController = BrowserFingerprintLookupController(
         gateway: _QueueFingerprintGateway([
           const FingerprintProxyResult.matched(
@@ -147,16 +139,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 1));
 
-      expect(sessionController.entries, hasLength(1));
-      expect(sessionController.entries.single.title, 'Signal Ritual');
-      expect(
-        sessionController.entries.single.provenance,
-        TrackProvenance.automatic,
-      );
-      expect(repository.savedSnapshots, hasLength(1));
-
-      await tester.pumpWidget(const SizedBox.shrink());
-      await sessionController.dispose();
+      expect(sessionController.recordedTrack?.artist, 'System Corrupt');
+      expect(sessionController.recordedTrack?.title, 'Signal Ritual');
+      expect(sessionController.recordedTrack?.providerId, 'acoustid-1');
     },
   );
 
@@ -207,35 +192,61 @@ void main() {
   );
 }
 
-class _SessionRepository implements SessionTracklistRepository {
-  final StreamController<ServiceStatus> _statuses =
-      StreamController<ServiceStatus>.broadcast();
-  final List<List<TracklistEntry>> savedSnapshots = <List<TracklistEntry>>[];
+class _RecordingSessionPort implements BrowserSessionPort {
+  final Set<BrowserSessionStateListener> _listeners =
+      <BrowserSessionStateListener>{};
+
+  FingerprintProxyTrack? recordedTrack;
 
   @override
-  Stream<ServiceStatus> get onStatus => _statuses.stream;
+  BrowserSessionState get state => const BrowserSessionState(
+    initialized: true,
+    sessionId: 'web-session',
+    entries: <TracklistEntry>[],
+    persistenceStatus: ServiceStatus.idle(),
+  );
 
   @override
-  Future<List<TracklistEntry>> load() async => const <TracklistEntry>[];
-
-  @override
-  Future<void> save(Iterable<TracklistEntry> entries) async {
-    savedSnapshots.add(List<TracklistEntry>.unmodifiable(entries));
+  void addListener(BrowserSessionStateListener listener) {
+    _listeners.add(listener);
   }
 
   @override
-  Future<void> dispose() => _statuses.close();
-}
-
-class _NoopDownloadGateway implements BrowserTracklistDownloadGateway {
-  const _NoopDownloadGateway();
+  void removeListener(BrowserSessionStateListener listener) {
+    _listeners.remove(listener);
+  }
 
   @override
-  Future<void> download({
-    required String fileName,
-    required String mimeType,
-    required String contents,
-  }) async {}
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> recordFingerprintMatch({
+    required FingerprintProxyTrack track,
+  }) async {
+    recordedTrack = track;
+    return true;
+  }
+
+  @override
+  Future<TracklistEntry> correct({
+    required int index,
+    required String artist,
+    required String title,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> exportJson() async {}
+
+  @override
+  Future<void> exportCsv() async {}
+
+  @override
+  Future<void> exportM3u() async {}
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class _QueueFingerprintGateway implements BrowserFingerprintLookupGateway {
