@@ -14,6 +14,10 @@ const runtimeUrl = new URL(
   '../lib/audio/web/browser_capture_runtime_web.dart',
   import.meta.url,
 );
+const lookupControllerUrl = new URL(
+  '../lib/services/web/browser_fingerprint_lookup_controller.dart',
+  import.meta.url,
+);
 const appSurfaceUrl = new URL('../lib/app/app_surface_web.dart', import.meta.url);
 
 test('live fingerprint bridge streams bounded Worklet PCM directly to the Dedicated Worker', async () => {
@@ -49,13 +53,16 @@ test('WebAudioWorkletGateway relays analysis PCM and ACKs independently from rec
   );
 });
 
-test('default Web runtime shares one lookup controller with the live fingerprint bridge and UI', async () => {
+test('default Web runtime and UI share lookup state while injected controllers remain isolated', async () => {
   const runtime = await readFile(runtimeUrl, 'utf8');
+  const lookupController = await readFile(lookupControllerUrl, 'utf8');
   const appSurface = await readFile(appSurfaceUrl, 'utf8');
 
   assert.match(runtime, /BrowserFingerprintLookupController/);
   assert.match(runtime, /fingerprintController/);
   assert.match(runtime, /lookupPreparedFingerprint/);
   assert.match(runtime, /preparedFingerprintHandler/);
-  assert.match(appSurface, /runtime\.fingerprintController/);
+  assert.match(lookupController, /_defaultFingerprintLookupStore/);
+  assert.match(lookupController, /gateway == null/);
+  assert.match(appSurface, /BrowserFingerprintLookupController\(\)/);
 });
