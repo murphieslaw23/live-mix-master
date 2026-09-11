@@ -4,6 +4,9 @@ import 'package:live_mix_master/app/app_surface_web.dart';
 import 'package:live_mix_master/audio/web/browser_capture_controller.dart';
 import 'package:live_mix_master/services/web/browser_fingerprint_lookup_controller.dart';
 import 'package:live_mix_master/services/web/fingerprint_proxy_client.dart';
+import 'package:live_mix_master/services/web/browser_session_controller.dart';
+import 'package:live_mix_master/services/reliability_models.dart';
+import 'package:live_mix_master/services/session_tracklist_repository.dart';
 
 void main() {
   group('BrowserFingerprintLookupController', () {
@@ -83,6 +86,55 @@ void main() {
     );
   });
 
+
+
+  testWidgets('WebReleaseShell persists a matched fingerprint into the session tracklist', (tester) async {
+    final repository = _SessionRepository();
+    final sessionController = BrowserSessionController(
+      repository: repository,
+      downloadGateway: const _NoopDownloadGateway(),
+      createSessionId: () => 'web-session',
+      clock: () => DateTime.utc(2026, 9, 11, 12),
+    );
+    final fingerprintController = BrowserFingerprintLookupController(
+      gateway: _QueueFingerprintGateway([
+        const FingerprintProxyResult.matched(
+          FingerprintProxyTrack(
+            artist: 'System Corrupt',
+            title: 'Signal Ritual',
+            release: null,
+            providerId: 'acoustid-1',
+            confidence: 0.93,
+          ),
+        ),
+      ]),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WebReleaseShell(
+          controller: BrowserCaptureController(gateway: _CaptureGateway()),
+          fingerprintController: fingerprintController,
+          sessionController: sessionController,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await fingerprintController.lookupPreparedFingerprint(
+      fingerprint: 'prepared',
+      durationSeconds: 10,
+    );
+    await tester.pumpAndSettle();
+
+    expect(sessionController.entries, hasLength(1));
+    expect(sessionController.entries.single.title, 'Signal Ritual');
+    expect(sessionController.entries.single.provenance, TrackProvenance.automatic);
+    expect(repository.savedSnapshots, hasLength(1));
+
+    await sessionController.dispose();
+  });
+
   testWidgets('WebReleaseShell visibly reacts to asynchronous provider failure', (tester) async {
     final fingerprintController = BrowserFingerprintLookupController(
       gateway: _QueueFingerprintGateway([
@@ -121,6 +173,39 @@ void main() {
     );
     expect(find.textContaining('internal provider detail'), findsNothing);
   });
+}
+
+
+
+class _SessionRepository implements SessionTracklistRepository {
+  final StreamController<ServiceStatus> _statuses =
+      StreamController<ServiceStatus>.broadcast();
+  final List<List<TracklistEntry>> savedSnapshots = <List<TracklistEntry>>[];
+
+  @override
+  Stream<ServiceStatus> get onStatus => _statuses.stream;
+
+  @override
+  Future<List<TracklistEntry>> load() async => const <TracklistEntry>[];
+
+  @override
+  Future<void> save(Iterable<TracklistEntry> entries) async {
+    savedSnapshots.add(List<TracklistEntry>.unmodifiable(entries));
+  }
+
+  @override
+  Future<void> dispose() => _statuses.close();
+}
+
+class _NoopDownloadGateway implements BrowserTracklistDownloadGateway {
+  const _NoopDownloadGateway();
+
+  @override
+  Future<void> download({
+    required String fileName,
+    required String mimeType,
+    required String contents,
+  }) async {}
 }
 
 class _QueueFingerprintGateway implements BrowserFingerprintLookupGateway {
