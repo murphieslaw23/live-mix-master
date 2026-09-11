@@ -11,7 +11,7 @@ export async function enableFlutterAccessibility(page) {
       await placeholder.evaluate((node) => node.click());
     }
   }
-  await expect(page.getByText('LIVEMIXMASTER')).toBeVisible();
+  await expect(page.getByText('LIVEMIXMASTER', { exact: true })).toBeVisible();
 }
 
 export function collectPageFailures(page, bucket) {
