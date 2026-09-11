@@ -16,8 +16,7 @@ void main() {
       (tester) async {
     final captureGateway = _CaptureGateway();
     final captureController = BrowserCaptureController(gateway: captureGateway);
-    final mixerGateway = _MixerGateway();
-    final mixerController = BrowserMixerController(gateway: mixerGateway);
+    final mixerController = _SurfaceMixerController();
     final sessionPort = _SessionPort(
       TracklistEntry(
         sessionId: 'session-1',
@@ -71,7 +70,7 @@ void main() {
     await _tapVisible(tester, 'Solo');
     expect(mixerController.state.solo, isTrue);
 
-    mixerGateway.publish(
+    mixerController.publish(
       const BrowserMixerTelemetry(
         channelMeters: <String, BrowserChannelMeter>{
           'mic-test': BrowserChannelMeter(
@@ -197,17 +196,123 @@ class _CaptureGateway
   }
 }
 
-class _MixerGateway implements BrowserMixerGateway {
-  final StreamController<BrowserMixerTelemetry> _telemetry =
-      StreamController<BrowserMixerTelemetry>.broadcast(sync: true);
+class _SurfaceMixerController extends BrowserMixerController {
+  _SurfaceMixerController() : super(gateway: const _NoopMixerGateway());
+
+  final Set<BrowserMixerStateListener> _surfaceListeners =
+      <BrowserMixerStateListener>{};
+  BrowserMixerState _surfaceState = const BrowserMixerState.disabled();
 
   @override
-  Stream<BrowserMixerTelemetry> get telemetry => _telemetry.stream;
+  BrowserMixerState get state => _surfaceState;
+
+  @override
+  void addListener(BrowserMixerStateListener listener) {
+    _surfaceListeners.add(listener);
+  }
+
+  @override
+  void removeListener(BrowserMixerStateListener listener) {
+    _surfaceListeners.remove(listener);
+  }
+
+  @override
+  Future<void> attach(String channelId) async {
+    _setSurfaceState(
+      BrowserMixerState(
+        enabled: true,
+        activeChannelId: channelId,
+        fader: 1,
+        muted: false,
+        solo: false,
+        channelMeter: null,
+        masterPeakLeft: 0,
+        masterPeakRight: 0,
+        limiterActive: false,
+      ),
+    );
+  }
+
+  @override
+  Future<void> setFader(double value) async {
+    _setSurfaceState(_copyState(fader: value.clamp(0.0, 1.0).toDouble()));
+  }
+
+  @override
+  Future<void> setMuted(bool value) async {
+    _setSurfaceState(_copyState(muted: value));
+  }
+
+  @override
+  Future<void> setSolo(bool value) async {
+    _setSurfaceState(_copyState(solo: value));
+  }
+
+  @override
+  Future<void> detach() async {
+    _setSurfaceState(const BrowserMixerState.disabled());
+  }
+
+  void publish(BrowserMixerTelemetry telemetry) {
+    final channelId = _surfaceState.activeChannelId;
+    if (!_surfaceState.enabled || channelId == null) {
+      return;
+    }
+    _setSurfaceState(
+      _copyState(
+        channelMeter: telemetry.channelMeters[channelId],
+        masterPeakLeft: telemetry.masterPeakLeft,
+        masterPeakRight: telemetry.masterPeakRight,
+        limiterActive: telemetry.limiterActive,
+      ),
+    );
+  }
+
+  @override
+  Future<void> dispose() async {
+    _surfaceListeners.clear();
+  }
+
+  BrowserMixerState _copyState({
+    double? fader,
+    bool? muted,
+    bool? solo,
+    BrowserChannelMeter? channelMeter,
+    double? masterPeakLeft,
+    double? masterPeakRight,
+    bool? limiterActive,
+  }) {
+    return BrowserMixerState(
+      enabled: _surfaceState.enabled,
+      activeChannelId: _surfaceState.activeChannelId,
+      fader: fader ?? _surfaceState.fader,
+      muted: muted ?? _surfaceState.muted,
+      solo: solo ?? _surfaceState.solo,
+      channelMeter: channelMeter ?? _surfaceState.channelMeter,
+      masterPeakLeft: masterPeakLeft ?? _surfaceState.masterPeakLeft,
+      masterPeakRight: masterPeakRight ?? _surfaceState.masterPeakRight,
+      limiterActive: limiterActive ?? _surfaceState.limiterActive,
+    );
+  }
+
+  void _setSurfaceState(BrowserMixerState state) {
+    _surfaceState = state;
+    for (final listener
+        in List<BrowserMixerStateListener>.of(_surfaceListeners)) {
+      listener(state);
+    }
+  }
+}
+
+class _NoopMixerGateway implements BrowserMixerGateway {
+  const _NoopMixerGateway();
+
+  @override
+  Stream<BrowserMixerTelemetry> get telemetry =>
+      const Stream<BrowserMixerTelemetry>.empty();
 
   @override
   Future<void> configure(BrowserMixerConfiguration configuration) async {}
-
-  void publish(BrowserMixerTelemetry telemetry) => _telemetry.add(telemetry);
 }
 
 class _RecordingGateway implements BrowserRecordingGateway {
