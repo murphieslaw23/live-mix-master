@@ -119,15 +119,19 @@ jobs:
           fi
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Verify release shell and server-route presence
+      - name: Verify protected release shell and server-route presence
+        working-directory: release-payload
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
-          curl --fail --silent --show-error "$DEPLOY_URL/" -o /dev/null
-          FINGERPRINT_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' -X GET "$DEPLOY_URL/api/fingerprint-lookup")"
-          BROADCAST_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' -X GET "$DEPLOY_URL/api/broadcast-metadata")"
-          test "$FINGERPRINT_STATUS" = 405
-          test "$BROADCAST_STATUS" = 405
+          vercel_curl() {
+            npx --yes vercel@48.2.8 curl "$1" --deployment "$DEPLOY_URL" --token "$VERCEL_TOKEN"
+          }
+          vercel_curl / >/dev/null
+          FINGERPRINT_BODY="$(vercel_curl /api/fingerprint-lookup)"
+          BROADCAST_BODY="$(vercel_curl /api/broadcast-metadata)"
+          printf '%s' "$FINGERPRINT_BODY" | jq -e '.ok == false and .failureCode == "invalidRequest"' >/dev/null
+          printf '%s' "$BROADCAST_BODY" | jq -e '.ok == false and .failureCode == "invalidRequest"' >/dev/null
 
       - name: Record non-secret promotion evidence
         env:
