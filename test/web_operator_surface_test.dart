@@ -205,7 +205,7 @@ class _CaptureGateway
 
 class _MixerGateway implements BrowserMixerGateway {
   final StreamController<BrowserMixerTelemetry> _telemetry =
-      StreamController<BrowserMixerTelemetry>.broadcast();
+      StreamController<BrowserMixerTelemetry>.broadcast(sync: true);
 
   @override
   Stream<BrowserMixerTelemetry> get telemetry => _telemetry.stream;
