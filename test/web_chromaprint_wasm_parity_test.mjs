@@ -55,7 +55,7 @@ function referenceFingerprint(wavPath) {
 
   const result = spawnSync(
     fpcalc,
-    ['-format', 'json', '-length', String(FIXTURE_DURATION_SECONDS), wavPath],
+    ['-json', '-length', String(FIXTURE_DURATION_SECONDS), wavPath],
     {encoding: 'utf8'},
   );
   assert.equal(
