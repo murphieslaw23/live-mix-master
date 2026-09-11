@@ -42,6 +42,8 @@ BrowserWebRuntime createBrowserWebRuntime({
         durationSeconds: durationSeconds,
       );
     },
+    fingerprintPreparationUnavailableHandler:
+        resolvedFingerprintController.reportPreparationUnavailable,
   );
   final processingController = BrowserAudioProcessingController(
     gateway: audioGateway,
