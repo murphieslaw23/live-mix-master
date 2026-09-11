@@ -129,7 +129,7 @@ void main() {
     expect(captureController.state.status, BrowserCaptureStatus.reconnectRequired);
 
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpAndSettle();
+    await tester.pump();
     await mixerController.dispose();
     await mixerGateway.dispose();
     await sessionController.dispose();
@@ -139,9 +139,15 @@ void main() {
 Future<void> _tapVisible(WidgetTester tester, String label) async {
   final target = find.text(label);
   await tester.ensureVisible(target);
-  await tester.pumpAndSettle();
+  await _pumpBounded(tester);
   await tester.tap(target);
-  await tester.pumpAndSettle();
+  await _pumpBounded(tester);
+}
+
+Future<void> _pumpBounded(WidgetTester tester) async {
+  for (var frame = 0; frame < 4; frame += 1) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
 }
 
 class _CaptureGateway
