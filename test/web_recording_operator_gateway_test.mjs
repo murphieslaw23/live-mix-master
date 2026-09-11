@@ -28,8 +28,8 @@ test('recording starts only after the Worker is ready and then enables post-mast
 
   assert.match(
     gateway,
-    /Future<void> startRecording\(\)[\s\S]*type': 'start'[\s\S]*_recorderStartCompleter![\s\S]*_setWorkletRecording\(workletNode, enabled: true\)/,
-    'operator start must wait for Worker readiness before enabling PCM',
+    /Future<void> startRecording\(\)[\s\S]*type': 'start'[\s\S]*_recorderStartCompleter![\s\S]*_setWorkletRecording\([\s\S]*enabled: true,[\s\S]*maxOutstandingPcm: _recorderMaxOutstandingPcm\(context\.sampleRate\)/,
+    'operator start must wait for Worker readiness before enabling PCM with the active sample-rate budget',
   );
   assert.match(
     gateway,
@@ -45,19 +45,31 @@ test('recording starts only after the Worker is ready and then enables post-mast
 
 test('recording backpressure window tolerates browser scheduler jitter while remaining bounded', async () => {
   const gateway = await source(gatewayUrl);
-  const match = gateway.match(/const int _recorderMaxOutstandingPcm = (\d+);/);
-
-  assert.ok(match, 'gateway must name the bounded PCM backlog window');
-  const blocks = Number.parseInt(match[1], 10);
-  assert.ok(
-    blocks >= 64,
-    `PCM backlog window must tolerate at least ~170 ms at 48 kHz/128-frame quanta, got ${blocks}`,
+  const quantumMatch = gateway.match(
+    /const int _recorderRenderQuantumFrames = (\d+);/,
   );
-  assert.ok(blocks <= 256, `PCM backlog window must remain bounded, got ${blocks}`);
+  const budgetMatch = gateway.match(
+    /const int _recorderBackpressureBudgetMilliseconds = (\d+);/,
+  );
+
+  assert.ok(quantumMatch, 'gateway must declare the Web Audio render quantum size');
+  assert.ok(budgetMatch, 'gateway must declare a bounded audio-time backlog window');
+
+  const quantumFrames = Number.parseInt(quantumMatch[1], 10);
+  const budgetMilliseconds = Number.parseInt(budgetMatch[1], 10);
+  assert.equal(quantumFrames, 128, 'Web Audio render quantum contract changed unexpectedly');
+  assert.ok(
+    budgetMilliseconds >= 250,
+    `PCM backlog window must tolerate ordinary browser scheduling jitter, got ${budgetMilliseconds}ms`,
+  );
+  assert.ok(
+    budgetMilliseconds <= 1000,
+    `PCM backlog window must remain bounded, got ${budgetMilliseconds}ms`,
+  );
   assert.match(
     gateway,
-    /maxOutstandingPcm': _recorderMaxOutstandingPcm/,
-    'recording protocol must use the bounded scheduler-jitter window',
+    /int _recorderMaxOutstandingPcm\(num sampleRate\)[\s\S]*_recorderBackpressureBudgetMilliseconds[\s\S]*_recorderRenderQuantumFrames/,
+    'PCM backlog blocks must be derived from the active sample rate and bounded audio-time window',
   );
 });
 
