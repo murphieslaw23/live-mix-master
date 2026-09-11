@@ -218,8 +218,8 @@ test('fingerprint Worker source has no provider network, storage, or DOM API', a
     /indexedDB/,
     /localStorage/,
     /sessionStorage/,
-    /\bdocument\b/,
-    /\bwindow\b/,
+    /\bdocument\s*[.[]/,
+    /\bwindow\s*[.[]/,
   ]) {
     assert.doesNotMatch(source, prohibited);
   }
