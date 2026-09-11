@@ -159,6 +159,8 @@ jobs:
         run: docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_chromaprint_wasm.sh
       - name: Verify official Chromaprint Wasm parity
         run: node --test test/web_chromaprint_wasm_parity_test.mjs
+      - name: Verify bounded Chromaprint fingerprint Worker
+        run: node --test test/web_fingerprint_worker_test.mjs
       - name: Verify server-side fingerprint provider proxy contract
         run: node --test test/web_fingerprint_proxy_test.mjs
       - name: Verify server-side broadcast metadata proxy contract
