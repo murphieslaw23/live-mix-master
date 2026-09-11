@@ -996,9 +996,11 @@ Widget _operatorButton({
 }) {
   final enabled = onPressed != null;
   return Semantics(
+    excludeSemantics: true,
     button: true,
     enabled: enabled,
     label: label,
+    onTap: onPressed,
     child: OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
@@ -1028,10 +1030,12 @@ Widget _toggleButton({
   required VoidCallback onPressed,
 }) {
   return Semantics(
+    excludeSemantics: true,
     button: true,
     enabled: enabled,
     toggled: active,
     label: label,
+    onTap: enabled ? onPressed : null,
     child: OutlinedButton(
       onPressed: enabled ? onPressed : null,
       style: OutlinedButton.styleFrom(
