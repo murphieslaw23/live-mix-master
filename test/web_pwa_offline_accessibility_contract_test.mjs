@@ -41,13 +41,22 @@ test('offline-shell worker caches same-origin app resources but never caches API
     existsSync(resolve(root, 'web/lmm-service-worker.js')),
     'web/lmm-service-worker.js must exist',
   );
+  assert.ok(
+    existsSync(resolve(root, 'web/offline.html')),
+    'web/offline.html must provide a deterministic no-network fallback',
+  );
 
   const worker = read('web/lmm-service-worker.js');
   assert.match(worker, /addEventListener\(['"]install['"]/);
   assert.match(worker, /addEventListener\(['"]fetch['"]/);
   assert.match(worker, /index\.html/);
+  assert.match(worker, /offline\.html/);
   assert.match(worker, /manifest\.json/);
   assert.match(worker, /\/api\//);
   assert.match(worker, /request\.method\s*!==?\s*['"]GET['"]/);
   assert.match(worker, /url\.origin\s*!==?\s*self\.location\.origin/);
+  assert.match(
+    worker,
+    /request\.mode\s*===?\s*['"]navigate['"][\s\S]*caches\.match\(['"]\.\/offline\.html['"]\)/,
+  );
 });
