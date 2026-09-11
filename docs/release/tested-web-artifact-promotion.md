@@ -5,9 +5,11 @@ This is the W5 deployment path for Flutter Web. It deliberately deploys the alre
 
 ## Preconditions
 
-1. The source commit has a successful **Web Release Compile Contract** workflow.
+1. The source commit has a successful **Web Release Compile Contract** workflow and already
+   contains this promotion workflow, `vercel.json`, and the required `api/` sources.
 2. Record the workflow run ID, commit SHA, artifact ID, and the artifact digest reported by
-   GitHub Actions.
+   GitHub Actions. The promotion checks that all four values describe the same unexpired
+   `live-mix-master-web` artifact.
 3. Configure the repository environment secret `VERCEL_TOKEN` in both
    `vercel-preview` and `vercel-production`. It must be an access token scoped only to
    the SYCO23 Vercel team.
@@ -32,14 +34,15 @@ Run **Promote tested Web artifact** manually and provide:
 
 The workflow:
 
-1. checks out the exact commit;
-2. downloads the selected immutable GitHub artifact and verifies its SHA-256 digest;
-3. reconstitutes `build/web` without invoking Flutter;
-4. adds only the versioned Vercel API route sources from that same commit;
-5. deploys to the existing `live-mix-master` Vercel project;
-6. verifies the release shell and that both server routes are present with a safe GET 405
+1. checks out the exact commit and confirms it contains the versioned Vercel configuration;
+2. fetches the artifact metadata and rejects a name, SHA, digest, or expiration mismatch;
+3. downloads the immutable artifact and verifies its archive SHA-256 digest;
+4. reconstitutes `build/web` without invoking Flutter;
+5. adds only the versioned Vercel API route sources from that same commit;
+6. deploys to the existing `live-mix-master` Vercel project;
+7. verifies the release shell and that both server routes are present with a safe GET 405
    response;
-7. records only non-secret commit, artifact, and URL evidence in the GitHub job summary.
+8. records only non-secret commit, artifact, and URL evidence in the GitHub job summary.
 
 A preview deployment is not a release candidate. Production promotion remains blocked until
 the browser E2E matrix, PWA/offline checks, and accessibility checks are fresh and linked to
