@@ -81,6 +81,13 @@ if [[ "$ACTUAL_KISSFFT_COMMIT" != "$KISSFFT_COMMIT" || "$ACTUAL_KISSFFT_TREE" !=
   exit 2
 fi
 
+for required_file in kiss_fft.c kiss_fft.h kiss_fftr.c kiss_fftr.h; do
+  if [[ ! -s "$KISSFFT_DIR/$required_file" ]]; then
+    echo "KissFFT source is incomplete: $required_file" >&2
+    exit 2
+  fi
+done
+
 emcmake cmake \
   -S "$SOURCE_DIR" \
   -B "$CMAKE_BUILD_DIR" \
@@ -90,7 +97,7 @@ emcmake cmake \
   -DBUILD_TESTS=OFF \
   -DUSE_INTERNAL_AVRESAMPLE=ON \
   -DFFT_LIB=kissfft \
-  -DKISSFFT_ROOT="$KISSFFT_DIR"
+  -DKISSFFT_SOURCE_DIR="$KISSFFT_DIR"
 
 cmake --build "$CMAKE_BUILD_DIR" --target chromaprint --parallel
 
