@@ -241,13 +241,11 @@ class _MemoryRepository implements SessionTracklistRepository {
   _MemoryRepository(List<TracklistEntry> entries)
       : _entries = List<TracklistEntry>.of(entries);
 
-  final StreamController<ServiceStatus> _statuses =
-      StreamController<ServiceStatus>.broadcast();
   List<TracklistEntry> _entries;
   List<TracklistEntry> saved = const <TracklistEntry>[];
 
   @override
-  Stream<ServiceStatus> get onStatus => _statuses.stream;
+  Stream<ServiceStatus> get onStatus => const Stream<ServiceStatus>.empty();
 
   @override
   Future<List<TracklistEntry>> load() async => List<TracklistEntry>.of(_entries);
@@ -256,11 +254,10 @@ class _MemoryRepository implements SessionTracklistRepository {
   Future<void> save(Iterable<TracklistEntry> entries) async {
     saved = List<TracklistEntry>.of(entries);
     _entries = List<TracklistEntry>.of(entries);
-    _statuses.add(const ServiceStatus.succeeded());
   }
 
   @override
-  Future<void> dispose() => _statuses.close();
+  Future<void> dispose() async {}
 }
 
 class _DownloadGateway implements BrowserTracklistDownloadGateway {
