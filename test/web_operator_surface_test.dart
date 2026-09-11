@@ -8,16 +8,17 @@ import 'package:live_mix_master/audio/web/browser_mixer_controller.dart';
 import 'package:live_mix_master/audio/web/browser_mixer_protocol.dart';
 import 'package:live_mix_master/audio/web/browser_recording_controller.dart';
 import 'package:live_mix_master/services/reliability_models.dart';
-import 'package:live_mix_master/services/session_tracklist_repository.dart';
 import 'package:live_mix_master/services/web/browser_session_controller.dart';
 
 void main() {
-  testWidgets('web operator surface exposes mixer controls, telemetry, disconnect, and durable session actions', (tester) async {
+  testWidgets(
+      'web operator surface exposes mixer controls, telemetry, disconnect, and durable session actions',
+      (tester) async {
     final captureGateway = _CaptureGateway();
     final captureController = BrowserCaptureController(gateway: captureGateway);
     final mixerGateway = _MixerGateway();
     final mixerController = BrowserMixerController(gateway: mixerGateway);
-    final repository = _MemoryRepository(<TracklistEntry>[
+    final sessionPort = _SessionPort(
       TracklistEntry(
         sessionId: 'session-1',
         cueTime: const Duration(seconds: 12),
@@ -29,12 +30,6 @@ void main() {
         createdAt: DateTime.utc(2026, 9, 11, 10),
         updatedAt: DateTime.utc(2026, 9, 11, 10, 1),
       ),
-    ]);
-    final downloads = _DownloadGateway();
-    final sessionController = BrowserSessionController(
-      repository: repository,
-      downloadGateway: downloads,
-      clock: () => DateTime.utc(2026, 9, 11, 11),
     );
     final recordingController = BrowserRecordingController(
       gateway: _RecordingGateway(),
@@ -46,7 +41,7 @@ void main() {
           controller: captureController,
           recordingController: recordingController,
           mixerController: mixerController,
-          sessionController: sessionController,
+          sessionController: sessionPort,
         ),
       ),
     );
@@ -65,7 +60,8 @@ void main() {
     expect(find.text('Limiter'), findsOneWidget);
     expect(find.text('Disconnect source'), findsOneWidget);
 
-    final slider = tester.widget<Slider>(find.byKey(const ValueKey('channel-fader')));
+    final slider =
+        tester.widget<Slider>(find.byKey(const ValueKey('channel-fader')));
     slider.onChanged!(0.4);
     await tester.pump();
     expect(mixerController.state.fader, closeTo(0.4, 0.0001));
@@ -113,9 +109,12 @@ void main() {
     await _tapVisible(tester, 'Save correction');
     _stage('session-save-tapped');
 
-    expect(repository.saved.single.artist, 'Corrected Artist');
-    expect(repository.saved.single.title, 'Corrected Title');
-    expect(repository.saved.single.provenance, TrackProvenance.manual);
+    expect(sessionPort.state.entries.single.artist, 'Corrected Artist');
+    expect(sessionPort.state.entries.single.title, 'Corrected Title');
+    expect(
+      sessionPort.state.entries.single.provenance,
+      TrackProvenance.manual,
+    );
     _stage('session-save-verified');
 
     await _tapVisible(tester, 'Export session JSON');
@@ -124,17 +123,16 @@ void main() {
     _stage('csv-exported');
     await _tapVisible(tester, 'Export session M3U');
     _stage('m3u-exported');
-    expect(downloads.fileNames, hasLength(3));
-    expect(downloads.fileNames[0], endsWith('.json'));
-    expect(downloads.contents[0], contains('Corrected Artist'));
-    expect(downloads.fileNames[1], endsWith('.csv'));
-    expect(downloads.fileNames[2], endsWith('.m3u'));
+    expect(sessionPort.exportCalls, <String>['json', 'csv', 'm3u']);
     _stage('exports-verified');
 
     await _tapVisible(tester, 'Disconnect source');
     _stage('disconnect-tapped');
     expect(captureGateway.disconnectCalls, 1);
-    expect(captureController.state.status, BrowserCaptureStatus.reconnectRequired);
+    expect(
+      captureController.state.status,
+      BrowserCaptureStatus.reconnectRequired,
+    );
     _stage('disconnect-verified');
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -142,10 +140,6 @@ void main() {
     _stage('shell-unmounted');
     await mixerController.dispose();
     _stage('mixer-controller-disposed');
-    // WebReleaseShell does not own the injected mixer gateway or session
-    // controller. Their lifecycle is verified by their dedicated controller
-    // contracts; closing injected dependency streams from a widget test can
-    // deadlock Flutter's fake-time test channel during finalization.
   });
 }
 
@@ -233,40 +227,91 @@ class _RecordingGateway implements BrowserRecordingGateway {
   Future<void> exportRecording(BrowserRecordingArtifact artifact) async {}
 }
 
-class _MemoryRepository implements SessionTracklistRepository {
-  _MemoryRepository(List<TracklistEntry> entries)
-      : _entries = List<TracklistEntry>.of(entries);
+class _SessionPort implements BrowserSessionPort {
+  _SessionPort(TracklistEntry entry)
+      : _state = BrowserSessionState(
+          initialized: false,
+          sessionId: entry.sessionId,
+          entries: <TracklistEntry>[entry],
+          persistenceStatus: const ServiceStatus.idle(),
+        );
 
-  List<TracklistEntry> _entries;
-  List<TracklistEntry> saved = const <TracklistEntry>[];
+  final Set<BrowserSessionStateListener> _listeners =
+      <BrowserSessionStateListener>{};
+  BrowserSessionState _state;
+  final List<String> exportCalls = <String>[];
 
   @override
-  Stream<ServiceStatus> get onStatus => const Stream<ServiceStatus>.empty();
+  BrowserSessionState get state => _state;
 
   @override
-  Future<List<TracklistEntry>> load() async => List<TracklistEntry>.of(_entries);
+  void addListener(BrowserSessionStateListener listener) {
+    _listeners.add(listener);
+  }
 
   @override
-  Future<void> save(Iterable<TracklistEntry> entries) async {
-    saved = List<TracklistEntry>.of(entries);
-    _entries = List<TracklistEntry>.of(entries);
+  void removeListener(BrowserSessionStateListener listener) {
+    _listeners.remove(listener);
+  }
+
+  @override
+  Future<void> initialize() async {
+    _setState(
+      BrowserSessionState(
+        initialized: true,
+        sessionId: _state.sessionId,
+        entries: _state.entries,
+        persistenceStatus: _state.persistenceStatus,
+      ),
+    );
+  }
+
+  @override
+  Future<TracklistEntry> correct({
+    required int index,
+    required String artist,
+    required String title,
+  }) async {
+    final corrected = _state.entries[index].applyManualCorrection(
+      artist: artist,
+      title: title,
+      correctedAt: DateTime.utc(2026, 9, 11, 11),
+    );
+    final entries = List<TracklistEntry>.of(_state.entries);
+    entries[index] = corrected;
+    _setState(
+      BrowserSessionState(
+        initialized: true,
+        sessionId: _state.sessionId,
+        entries: entries,
+        persistenceStatus: const ServiceStatus.succeeded(),
+      ),
+    );
+    return corrected;
+  }
+
+  @override
+  Future<void> exportJson() async {
+    exportCalls.add('json');
+  }
+
+  @override
+  Future<void> exportCsv() async {
+    exportCalls.add('csv');
+  }
+
+  @override
+  Future<void> exportM3u() async {
+    exportCalls.add('m3u');
   }
 
   @override
   Future<void> dispose() async {}
-}
 
-class _DownloadGateway implements BrowserTracklistDownloadGateway {
-  final List<String> fileNames = <String>[];
-  final List<String> contents = <String>[];
-
-  @override
-  Future<void> download({
-    required String fileName,
-    required String mimeType,
-    required String contents,
-  }) async {
-    fileNames.add(fileName);
-    this.contents.add(contents);
+  void _setState(BrowserSessionState next) {
+    _state = next;
+    for (final listener in List<BrowserSessionStateListener>.of(_listeners)) {
+      listener(next);
+    }
   }
 }
