@@ -68,22 +68,35 @@ typedef BrowserFingerprintLookupListener = void Function(
   BrowserFingerprintLookupState state,
 );
 
+class _BrowserFingerprintLookupStore {
+  BrowserFingerprintLookupState state = const BrowserFingerprintLookupState.idle();
+  final Set<BrowserFingerprintLookupListener> listeners = {};
+}
+
+final _BrowserFingerprintLookupStore _defaultFingerprintLookupStore =
+    _BrowserFingerprintLookupStore();
+
 class BrowserFingerprintLookupController {
   BrowserFingerprintLookupController({BrowserFingerprintLookupGateway? gateway})
-      : _gateway = gateway ?? FingerprintProxyLookupGateway();
+      : _gateway = gateway ?? FingerprintProxyLookupGateway(),
+        _store = gateway == null
+            ? _defaultFingerprintLookupStore
+            : _BrowserFingerprintLookupStore();
 
   final BrowserFingerprintLookupGateway _gateway;
-  final Set<BrowserFingerprintLookupListener> _listeners = {};
-  BrowserFingerprintLookupState _state = const BrowserFingerprintLookupState.idle();
+  final _BrowserFingerprintLookupStore _store;
+  final Set<BrowserFingerprintLookupListener> _ownedListeners = {};
 
-  BrowserFingerprintLookupState get state => _state;
+  BrowserFingerprintLookupState get state => _store.state;
 
   void addListener(BrowserFingerprintLookupListener listener) {
-    _listeners.add(listener);
+    _ownedListeners.add(listener);
+    _store.listeners.add(listener);
   }
 
   void removeListener(BrowserFingerprintLookupListener listener) {
-    _listeners.remove(listener);
+    _ownedListeners.remove(listener);
+    _store.listeners.remove(listener);
   }
 
   Future<void> lookupPreparedFingerprint({
@@ -132,11 +145,24 @@ class BrowserFingerprintLookupController {
     }
   }
 
+  void reportPreparationUnavailable() {
+    _setState(
+      const BrowserFingerprintLookupState(
+        status: BrowserFingerprintLookupStatus.failed,
+        failureCode: FingerprintProxyFailureCode.unavailable,
+        message: 'FINGERPRINT PREPARATION UNAVAILABLE — MIX / RECORDING CONTINUE',
+      ),
+    );
+  }
+
   void dispose() {
+    for (final listener in List<BrowserFingerprintLookupListener>.of(_ownedListeners)) {
+      _store.listeners.remove(listener);
+    }
+    _ownedListeners.clear();
     if (_gateway is FingerprintProxyLookupGateway) {
       (_gateway as FingerprintProxyLookupGateway).close();
     }
-    _listeners.clear();
   }
 
   BrowserFingerprintLookupState _failed(FingerprintProxyFailureCode code) {
@@ -148,8 +174,8 @@ class BrowserFingerprintLookupController {
   }
 
   void _setState(BrowserFingerprintLookupState state) {
-    _state = state;
-    for (final listener in List<BrowserFingerprintLookupListener>.of(_listeners)) {
+    _store.state = state;
+    for (final listener in List<BrowserFingerprintLookupListener>.of(_store.listeners)) {
       listener(state);
     }
   }

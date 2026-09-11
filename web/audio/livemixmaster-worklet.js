@@ -1,6 +1,7 @@
 const LIMITER_CEILING = 0.98;
 const DEFAULT_TELEMETRY_EVERY = 20;
 const DEFAULT_MAX_OUTSTANDING_PCM = 4;
+const DEFAULT_MAX_OUTSTANDING_ANALYSIS_PCM = 1;
 
 function finiteNumber(value, fallback) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -34,6 +35,9 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     this.recordingFaulted = false;
     this.maxOutstandingPcm = DEFAULT_MAX_OUTSTANDING_PCM;
     this.outstandingPcm = 0;
+    this.analysisEnabled = false;
+    this.analysisMaxOutstandingPcm = DEFAULT_MAX_OUTSTANDING_ANALYSIS_PCM;
+    this.analysisOutstandingPcm = 0;
 
     this.port.onmessage = (event) => this.handleMessage(event?.data);
   }
@@ -66,6 +70,19 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
       case 'pcmAck':
         if (this.outstandingPcm > 0) {
           this.outstandingPcm -= 1;
+        }
+        break;
+      case 'analysis':
+        this.analysisEnabled = message.enabled === true;
+        this.analysisMaxOutstandingPcm = positiveInteger(
+          message.maxOutstandingPcm,
+          this.analysisMaxOutstandingPcm,
+        );
+        this.analysisOutstandingPcm = 0;
+        break;
+      case 'analysisAck':
+        if (this.analysisOutstandingPcm > 0) {
+          this.analysisOutstandingPcm -= 1;
         }
         break;
       default:
@@ -167,6 +184,25 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
         masterPeakLeft,
         masterPeakRight,
         limiterActive,
+      });
+    }
+
+    if (
+      this.analysisEnabled &&
+      this.analysisOutstandingPcm < this.analysisMaxOutstandingPcm
+    ) {
+      const interleaved = new Float32Array(frameCount * 2);
+      for (let frame = 0; frame < frameCount; frame += 1) {
+        interleaved[frame * 2] = leftOutput[frame];
+        interleaved[frame * 2 + 1] = rightOutput[frame];
+      }
+      this.analysisOutstandingPcm += 1;
+      this.port.postMessage({
+        type: 'analysisPcm',
+        samples: interleaved,
+        frames: frameCount,
+        sampleRate,
+        channels: 2,
       });
     }
 

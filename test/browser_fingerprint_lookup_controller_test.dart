@@ -69,6 +69,20 @@ void main() {
     });
   });
 
+
+  test('maps a preparation failure to explicit safe operator copy', () {
+    final controller = BrowserFingerprintLookupController(gateway: _QueueFingerprintGateway([]));
+
+    controller.reportPreparationUnavailable();
+
+    expect(controller.state.status, BrowserFingerprintLookupStatus.failed);
+    expect(controller.state.failureCode, FingerprintProxyFailureCode.unavailable);
+    expect(
+      controller.state.message,
+      'FINGERPRINT PREPARATION UNAVAILABLE — MIX / RECORDING CONTINUE',
+    );
+  });
+
   testWidgets('WebReleaseShell visibly reacts to asynchronous provider failure', (tester) async {
     final fingerprintController = BrowserFingerprintLookupController(
       gateway: _QueueFingerprintGateway([
