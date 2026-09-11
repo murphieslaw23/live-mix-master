@@ -26,7 +26,7 @@ class WebReleaseShell extends StatefulWidget {
   final BrowserRecordingController? recordingController;
   final BrowserFingerprintLookupController? fingerprintController;
   final BrowserMixerController? mixerController;
-  final BrowserSessionController? sessionController;
+  final BrowserSessionPort? sessionController;
 
   @override
   State<WebReleaseShell> createState() => _WebReleaseShellState();
@@ -37,7 +37,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
   late final BrowserRecordingController _recordingController;
   late final BrowserFingerprintLookupController _fingerprintController;
   late final BrowserMixerController _mixerController;
-  late final BrowserSessionController _sessionController;
+  late final BrowserSessionPort _sessionController;
   late final bool _ownsFingerprintController;
   late final bool _ownsSessionController;
   final Map<int, String> _draftArtists = <int, String>{};
