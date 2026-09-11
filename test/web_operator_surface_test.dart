@@ -95,6 +95,7 @@ void main() {
     expect(find.textContaining('0.500'), findsOneWidget);
     expect(find.textContaining('0.250'), findsOneWidget);
     expect(find.textContaining('0.450'), findsOneWidget);
+    _stage('telemetry-verified');
 
     expect(find.text('Session tracklist'), findsOneWidget);
     expect(find.text('Recovered Artist'), findsOneWidget);
@@ -108,31 +109,48 @@ void main() {
       find.byKey(const ValueKey('session-title-0')),
       'Corrected Title',
     );
+    _stage('session-fields-entered');
     await _tapVisible(tester, 'Save correction');
+    _stage('session-save-tapped');
 
     expect(repository.saved.single.artist, 'Corrected Artist');
     expect(repository.saved.single.title, 'Corrected Title');
     expect(repository.saved.single.provenance, TrackProvenance.manual);
+    _stage('session-save-verified');
 
     await _tapVisible(tester, 'Export session JSON');
+    _stage('json-exported');
     await _tapVisible(tester, 'Export session CSV');
+    _stage('csv-exported');
     await _tapVisible(tester, 'Export session M3U');
+    _stage('m3u-exported');
     expect(downloads.fileNames, hasLength(3));
     expect(downloads.fileNames[0], endsWith('.json'));
     expect(downloads.contents[0], contains('Corrected Artist'));
     expect(downloads.fileNames[1], endsWith('.csv'));
     expect(downloads.fileNames[2], endsWith('.m3u'));
+    _stage('exports-verified');
 
     await _tapVisible(tester, 'Disconnect source');
+    _stage('disconnect-tapped');
     expect(captureGateway.disconnectCalls, 1);
     expect(captureController.state.status, BrowserCaptureStatus.reconnectRequired);
+    _stage('disconnect-verified');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+    _stage('shell-unmounted');
     await mixerController.dispose();
+    _stage('mixer-controller-disposed');
     await mixerGateway.dispose();
+    _stage('mixer-gateway-disposed');
     await sessionController.dispose();
+    _stage('session-controller-disposed');
   });
+}
+
+void _stage(String value) {
+  debugPrint('WEB_OPERATOR_STAGE: $value');
 }
 
 Future<void> _tapVisible(WidgetTester tester, String label) async {
