@@ -145,6 +145,16 @@ class BrowserFingerprintLookupController {
     }
   }
 
+  void reportPreparationUnavailable() {
+    _setState(
+      const BrowserFingerprintLookupState(
+        status: BrowserFingerprintLookupStatus.failed,
+        failureCode: FingerprintProxyFailureCode.unavailable,
+        message: 'FINGERPRINT PREPARATION UNAVAILABLE — MIX / RECORDING CONTINUE',
+      ),
+    );
+  }
+
   void dispose() {
     for (final listener in List<BrowserFingerprintLookupListener>.of(_ownedListeners)) {
       _store.listeners.remove(listener);
