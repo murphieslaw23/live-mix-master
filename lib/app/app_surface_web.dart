@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../audio/web/browser_capture_controller.dart';
 import '../audio/web/browser_capture_runtime.dart';
+import '../audio/web/browser_mixer_controller.dart';
 import '../audio/web/browser_recording_controller.dart';
 import '../design/live_mix_tokens.dart';
+import '../services/reliability_models.dart';
 import '../services/web/browser_fingerprint_lookup_controller.dart';
+import '../services/web/browser_session_controller.dart';
+import '../services/web/browser_session_runtime.dart';
 
 class WebReleaseShell extends StatefulWidget {
   const WebReleaseShell({
@@ -12,11 +18,15 @@ class WebReleaseShell extends StatefulWidget {
     this.controller,
     this.recordingController,
     this.fingerprintController,
+    this.mixerController,
+    this.sessionController,
   });
 
   final BrowserCaptureController? controller;
   final BrowserRecordingController? recordingController;
   final BrowserFingerprintLookupController? fingerprintController;
+  final BrowserMixerController? mixerController;
+  final BrowserSessionController? sessionController;
 
   @override
   State<WebReleaseShell> createState() => _WebReleaseShellState();
@@ -26,27 +36,46 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
   late final BrowserCaptureController _controller;
   late final BrowserRecordingController _recordingController;
   late final BrowserFingerprintLookupController _fingerprintController;
+  late final BrowserMixerController _mixerController;
+  late final BrowserSessionController _sessionController;
   late final bool _ownsFingerprintController;
+  late final bool _ownsSessionController;
+  final Map<int, String> _draftArtists = <int, String>{};
+  final Map<int, String> _draftTitles = <int, String>{};
 
   @override
   void initState() {
     super.initState();
-    if (widget.controller == null && widget.recordingController == null) {
+    final allAudioControllersMissing = widget.controller == null &&
+        widget.recordingController == null &&
+        widget.mixerController == null;
+    if (allAudioControllersMissing) {
       final runtime = createBrowserWebRuntime();
       _controller = runtime.captureController;
       _recordingController = runtime.recordingController;
+      _mixerController = runtime.mixerController;
     } else {
-      _controller = widget.controller ?? createBrowserCaptureController();
+      final fallbackRuntime = createBrowserWebRuntime();
+      _controller = widget.controller ?? fallbackRuntime.captureController;
       _recordingController =
-          widget.recordingController ?? createBrowserRecordingController();
+          widget.recordingController ?? fallbackRuntime.recordingController;
+      _mixerController = widget.mixerController ?? fallbackRuntime.mixerController;
     }
+
     _ownsFingerprintController = widget.fingerprintController == null;
     _fingerprintController =
         widget.fingerprintController ?? BrowserFingerprintLookupController();
+    _ownsSessionController = widget.sessionController == null;
+    _sessionController =
+        widget.sessionController ?? createBrowserSessionController();
+
     _controller.addListener(_handleControllerState);
     _recordingController.addListener(_handleRecordingState);
     _fingerprintController.addListener(_handleFingerprintState);
-    _controller.probe();
+    _mixerController.addListener(_handleMixerState);
+    _sessionController.addListener(_handleSessionState);
+    unawaited(_controller.probe());
+    unawaited(_sessionController.initialize());
   }
 
   @override
@@ -54,25 +83,24 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
     _controller.removeListener(_handleControllerState);
     _recordingController.removeListener(_handleRecordingState);
     _fingerprintController.removeListener(_handleFingerprintState);
+    _mixerController.removeListener(_handleMixerState);
+    _sessionController.removeListener(_handleSessionState);
     if (_ownsFingerprintController) {
       _fingerprintController.dispose();
+    }
+    if (_ownsSessionController) {
+      unawaited(_sessionController.dispose());
     }
     super.dispose();
   }
 
-  void _handleControllerState(BrowserCaptureState _) {
-    if (mounted) {
-      setState(() {});
-    }
-  }
+  void _handleControllerState(BrowserCaptureState _) => _refresh();
+  void _handleRecordingState(BrowserRecordingState _) => _refresh();
+  void _handleFingerprintState(BrowserFingerprintLookupState _) => _refresh();
+  void _handleMixerState(BrowserMixerState _) => _refresh();
+  void _handleSessionState(BrowserSessionState _) => _refresh();
 
-  void _handleRecordingState(BrowserRecordingState _) {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  void _handleFingerprintState(BrowserFingerprintLookupState _) {
+  void _refresh() {
     if (mounted) {
       setState(() {});
     }
@@ -82,11 +110,24 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
     await action();
   }
 
+  Future<void> _saveCorrection(int index, TracklistEntry entry) async {
+    await _sessionController.correct(
+      index: index,
+      artist: (_draftArtists[index] ?? entry.artist).trim(),
+      title: (_draftTitles[index] ?? entry.title).trim(),
+    );
+    _draftArtists.remove(index);
+    _draftTitles.remove(index);
+    _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = _controller.state;
     final recordingState = _recordingController.state;
     final fingerprintState = _fingerprintController.state;
+    final mixerState = _mixerController.state;
+    final sessionState = _sessionController.state;
     final capabilities = state.capabilities;
     final microphoneAvailable = capabilities?.microphoneCaptureAvailable ?? false;
     final displayAvailable = capabilities?.displayCaptureAvailable ?? false;
@@ -103,54 +144,9 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: LiveMixTokens.surfaceRack,
-                      border: Border.all(
-                        color: LiveMixTokens.accentCopper,
-                        width: 2,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'LIVEMIXMASTER',
-                          style: LiveMixTextStyles.sectionDisplay,
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 8,
-                          children: [
-                            _statusBadge(
-                              icon: Icons.language,
-                              label: 'WEB AUDIO',
-                              color: LiveMixTokens.accentCopper,
-                            ),
-                            _statusBadge(
-                              icon: _statusIcon(state.status),
-                              label: _statusLabel(state.status),
-                              color: _statusColor(state.status),
-                            ),
-                            _statusBadge(
-                              icon: _recordingStatusIcon(recordingState.status),
-                              label: _recordingStatusLabel(recordingState.status),
-                              color: _recordingStatusColor(recordingState.status),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Browser capture is capability-driven. LiveMixMaster will only expose sources the current browser and operating system actually provide.',
-                          style: LiveMixTextStyles.body.copyWith(
-                            color: LiveMixTokens.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
+                  _HeaderPanel(
+                    captureState: state,
+                    recordingState: recordingState,
                   ),
                   const SizedBox(height: 16),
                   _CapabilityPanel(capabilities: capabilities),
@@ -165,6 +161,22 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                     onDisplay: displayAvailable
                         ? () => _run(_controller.requestDisplayAudio)
                         : null,
+                    onDisconnect: captureActive ||
+                            state.status == BrowserCaptureStatus.deviceInventoryChanged
+                        ? _controller.disconnect
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  _MixerControlPanel(
+                    state: mixerState,
+                    captureActive: captureActive,
+                    onFader: (value) => unawaited(_mixerController.setFader(value)),
+                    onMute: () => unawaited(
+                      _mixerController.setMuted(!mixerState.muted),
+                    ),
+                    onSolo: () => unawaited(
+                      _mixerController.setSolo(!mixerState.solo),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _RecordingControlPanel(
@@ -173,6 +185,18 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                     onStart: () => _run(_recordingController.startRecording),
                     onStop: () => _run(_recordingController.stopRecording),
                     onDownload: () => _run(_recordingController.exportRecording),
+                  ),
+                  const SizedBox(height: 16),
+                  _SessionTracklistPanel(
+                    state: sessionState,
+                    draftArtists: _draftArtists,
+                    draftTitles: _draftTitles,
+                    onArtistChanged: (index, value) => _draftArtists[index] = value,
+                    onTitleChanged: (index, value) => _draftTitles[index] = value,
+                    onSave: _saveCorrection,
+                    onExportJson: () => _run(_sessionController.exportJson),
+                    onExportCsv: () => _run(_sessionController.exportCsv),
+                    onExportM3u: () => _run(_sessionController.exportM3u),
                   ),
                   const SizedBox(height: 16),
                   _FingerprintStatusPanel(state: fingerprintState),
@@ -185,7 +209,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'W4 WEB AUDIO + RECORDING + SERVER-SIDE FINGERPRINT PROVIDER BOUNDARY ACTIVE.',
+                      'W5 WEB OPERATOR BRIDGE — CAPTURE / MIX / RECORD / SESSION RECOVERY ACTIVE.',
                       style: LiveMixTextStyles.uiLabel.copyWith(
                         color: LiveMixTokens.textSecondary,
                       ),
@@ -196,6 +220,63 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HeaderPanel extends StatelessWidget {
+  const _HeaderPanel({
+    required this.captureState,
+    required this.recordingState,
+  });
+
+  final BrowserCaptureState captureState;
+  final BrowserRecordingState recordingState;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceRack,
+        border: Border.all(color: LiveMixTokens.accentCopper, width: 2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('LIVEMIXMASTER', style: LiveMixTextStyles.sectionDisplay),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _statusBadge(
+                icon: Icons.language,
+                label: 'WEB AUDIO',
+                color: LiveMixTokens.accentCopper,
+              ),
+              _statusBadge(
+                icon: _statusIcon(captureState.status),
+                label: _statusLabel(captureState.status),
+                color: _statusColor(captureState.status),
+              ),
+              _statusBadge(
+                icon: _recordingStatusIcon(recordingState.status),
+                label: _recordingStatusLabel(recordingState.status),
+                color: _recordingStatusColor(recordingState.status),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Browser capture is capability-driven. LiveMixMaster only exposes sources the current browser and operating system provide.',
+            style: LiveMixTextStyles.body.copyWith(
+              color: LiveMixTokens.textSecondary,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -313,32 +394,32 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
         return LiveMixTokens.accentCopper;
     }
   }
+}
 
-  static Widget _statusBadge({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Semantics(
-      label: label,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: LiveMixTokens.surfaceStrip,
-          border: Border.all(color: color, width: 2),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 8),
-            Text(label, style: LiveMixTextStyles.uiLabel),
-          ],
-        ),
+Widget _statusBadge({
+  required IconData icon,
+  required String label,
+  required Color color,
+}) {
+  return Semantics(
+    label: label,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceStrip,
+        border: Border.all(color: color, width: 2),
+        borderRadius: BorderRadius.circular(4),
       ),
-    );
-  }
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Text(label, style: LiveMixTextStyles.uiLabel),
+        ],
+      ),
+    ),
+  );
 }
 
 class _CaptureControlPanel extends StatelessWidget {
@@ -348,6 +429,7 @@ class _CaptureControlPanel extends StatelessWidget {
     required this.displayAvailable,
     required this.onMicrophone,
     required this.onDisplay,
+    required this.onDisconnect,
   });
 
   final BrowserCaptureState state;
@@ -355,16 +437,11 @@ class _CaptureControlPanel extends StatelessWidget {
   final bool displayAvailable;
   final VoidCallback? onMicrophone;
   final VoidCallback? onDisplay;
+  final VoidCallback? onDisconnect;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: LiveMixTokens.surfaceRack,
-        border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
-        borderRadius: BorderRadius.circular(4),
-      ),
+    return _rackPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -372,7 +449,7 @@ class _CaptureControlPanel extends StatelessWidget {
             state.message,
             key: const ValueKey('browser-capture-state'),
             style: LiveMixTextStyles.uiLabel.copyWith(
-              color: _messageColor(state.status),
+              color: _captureMessageColor(state.status),
             ),
           ),
           const SizedBox(height: 14),
@@ -380,17 +457,20 @@ class _CaptureControlPanel extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _captureButton(
+              _operatorButton(
                 icon: Icons.mic_none,
                 label: 'CONNECT MIC / USB',
                 onPressed: onMicrophone,
-                available: microphoneAvailable,
               ),
-              _captureButton(
+              _operatorButton(
                 icon: Icons.tab,
                 label: 'SHARE TAB / WINDOW',
                 onPressed: onDisplay,
-                available: displayAvailable,
+              ),
+              _operatorButton(
+                icon: Icons.link_off,
+                label: 'Disconnect source',
+                onPressed: onDisconnect,
               ),
             ],
           ),
@@ -398,55 +478,101 @@ class _CaptureControlPanel extends StatelessWidget {
       ),
     );
   }
+}
 
-  static Widget _captureButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onPressed,
-    required bool available,
-  }) {
-    return Semantics(
-      button: true,
-      enabled: available,
-      label: '$label: ${available ? 'AVAILABLE' : 'UNAVAILABLE'}',
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 18),
-        label: Text(label),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(220, 52),
-          foregroundColor: LiveMixTokens.textPrimary,
-          side: BorderSide(
-            color: available
-                ? LiveMixTokens.accentCopper
-                : LiveMixTokens.textSecondary,
-            width: 2,
+class _MixerControlPanel extends StatelessWidget {
+  const _MixerControlPanel({
+    required this.state,
+    required this.captureActive,
+    required this.onFader,
+    required this.onMute,
+    required this.onSolo,
+  });
+
+  final BrowserMixerState state;
+  final bool captureActive;
+  final ValueChanged<double> onFader;
+  final VoidCallback onMute;
+  final VoidCallback onSolo;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = captureActive && state.enabled;
+    final meter = state.channelMeter;
+    final channelPeak = meter == null ? 0.0 : _max(meter.peakLeft, meter.peakRight);
+    final channelRms = meter == null ? 0.0 : _max(meter.rmsLeft, meter.rmsRight);
+    final masterPeak = _max(state.masterPeakLeft, state.masterPeakRight);
+
+    return _rackPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'WEB MIXER',
+            style: LiveMixTextStyles.uiLabel.copyWith(
+              color: enabled
+                  ? LiveMixTokens.meterNominal
+                  : LiveMixTokens.textSecondary,
+            ),
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
+          const SizedBox(height: 14),
+          const Text('Channel fader', style: LiveMixTextStyles.uiLabel),
+          Semantics(
+            label: 'Channel fader',
+            value: state.fader.toStringAsFixed(2),
+            slider: true,
+            enabled: enabled,
+            child: Slider(
+              key: const ValueKey('channel-fader'),
+              value: state.fader,
+              min: 0,
+              max: 1,
+              onChanged: enabled ? onFader : null,
+              semanticFormatterCallback: (value) => value.toStringAsFixed(2),
+            ),
           ),
-          textStyle: LiveMixTextStyles.uiLabel,
-        ),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _toggleButton(
+                label: 'Mute',
+                active: state.muted,
+                enabled: enabled,
+                onPressed: onMute,
+              ),
+              _toggleButton(
+                label: 'Solo',
+                active: state.solo,
+                enabled: enabled,
+                onPressed: onSolo,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _telemetryRow(
+            label: 'Channel peak',
+            value: channelPeak.toStringAsFixed(3),
+            key: const ValueKey('channel-peak-value'),
+          ),
+          _telemetryRow(
+            label: 'Channel RMS',
+            value: channelRms.toStringAsFixed(3),
+            key: const ValueKey('channel-rms-value'),
+          ),
+          _telemetryRow(
+            label: 'Master peak',
+            value: masterPeak.toStringAsFixed(3),
+            key: const ValueKey('master-peak-value'),
+          ),
+          _telemetryRow(
+            label: 'Limiter',
+            value: state.limiterActive ? 'ACTIVE' : 'CLEAR',
+            key: const ValueKey('limiter-value'),
+          ),
+        ],
       ),
     );
-  }
-
-  static Color _messageColor(BrowserCaptureStatus status) {
-    switch (status) {
-      case BrowserCaptureStatus.active:
-        return LiveMixTokens.meterNominal;
-      case BrowserCaptureStatus.permissionDenied:
-      case BrowserCaptureStatus.noAudioTrack:
-      case BrowserCaptureStatus.unsupported:
-      case BrowserCaptureStatus.reconnectRequired:
-      case BrowserCaptureStatus.deviceInventoryChanged:
-      case BrowserCaptureStatus.error:
-        return LiveMixTokens.statusWarn;
-      case BrowserCaptureStatus.idle:
-      case BrowserCaptureStatus.permissionRequired:
-      case BrowserCaptureStatus.requesting:
-        return LiveMixTokens.textSecondary;
-    }
   }
 }
 
@@ -478,13 +604,7 @@ class _RecordingControlPanel extends StatelessWidget {
         state.status != BrowserRecordingStatus.stopping &&
         state.status != BrowserRecordingStatus.exporting;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: LiveMixTokens.surfaceRack,
-        border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
-        borderRadius: BorderRadius.circular(4),
-      ),
+    return _rackPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -492,7 +612,7 @@ class _RecordingControlPanel extends StatelessWidget {
             state.message,
             key: const ValueKey('browser-recording-state'),
             style: LiveMixTextStyles.uiLabel.copyWith(
-              color: _messageColor(state.status),
+              color: _recordingMessageColor(state.status),
             ),
           ),
           const SizedBox(height: 14),
@@ -500,23 +620,20 @@ class _RecordingControlPanel extends StatelessWidget {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _recordingButton(
+              _operatorButton(
                 icon: Icons.fiber_manual_record,
                 label: 'START RECORDING',
-                enabled: canStart,
-                onPressed: onStart,
+                onPressed: canStart ? onStart : null,
               ),
-              _recordingButton(
+              _operatorButton(
                 icon: Icons.stop_circle_outlined,
                 label: 'STOP RECORDING',
-                enabled: canStop,
-                onPressed: onStop,
+                onPressed: canStop ? onStop : null,
               ),
-              _recordingButton(
+              _operatorButton(
                 icon: Icons.download,
                 label: 'DOWNLOAD WAV',
-                enabled: canDownload,
-                onPressed: onDownload,
+                onPressed: canDownload ? onDownload : null,
               ),
             ],
           ),
@@ -534,53 +651,175 @@ class _RecordingControlPanel extends StatelessWidget {
       ),
     );
   }
+}
 
-  static Widget _recordingButton({
-    required IconData icon,
-    required String label,
-    required bool enabled,
-    required VoidCallback onPressed,
-  }) {
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: '$label: ${enabled ? 'AVAILABLE' : 'UNAVAILABLE'}',
-      child: OutlinedButton.icon(
-        onPressed: enabled ? onPressed : null,
-        icon: Icon(icon, size: 18),
-        label: Text(label),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(190, 52),
-          foregroundColor: LiveMixTokens.textPrimary,
-          side: BorderSide(
-            color: enabled
-                ? LiveMixTokens.accentCopper
-                : LiveMixTokens.textSecondary,
-            width: 2,
+class _SessionTracklistPanel extends StatelessWidget {
+  const _SessionTracklistPanel({
+    required this.state,
+    required this.draftArtists,
+    required this.draftTitles,
+    required this.onArtistChanged,
+    required this.onTitleChanged,
+    required this.onSave,
+    required this.onExportJson,
+    required this.onExportCsv,
+    required this.onExportM3u,
+  });
+
+  final BrowserSessionState state;
+  final Map<int, String> draftArtists;
+  final Map<int, String> draftTitles;
+  final void Function(int index, String value) onArtistChanged;
+  final void Function(int index, String value) onTitleChanged;
+  final Future<void> Function(int index, TracklistEntry entry) onSave;
+  final VoidCallback onExportJson;
+  final VoidCallback onExportCsv;
+  final VoidCallback onExportM3u;
+
+  @override
+  Widget build(BuildContext context) {
+    return _rackPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Session tracklist', style: LiveMixTextStyles.uiLabel),
+          const SizedBox(height: 8),
+          Text(
+            state.initialized
+                ? 'SESSION ${state.sessionId ?? 'UNKNOWN'} — ${state.entries.length} ENTRIES'
+                : 'RECOVERING LOCAL SESSION',
+            style: LiveMixTextStyles.numericTelemetry.copyWith(
+              fontSize: 12,
+              color: LiveMixTokens.textSecondary,
+            ),
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(4),
+          if (state.persistenceWarning != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              state.persistenceWarning!,
+              style: LiveMixTextStyles.uiLabel.copyWith(
+                color: LiveMixTokens.statusWarn,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          if (state.initialized && state.entries.isEmpty)
+            Text(
+              'NO TRACKLIST ENTRIES',
+              style: LiveMixTextStyles.numericTelemetry.copyWith(
+                color: LiveMixTokens.textSecondary,
+              ),
+            ),
+          for (var index = 0; index < state.entries.length; index++) ...[
+            _SessionEntryEditor(
+              index: index,
+              entry: state.entries[index],
+              artist: draftArtists[index] ?? state.entries[index].artist,
+              title: draftTitles[index] ?? state.entries[index].title,
+              onArtistChanged: (value) => onArtistChanged(index, value),
+              onTitleChanged: (value) => onTitleChanged(index, value),
+              onSave: () => unawaited(onSave(index, state.entries[index])),
+            ),
+            const SizedBox(height: 12),
+          ],
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _operatorButton(
+                icon: Icons.data_object,
+                label: 'Export session JSON',
+                onPressed: state.initialized ? onExportJson : null,
+              ),
+              _operatorButton(
+                icon: Icons.table_rows_outlined,
+                label: 'Export session CSV',
+                onPressed: state.initialized ? onExportCsv : null,
+              ),
+              _operatorButton(
+                icon: Icons.queue_music,
+                label: 'Export session M3U',
+                onPressed: state.initialized ? onExportM3u : null,
+              ),
+            ],
           ),
-          textStyle: LiveMixTextStyles.uiLabel,
-        ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SessionEntryEditor extends StatelessWidget {
+  const _SessionEntryEditor({
+    required this.index,
+    required this.entry,
+    required this.artist,
+    required this.title,
+    required this.onArtistChanged,
+    required this.onTitleChanged,
+    required this.onSave,
+  });
+
+  final int index;
+  final TracklistEntry entry;
+  final String artist;
+  final String title;
+  final ValueChanged<String> onArtistChanged;
+  final ValueChanged<String> onTitleChanged;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: LiveMixTokens.surfaceStrip,
+        border: Border.all(color: LiveMixTokens.accentCopper),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${_formatDuration(entry.cueTime)} · ${entry.provenance.name.toUpperCase()}',
+            style: LiveMixTextStyles.numericTelemetry.copyWith(
+              fontSize: 12,
+              color: LiveMixTokens.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            key: ValueKey('session-artist-$index'),
+            initialValue: artist,
+            onChanged: onArtistChanged,
+            decoration: const InputDecoration(labelText: 'Artist'),
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            key: ValueKey('session-title-$index'),
+            initialValue: title,
+            onChanged: onTitleChanged,
+            decoration: const InputDecoration(labelText: 'Title'),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _operatorButton(
+              icon: Icons.save_outlined,
+              label: 'Save correction',
+              onPressed: onSave,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  static Color _messageColor(BrowserRecordingStatus status) {
-    switch (status) {
-      case BrowserRecordingStatus.recording:
-        return LiveMixTokens.meterNominal;
-      case BrowserRecordingStatus.readyToExport:
-        return LiveMixTokens.accentOchre;
-      case BrowserRecordingStatus.error:
-        return LiveMixTokens.statusWarn;
-      case BrowserRecordingStatus.starting:
-      case BrowserRecordingStatus.stopping:
-      case BrowserRecordingStatus.exporting:
-      case BrowserRecordingStatus.idle:
-        return LiveMixTokens.textSecondary;
-    }
+  static String _formatDuration(Duration value) {
+    final minutes = value.inMinutes.toString().padLeft(2, '0');
+    final seconds = (value.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 }
 
@@ -591,21 +830,11 @@ class _FingerprintStatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: LiveMixTokens.surfaceRack,
-        border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
-        borderRadius: BorderRadius.circular(4),
-      ),
+    return _rackPanel(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            _icon(state.status),
-            color: _color(state.status),
-            size: 20,
-          ),
+          Icon(_icon(state.status), color: _color(state.status), size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -658,13 +887,7 @@ class _CapabilityPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: LiveMixTokens.surfaceRack,
-        border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
-        borderRadius: BorderRadius.circular(4),
-      ),
+    return _rackPanel(
       child: Column(
         children: [
           _CapabilityRow(
@@ -751,6 +974,139 @@ class _CapabilityRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+Widget _rackPanel({required Widget child}) {
+  return Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: LiveMixTokens.surfaceRack,
+      border: Border.all(color: LiveMixTokens.surfaceStrip, width: 2),
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: child,
+  );
+}
+
+Widget _operatorButton({
+  required IconData icon,
+  required String label,
+  required VoidCallback? onPressed,
+}) {
+  final enabled = onPressed != null;
+  return Semantics(
+    button: true,
+    enabled: enabled,
+    label: label,
+    child: OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(180, 52),
+        foregroundColor: LiveMixTokens.textPrimary,
+        side: BorderSide(
+          color: enabled
+              ? LiveMixTokens.accentCopper
+              : LiveMixTokens.textSecondary,
+          width: 2,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(4),
+        ),
+        textStyle: LiveMixTextStyles.uiLabel,
+      ),
+    ),
+  );
+}
+
+Widget _toggleButton({
+  required String label,
+  required bool active,
+  required bool enabled,
+  required VoidCallback onPressed,
+}) {
+  return Semantics(
+    button: true,
+    enabled: enabled,
+    toggled: active,
+    label: label,
+    child: OutlinedButton(
+      onPressed: enabled ? onPressed : null,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(120, 48),
+        foregroundColor:
+            active ? LiveMixTokens.accentOchre : LiveMixTokens.textPrimary,
+        side: BorderSide(
+          color: active
+              ? LiveMixTokens.accentOchre
+              : enabled
+                  ? LiveMixTokens.accentCopper
+                  : LiveMixTokens.textSecondary,
+          width: 2,
+        ),
+      ),
+      child: Text(label),
+    ),
+  );
+}
+
+Widget _telemetryRow({
+  required String label,
+  required String value,
+  required Key key,
+}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        Expanded(child: Text(label, style: LiveMixTextStyles.uiLabel)),
+        Text(
+          value,
+          key: key,
+          style: LiveMixTextStyles.numericTelemetry.copyWith(
+            color: LiveMixTokens.textPrimary,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+double _max(double a, double b) => a >= b ? a : b;
+
+Color _captureMessageColor(BrowserCaptureStatus status) {
+  switch (status) {
+    case BrowserCaptureStatus.active:
+      return LiveMixTokens.meterNominal;
+    case BrowserCaptureStatus.permissionDenied:
+    case BrowserCaptureStatus.noAudioTrack:
+    case BrowserCaptureStatus.unsupported:
+    case BrowserCaptureStatus.reconnectRequired:
+    case BrowserCaptureStatus.deviceInventoryChanged:
+    case BrowserCaptureStatus.error:
+      return LiveMixTokens.statusWarn;
+    case BrowserCaptureStatus.idle:
+    case BrowserCaptureStatus.permissionRequired:
+    case BrowserCaptureStatus.requesting:
+      return LiveMixTokens.textSecondary;
+  }
+}
+
+Color _recordingMessageColor(BrowserRecordingStatus status) {
+  switch (status) {
+    case BrowserRecordingStatus.recording:
+      return LiveMixTokens.meterNominal;
+    case BrowserRecordingStatus.readyToExport:
+      return LiveMixTokens.accentOchre;
+    case BrowserRecordingStatus.error:
+      return LiveMixTokens.statusWarn;
+    case BrowserRecordingStatus.starting:
+    case BrowserRecordingStatus.stopping:
+    case BrowserRecordingStatus.exporting:
+    case BrowserRecordingStatus.idle:
+      return LiveMixTokens.textSecondary;
   }
 }
 
