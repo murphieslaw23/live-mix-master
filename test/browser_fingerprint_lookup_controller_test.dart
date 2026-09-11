@@ -127,7 +127,8 @@ void main() {
       fingerprint: 'prepared',
       durationSeconds: 10,
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
 
     expect(sessionController.entries, hasLength(1));
     expect(sessionController.entries.single.title, 'Signal Ritual');
