@@ -140,6 +140,8 @@ void main() {
     _stage('shell-unmounted');
     await mixerController.dispose();
     _stage('mixer-controller-disposed');
+    await mixerGateway.dispose();
+    _stage('mixer-gateway-disposed');
   });
 }
 
@@ -208,6 +210,8 @@ class _MixerGateway implements BrowserMixerGateway {
   Future<void> configure(BrowserMixerConfiguration configuration) async {}
 
   void publish(BrowserMixerTelemetry telemetry) => _telemetry.add(telemetry);
+
+  Future<void> dispose() => _telemetry.close();
 }
 
 class _RecordingGateway implements BrowserRecordingGateway {
