@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../fingerprint_tracklist_bridge.dart';
+import 'fingerprint_proxy_client.dart';
 import '../live_session_tracklist_controller.dart';
 import '../reliability_models.dart';
 import '../session_tracklist.dart';
@@ -52,6 +53,10 @@ abstract interface class BrowserSessionPort {
 
   Future<void> initialize();
 
+  Future<bool> recordFingerprintMatch({
+    required FingerprintProxyTrack track,
+  });
+
   Future<TracklistEntry> correct({
     required int index,
     required String artist,
@@ -96,6 +101,7 @@ class BrowserSessionController implements BrowserSessionPort {
   FingerprintTracklistBridge? _bridge;
   LiveSessionTracklistController? _live;
   bool _disposed = false;
+  DateTime? _sessionStartedAt;
 
   @override
   BrowserSessionState get state => _state;
@@ -130,6 +136,13 @@ class BrowserSessionController implements BrowserSessionPort {
       recovered = const <TracklistEntry>[];
     }
 
+    final initializedAt = _clock().toUtc();
+    final recoveredCue = recovered.fold<Duration>(
+      Duration.zero,
+      (latest, entry) =>
+          entry.cueTime > latest ? entry.cueTime : latest,
+    );
+    _sessionStartedAt = initializedAt.subtract(recoveredCue);
     final resolvedSessionId = recovered.isNotEmpty
         ? recovered.first.sessionId
         : (_createSessionId?.call() ?? _defaultSessionId());
@@ -158,6 +171,36 @@ class BrowserSessionController implements BrowserSessionPort {
         persistenceStatus: _state.persistenceStatus,
       ),
     );
+  }
+
+  @override
+  Future<bool> recordFingerprintMatch({
+    required FingerprintProxyTrack track,
+  }) async {
+    _ensureReady();
+    final recognizedAt = _clock().toUtc();
+    final sessionStartedAt = _sessionStartedAt ?? recognizedAt;
+    final elapsed = recognizedAt.difference(sessionStartedAt);
+    final accepted = _live!.acceptFingerprint(
+      cueTime: elapsed.isNegative ? Duration.zero : elapsed,
+      match: FingerprintMatch(
+        artist: track.artist,
+        title: track.title,
+        confidence: track.confidence,
+        providerId: track.providerId,
+      ),
+      recognizedAt: recognizedAt,
+    );
+    if (!accepted) {
+      return false;
+    }
+    _publishEntries();
+    try {
+      await _persister!.flush();
+    } on Object {
+      // Persistence failure is surfaced as non-fatal session state.
+    }
+    return true;
   }
 
   @override
