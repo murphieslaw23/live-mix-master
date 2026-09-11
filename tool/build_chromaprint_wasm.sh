@@ -29,10 +29,7 @@ require_command cmake
 require_command tar
 require_command sha256sum
 
-EMSCRIPTEN_VERSION="$(emcc --version | sed -n '1s/.*emcc (Emscripten gcc\/clang-like replacement + emulating GNU ld) \([0-9.]*\).*/\1/p')"
-if [[ -z "$EMSCRIPTEN_VERSION" ]]; then
-  EMSCRIPTEN_VERSION="$(emcc --version | sed -n '1s/.*version \([0-9.]*\).*/\1/p')"
-fi
+EMSCRIPTEN_VERSION="$(emcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 if [[ "$EMSCRIPTEN_VERSION" != "$EXPECTED_EMSCRIPTEN_VERSION" ]]; then
   echo "expected Emscripten $EXPECTED_EMSCRIPTEN_VERSION, got ${EMSCRIPTEN_VERSION:-unknown}" >&2
   exit 2
