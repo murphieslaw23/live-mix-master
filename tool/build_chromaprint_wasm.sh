@@ -16,9 +16,11 @@ SOURCE_DIR="$VENDOR_DIR/chromaprint-${CHROMAPRINT_VERSION}"
 KISSFFT_DIR="$VENDOR_DIR/kissfft-${KISSFFT_COMMIT}"
 CMAKE_BUILD_DIR="$ROOT_DIR/build/chromaprint-cmake"
 OUTPUT_DIR="$ROOT_DIR/build/chromaprint-wasm"
+BROWSER_VENDOR_DIR="$ROOT_DIR/web/fingerprint/vendor"
 WRAPPER="$ROOT_DIR/web/fingerprint/chromaprint/lmm_chromaprint_wrapper.cpp"
 CORE_MODULE="$OUTPUT_DIR/livemixmaster-chromaprint-core.mjs"
 ADAPTER_MODULE="$OUTPUT_DIR/livemixmaster-chromaprint.mjs"
+CORE_WASM="$OUTPUT_DIR/livemixmaster-chromaprint-core.wasm"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -192,10 +194,24 @@ export async function createChromaprint({wasmUrl} = {}) {
 }
 JS
 
-CORE_WASM="$OUTPUT_DIR/livemixmaster-chromaprint-core.wasm"
 if [[ ! -s "$CORE_MODULE" || ! -s "$CORE_WASM" || ! -s "$ADAPTER_MODULE" ]]; then
   echo "Chromaprint Wasm build output is incomplete" >&2
   exit 4
 fi
 
+rm -rf "$BROWSER_VENDOR_DIR"
+mkdir -p "$BROWSER_VENDOR_DIR"
+cp "$ADAPTER_MODULE" "$CORE_MODULE" "$CORE_WASM" "$BROWSER_VENDOR_DIR/"
+
+for browser_asset in \
+  livemixmaster-chromaprint.mjs \
+  livemixmaster-chromaprint-core.mjs \
+  livemixmaster-chromaprint-core.wasm; do
+  if ! cmp -s "$OUTPUT_DIR/$browser_asset" "$BROWSER_VENDOR_DIR/$browser_asset"; then
+    echo "packaged Chromaprint browser asset mismatch: $browser_asset" >&2
+    exit 5
+  fi
+done
+
 printf 'Chromaprint Wasm ready: %s\n' "$OUTPUT_DIR"
+printf 'Chromaprint browser package ready: %s\n' "$BROWSER_VENDOR_DIR"
