@@ -61,7 +61,9 @@ class BrowserMixerController {
   late final StreamSubscription<BrowserMixerTelemetry> _telemetrySubscription;
 
   BrowserMixerState _state = const BrowserMixerState.disabled();
-  Future<void> _configurationChain = Future<void>.value();
+  BrowserMixerConfiguration? _pendingConfiguration;
+  Future<void> _configurationDrain = Future<void>.value();
+  bool _configurationDrainRunning = false;
   bool _disposed = false;
 
   BrowserMixerState get state => _state;
@@ -167,8 +169,9 @@ class BrowserMixerController {
 
   Future<void> detach() {
     _ensureNotDisposed();
+    _pendingConfiguration = null;
     _setState(const BrowserMixerState.disabled());
-    return _configurationChain;
+    return _configurationDrain;
   }
 
   Future<void> dispose() async {
@@ -176,7 +179,8 @@ class BrowserMixerController {
       return;
     }
     _disposed = true;
-    await _configurationChain;
+    _pendingConfiguration = null;
+    await _configurationDrain;
     await _telemetrySubscription.cancel();
     _listeners.clear();
   }
@@ -184,9 +188,10 @@ class BrowserMixerController {
   Future<void> _queueConfiguration() {
     final channelId = _state.activeChannelId;
     if (!_state.enabled || channelId == null) {
-      return _configurationChain;
+      return _configurationDrain;
     }
-    final configuration = BrowserMixerConfiguration(
+
+    _pendingConfiguration = BrowserMixerConfiguration(
       masterGainLinear: _masterGainLinear,
       telemetryEvery: _telemetryEvery,
       channels: <BrowserMixerChannelConfiguration>[
@@ -199,14 +204,32 @@ class BrowserMixerController {
         ),
       ],
     );
-    final operation = _configurationChain.then<void>(
-      (_) => _gateway.configure(configuration),
-    );
-    _configurationChain = operation.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace __) {},
-    );
-    return operation;
+
+    if (_configurationDrainRunning) {
+      return _configurationDrain;
+    }
+
+    final completer = Completer<void>();
+    _configurationDrain = completer.future;
+    _configurationDrainRunning = true;
+
+    () async {
+      try {
+        while (_pendingConfiguration != null && !_disposed) {
+          final configuration = _pendingConfiguration!;
+          _pendingConfiguration = null;
+          await _gateway.configure(configuration);
+        }
+        completer.complete();
+      } on Object catch (error, stackTrace) {
+        _pendingConfiguration = null;
+        completer.completeError(error, stackTrace);
+      } finally {
+        _configurationDrainRunning = false;
+      }
+    }();
+
+    return _configurationDrain;
   }
 
   void _handleTelemetry(BrowserMixerTelemetry telemetry) {
@@ -218,9 +241,6 @@ class BrowserMixerController {
       return;
     }
     final meter = telemetry.channelMeters[channelId];
-    if (meter == null) {
-      return;
-    }
     _setState(
       BrowserMixerState(
         enabled: true,
@@ -228,7 +248,7 @@ class BrowserMixerController {
         fader: _state.fader,
         muted: _state.muted,
         solo: _state.solo,
-        channelMeter: meter,
+        channelMeter: meter ?? _state.channelMeter,
         masterPeakLeft: telemetry.masterPeakLeft,
         masterPeakRight: telemetry.masterPeakRight,
         limiterActive: telemetry.limiterActive,
