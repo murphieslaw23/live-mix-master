@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111315">
+  <meta name="color-scheme" content="dark">
+  <title>LiveMixMaster — Offline</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #111315;
+      color: #f1eee8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #111315;
+    }
+    main {
+      width: min(560px, 100%);
+      border: 2px solid #d96528;
+      padding: 28px;
+      background: #1c1f23;
+    }
+    p { line-height: 1.55; }
+    .status {
+      color: #d96528;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    button {
+      margin-top: 12px;
+      min-height: 44px;
+      border: 2px solid #f1eee8;
+      padding: 10px 16px;
+      color: #f1eee8;
+      background: #111315;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:focus-visible {
+      outline: 3px solid #d96528;
+      outline-offset: 3px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="status" aria-label="Offline status">Offline</div>
+    <h1>LiveMixMaster cannot start without its application runtime.</h1>
+    <p>The offline shell is available, but live capture, provider lookups, broadcast metadata, and the full mixer require the application to load successfully.</p>
+    <p>Reconnect to the network, then retry. This fallback does not claim that browser audio or remote services are available.</p>
+    <button type="button" onclick="location.reload()">Retry connection</button>
+  </main>
+</body>
+</html>
