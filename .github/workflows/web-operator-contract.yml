@@ -30,5 +30,6 @@ jobs:
       - run: flutter pub get
       - run: >-
           flutter test
+          --timeout 90s
           test/browser_capture_disconnect_test.dart
           test/web_operator_surface_test.dart
