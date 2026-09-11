@@ -47,10 +47,11 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await expect(mute).toBeEnabled();
   await expect(solo).toBeEnabled();
 
-  const initialPeak = await expect.poll(
+  await expect.poll(
     () => readNumericTelemetry(page, 'Channel peak'),
     { timeout: 10_000 },
   ).toBeGreaterThan(0.01);
+  const initialPeak = await readNumericTelemetry(page, 'Channel peak');
 
   const beforeFader = await slider.getAttribute('aria-valuenow');
   await slider.focus();
