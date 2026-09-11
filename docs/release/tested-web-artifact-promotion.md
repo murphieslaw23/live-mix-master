@@ -39,11 +39,30 @@ The workflow:
 3. downloads the immutable artifact and verifies its archive SHA-256 digest;
 4. reconstitutes `build/web` without invoking Flutter;
 5. adds only the versioned Vercel API route sources from that same commit;
-6. deploys to the existing `live-mix-master` Vercel project;
-7. verifies the release shell and that both server routes are present with a safe GET 405
-   response;
-8. records only non-secret commit, artifact, and URL evidence in the GitHub job summary.
+6. deploys to the existing `live-mix-master` Vercel project and resolves the resulting hostname
+   to its immutable Vercel deployment ID;
+7. verifies the protected release shell and sends side-effect-free authenticated `POST {}` probes
+   to `/api/fingerprint-lookup` and `/api/broadcast-metadata`; each probe must reach the route and
+   return the expected `invalidRequest` or `invalidConfiguration` JSON state, so no external
+   provider or broadcast destination is contacted;
+8. records only non-secret target, commit, artifact, deployment-ID, and URL evidence in the
+   GitHub job summary.
 
 A preview deployment is not a release candidate. Production promotion remains blocked until
 the browser E2E matrix, PWA/offline checks, and accessibility checks are fresh and linked to
-the same commit.
+the same tested artifact.
+
+## Current production evidence
+
+The W5 production promotion completed on 2026-09-11 with:
+
+- tested release commit: `4f97a354dac54cf7c103f477d65002e7dff87213`
+- source CI run: `34617452995`
+- artifact ID: `10270868244`
+- artifact digest: `sha256:eb919bafdc9519e56f09d0d5acaaac28ec568391b55f04ed6b398a799ec7a77a`
+- production promotion run: `34622067734`
+- Vercel deployment ID: `dpl_BV4vsKBS6Bnzu2Uk5J75nhpHfv9L`
+- production alias: <https://live-mix-master.vercel.app>
+
+Later documentation or promotion-tooling commits on `main` do not change this release identity.
+A new application release requires a new tested artifact and a new explicit promotion.
