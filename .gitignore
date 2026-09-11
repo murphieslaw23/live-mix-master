@@ -18,3 +18,4 @@ native/vendor/
 !.env.example
 assets/fonts/*.ttf
 assets/fonts/*.tmp
+web/fingerprint/vendor/
