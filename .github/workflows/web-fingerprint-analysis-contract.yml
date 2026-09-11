@@ -1,0 +1,25 @@
+name: Web Fingerprint Analysis Contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-fingerprint-analysis-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fingerprint-analysis-tap:
+    name: Fingerprint Analysis Tap
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify independent bounded post-master analysis tap
+        run: node --test test/web_fingerprint_analysis_tap_test.mjs
