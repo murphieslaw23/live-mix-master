@@ -1,0 +1,125 @@
+name: Promote tested Web artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: GitHub Actions live-mix-master-web artifact ID
+        required: true
+        type: string
+      artifact_digest:
+        description: Artifact SHA-256 digest in sha256:<hex> form
+        required: true
+        type: string
+      commit_sha:
+        description: Exact commit SHA that produced the artifact
+        required: true
+        type: string
+      target:
+        description: Deployment target
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - production
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: live-mix-master-web-promotion-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote verified artifact
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target == 'production' && 'vercel-production' || 'vercel-preview' }}
+    env:
+      ARTIFACT_ID: ${{ inputs.artifact_id }}
+      ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
+      COMMIT_SHA: ${{ inputs.commit_sha }}
+      TARGET: ${{ inputs.target }}
+      VERCEL_ORG_ID: team_NgD523QOHDHfux9i6bXTZTUr
+      VERCEL_PROJECT_ID: prj_DeQFFyYAUHEotogFlolPXAs62uqH
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Validate immutable release inputs
+        run: |
+          [[ "$ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$ARTIFACT_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test -n "$VERCEL_TOKEN"
+
+      - name: Check out the exact release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 1
+
+      - name: Verify checked-out source identity
+        run: test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
+
+      - name: Download the tested web artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --location --retry 3             --header "Accept: application/vnd.github+json"             --header "Authorization: Bearer $GH_TOKEN"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             --output web-artifact.zip
+          printf '%s  %s\n' "${ARTIFACT_DIGEST#sha256:}" web-artifact.zip | sha256sum --check -
+
+      - name: Assemble deployable exact-artifact payload
+        run: |
+          rm -rf extracted release-payload
+          mkdir -p extracted release-payload/build/web release-payload/.vercel
+          unzip -q web-artifact.zip -d extracted
+          WEB_INDEX="$(find extracted -type f -name index.html -print -quit)"
+          test -n "$WEB_INDEX"
+          WEB_ROOT="$(dirname "$WEB_INDEX")"
+          cp -a "$WEB_ROOT"/. release-payload/build/web/
+          test -f release-payload/build/web/index.html
+          test -d api
+          cp -a api release-payload/api
+          cp vercel.json release-payload/vercel.json
+          cat > release-payload/.vercel/project.json <<EOF
+          {"orgId":"$VERCEL_ORG_ID","projectId":"$VERCEL_PROJECT_ID"}
+          EOF
+
+      - name: Deploy without rebuilding the Flutter artifact
+        id: deploy
+        working-directory: release-payload
+        run: |
+          if [ "$TARGET" = production ]; then
+            DEPLOY_URL="$(npx --yes vercel@48.2.8 deploy --prod --yes --token "$VERCEL_TOKEN")"
+          else
+            DEPLOY_URL="$(npx --yes vercel@48.2.8 deploy --yes --token "$VERCEL_TOKEN")"
+          fi
+          echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release shell and server-route presence
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          curl --fail --silent --show-error "$DEPLOY_URL/" -o /dev/null
+          FINGERPRINT_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' -X GET "$DEPLOY_URL/api/fingerprint-lookup")"
+          BROADCAST_STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' -X GET "$DEPLOY_URL/api/broadcast-metadata")"
+          test "$FINGERPRINT_STATUS" = 405
+          test "$BROADCAST_STATUS" = 405
+
+      - name: Record non-secret promotion evidence
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          {
+            echo "## LiveMixMaster Web artifact promotion"
+            echo
+            echo "- Target: `$TARGET`"
+            echo "- Commit: `$COMMIT_SHA`"
+            echo "- Artifact ID: `$ARTIFACT_ID`"
+            echo "- Artifact digest: `$ARTIFACT_DIGEST`"
+            echo "- Deployment URL: $DEPLOY_URL"
+            echo "- Shell: passed"
+            echo "- Fingerprint route: GET 405 (route present; no provider request made)"
+            echo "- Broadcast route: GET 405 (route present; no destination request made)"
+          } >> "$GITHUB_STEP_SUMMARY"
