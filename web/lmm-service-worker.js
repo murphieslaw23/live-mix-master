@@ -1,7 +1,8 @@
-const CACHE_NAME = 'livemixmaster-shell-v1';
+const CACHE_NAME = 'livemixmaster-shell-v2';
 const SHELL_ASSETS = [
   './',
   './index.html',
+  './offline.html',
   './manifest.json',
   './icons/livemixmaster-maskable.svg',
   './icons/livemixmaster-maskable-192.png',
@@ -46,26 +47,27 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     fetch(request)
-      .then((response) => {
-        if (!response || response.status !== 200 || response.type === 'opaque') {
-          return response;
+      .then(async (response) => {
+        if (response && response.status === 200 && response.type !== 'opaque') {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(request, response.clone());
         }
-
-        const copy = response.clone();
-        event.waitUntil(
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)),
-        );
         return response;
       })
-      .catch(async () => {
+      .catch(async (error) => {
+        if (request.mode === 'navigate') {
+          const offline = await caches.match('./offline.html');
+          if (offline) {
+            return offline;
+          }
+        }
+
         const cached = await caches.match(request);
         if (cached) {
           return cached;
         }
-        if (request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
-        throw new Error(`Offline and uncached: ${url.pathname}`);
+
+        throw error;
       }),
   );
 });
