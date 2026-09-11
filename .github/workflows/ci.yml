@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, preview]
   pull_request:
   workflow_dispatch:
 
@@ -112,6 +112,9 @@ jobs:
     name: Web Release Compile Contract
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      artifact_id: ${{ steps.web_artifact.outputs.artifact-id }}
+      artifact_digest: ${{ steps.web_artifact.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -186,6 +189,7 @@ jobs:
           grep -F '"sizes": "512x512"' build/web/manifest.json
       - name: Upload Flutter Web artifact
         if: success()
+        id: web_artifact
         uses: actions/upload-artifact@v4
         with:
           name: live-mix-master-web
@@ -249,6 +253,20 @@ jobs:
             test-results
           if-no-files-found: warn
           retention-days: 14
+
+  deploy-tested-web-artifact:
+    name: Deploy tested Web artifact
+    needs: [web-release-compile, web-browser-e2e]
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/preview')
+    uses: ./.github/workflows/promote-tested-web-artifact.yml
+    with:
+      artifact_id: ${{ needs.web-release-compile.outputs.artifact_id }}
+      artifact_digest: ${{ needs.web-release-compile.outputs.artifact_digest }}
+      commit_sha: ${{ github.sha }}
+      target: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
+    secrets: inherit
 
   native-engine-build:
     name: Native Engine Build (macos-latest)
