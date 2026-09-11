@@ -43,6 +43,24 @@ test('recording starts only after the Worker is ready and then enables post-mast
   );
 });
 
+test('recording backpressure window tolerates browser scheduler jitter while remaining bounded', async () => {
+  const gateway = await source(gatewayUrl);
+  const match = gateway.match(/const int _recorderMaxOutstandingPcm = (\d+);/);
+
+  assert.ok(match, 'gateway must name the bounded PCM backlog window');
+  const blocks = Number.parseInt(match[1], 10);
+  assert.ok(
+    blocks >= 64,
+    `PCM backlog window must tolerate at least ~170 ms at 48 kHz/128-frame quanta, got ${blocks}`,
+  );
+  assert.ok(blocks <= 256, `PCM backlog window must remain bounded, got ${blocks}`);
+  assert.match(
+    gateway,
+    /maxOutstandingPcm': _recorderMaxOutstandingPcm/,
+    'recording protocol must use the bounded scheduler-jitter window',
+  );
+});
+
 test('stop, failure, and export are explicit fail-closed operator transitions', async () => {
   const gateway = await source(gatewayUrl);
 
