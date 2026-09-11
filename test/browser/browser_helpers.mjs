@@ -77,7 +77,8 @@ export async function readNumericTelemetry(page, label) {
   const row = page.getByText(label, { exact: true });
   await expect(row).toBeVisible();
   const valueText = await row.evaluate((element) => {
-    let sibling = element.nextElementSibling;
+    const semantics = element.closest('flt-semantics');
+    let sibling = semantics?.nextElementSibling ?? null;
     for (let index = 0; sibling && index < 3; index += 1) {
       const text = sibling.textContent?.trim() ?? '';
       if (/^-?\d+(?:\.\d+)?$/.test(text)) {
@@ -88,7 +89,7 @@ export async function readNumericTelemetry(page, label) {
     return null;
   });
   if (valueText == null) {
-    throw new Error(`No numeric telemetry sibling found for ${label}`);
+    throw new Error(`No numeric telemetry semantics sibling found for ${label}`);
   }
   return Number(valueText);
 }
