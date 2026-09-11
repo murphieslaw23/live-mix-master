@@ -91,6 +91,7 @@ void main() {
         limiterActive: false,
       ),
     );
+    await Future<void>.delayed(Duration.zero);
     await tester.pump();
     expect(find.textContaining('0.500'), findsOneWidget);
     expect(find.textContaining('0.250'), findsOneWidget);
