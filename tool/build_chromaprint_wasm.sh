@@ -124,7 +124,7 @@ em++ \
   -sFILESYSTEM=0 \
   -sDYNAMIC_EXECUTION=0 \
   -sEXPORTED_FUNCTIONS='["_lmm_chromaprint_version","_lmm_chromaprint_fingerprint","_lmm_chromaprint_free","_malloc","_free"]' \
-  -sEXPORTED_RUNTIME_METHODS='["UTF8ToString"]' \
+  -sEXPORTED_RUNTIME_METHODS='["UTF8ToString","HEAP16"]' \
   -o "$CORE_MODULE"
 
 cat > "$ADAPTER_MODULE" <<'JS'
