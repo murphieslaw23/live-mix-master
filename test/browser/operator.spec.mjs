@@ -38,6 +38,14 @@ async function activateButton(page, name) {
   return button;
 }
 
+async function replaceFlutterText(page, field, value) {
+  await field.focus();
+  await expect(field).toBeFocused();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type(value);
+  await expect(field).toHaveValue(value);
+}
+
 async function downloadSessionJson(page, testInfo, fileName) {
   const downloadPromise = page.waitForEvent('download');
   await activateButton(page, 'Export session JSON');
@@ -146,10 +154,8 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   const title = page.getByRole('textbox', { name: 'Title' });
   await expect(artist).toBeEditable();
   await expect(title).toBeEditable();
-  await artist.fill('Corrected Artist');
-  await title.fill('Corrected Title');
-  await expect(artist).toHaveValue('Corrected Artist');
-  await expect(title).toHaveValue('Corrected Title');
+  await replaceFlutterText(page, artist, 'Corrected Artist');
+  await replaceFlutterText(page, title, 'Corrected Title');
   await title.press('Tab');
   await expect(title).not.toBeFocused();
   await activateButton(page, 'Save correction');
