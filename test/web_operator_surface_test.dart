@@ -13,6 +13,7 @@ import 'package:live_mix_master/services/web/browser_session_controller.dart';
 
 void main() {
   testWidgets('web operator surface exposes mixer controls, telemetry, disconnect, and durable session actions', (tester) async {
+    _stage('construct');
     final captureGateway = _CaptureGateway();
     final captureController = BrowserCaptureController(gateway: captureGateway);
     final mixerGateway = _MixerGateway();
@@ -51,10 +52,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    _stage('shell-ready');
 
     await _tapVisible(tester, 'CONNECT MIC / USB');
     await mixerController.attach('mic-test');
     await tester.pump();
+    _stage('capture-mixer-active');
 
     expect(find.text('Channel fader'), findsOneWidget);
     expect(find.text('Mute'), findsOneWidget);
@@ -74,6 +77,7 @@ void main() {
     expect(mixerController.state.muted, isTrue);
     await _tapVisible(tester, 'Solo');
     expect(mixerController.state.solo, isTrue);
+    _stage('mix-controls');
 
     mixerGateway.publish(
       const BrowserMixerTelemetry(
@@ -96,6 +100,7 @@ void main() {
     expect(find.textContaining('0.500'), findsOneWidget);
     expect(find.textContaining('0.250'), findsOneWidget);
     expect(find.textContaining('0.450'), findsOneWidget);
+    _stage('telemetry');
 
     expect(find.text('Session tracklist'), findsOneWidget);
     expect(find.text('Recovered Artist'), findsOneWidget);
@@ -109,11 +114,14 @@ void main() {
       find.byKey(const ValueKey('session-title-0')),
       'Corrected Title',
     );
+    _stage('session-edited');
     await _tapVisible(tester, 'Save correction');
+    _stage('session-correction-tapped');
 
     expect(repository.saved.single.artist, 'Corrected Artist');
     expect(repository.saved.single.title, 'Corrected Title');
     expect(repository.saved.single.provenance, TrackProvenance.manual);
+    _stage('session-correction-verified');
 
     await _tapVisible(tester, 'Export session JSON');
     await _tapVisible(tester, 'Export session CSV');
@@ -123,17 +131,27 @@ void main() {
     expect(downloads.contents[0], contains('Corrected Artist'));
     expect(downloads.fileNames[1], endsWith('.csv'));
     expect(downloads.fileNames[2], endsWith('.m3u'));
+    _stage('exports-verified');
 
     await _tapVisible(tester, 'Disconnect source');
     expect(captureGateway.disconnectCalls, 1);
     expect(captureController.state.status, BrowserCaptureStatus.reconnectRequired);
+    _stage('disconnect-verified');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
+    _stage('shell-unmounted');
     await mixerController.dispose();
+    _stage('mixer-disposed');
     await mixerGateway.dispose();
+    _stage('mixer-gateway-disposed');
     await sessionController.dispose();
+    _stage('session-disposed');
   });
+}
+
+void _stage(String value) {
+  debugPrint('WEB_OPERATOR_STAGE: $value');
 }
 
 Future<void> _tapVisible(WidgetTester tester, String label) async {
