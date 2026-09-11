@@ -127,6 +127,8 @@ jobs:
           build/native-parity/dsp-parity test/fixtures/dsp_parity_vectors.tsv
       - name: Verify PWA manifest icon contract
         run: node --test test/web_pwa_manifest_contract_test.mjs
+      - name: Verify PWA offline/accessibility source contract
+        run: node --test test/web_pwa_offline_accessibility_contract_test.mjs
       - name: Verify AudioWorklet processor contract
         run: node --test test/web_audio_worklet_processor_test.mjs
       - name: Verify Web Audio graph integration contract
@@ -169,6 +171,14 @@ jobs:
         run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart test/browser_media_gateway_test.dart test/web_dsp_kernel_test.dart test/browser_audio_processing_controller_test.dart test/browser_recording_controller_test.dart
       - name: Build Flutter Web release artifact
         run: flutter build web --release
+      - name: Verify built PWA offline shell
+        run: |
+          test -f build/web/lmm-service-worker.js
+          test -f build/web/icons/livemixmaster-maskable-192.png
+          test -f build/web/icons/livemixmaster-maskable-512.png
+          grep -F 'lmm-service-worker.js' build/web/index.html
+          grep -F '"sizes": "192x192"' build/web/manifest.json
+          grep -F '"sizes": "512x512"' build/web/manifest.json
       - name: Upload Flutter Web artifact
         if: success()
         uses: actions/upload-artifact@v4
