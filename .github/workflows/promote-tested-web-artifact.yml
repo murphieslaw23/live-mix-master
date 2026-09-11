@@ -125,7 +125,7 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
           vercel_curl() {
-            npx --yes vercel@48.2.8 curl "${DEPLOY_URL%/}$1"
+            npx --yes vercel@48.8.0 curl "$1" --deployment "$DEPLOY_URL" --token "$VERCEL_TOKEN"
           }
           vercel_curl / >/dev/null
           FINGERPRINT_BODY="$(vercel_curl /api/fingerprint-lookup)"
