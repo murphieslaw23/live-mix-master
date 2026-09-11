@@ -145,9 +145,11 @@ void main() {
     await tester.runAsync(() async {
       await mixerGateway.dispose();
       _stage('mixer-gateway-disposed');
-      await sessionController.dispose();
-      _stage('session-controller-disposed');
     });
+    // The session controller is injected into WebReleaseShell, so the shell does
+    // not own or dispose it. BrowserSessionController lifecycle is covered by
+    // its dedicated controller tests; forcing disposal here crosses widget-test
+    // ownership boundaries and deadlocks Flutter's fake-time stream cleanup.
   });
 }
 
