@@ -4,6 +4,7 @@ import 'dart:js_interop_unsafe';
 
 import 'package:web/web.dart' as web;
 
+import '../../services/web/browser_fingerprint_analysis_bridge_web.dart';
 import 'browser_audio_processing_controller.dart';
 import 'browser_capture_controller.dart';
 import 'browser_mixer_controller.dart';
@@ -25,10 +26,14 @@ class WebAudioWorkletGateway
         BrowserMixerGateway,
         BrowserRecordingGateway,
         BrowserRecordingLifecycleGateway {
-  WebAudioWorkletGateway({required BrowserActiveStreamProvider activeStream})
-      : _activeStream = activeStream;
+  WebAudioWorkletGateway({
+    required BrowserActiveStreamProvider activeStream,
+    BrowserPreparedFingerprintHandler? preparedFingerprintHandler,
+  })  : _activeStream = activeStream,
+        _preparedFingerprintHandler = preparedFingerprintHandler;
 
   final BrowserActiveStreamProvider _activeStream;
+  final BrowserPreparedFingerprintHandler? _preparedFingerprintHandler;
   final StreamController<BrowserMixerTelemetry> _mixerTelemetry =
       StreamController<BrowserMixerTelemetry>.broadcast();
 
@@ -37,6 +42,7 @@ class WebAudioWorkletGateway
   web.AudioWorkletNode? _workletNode;
   web.MediaStreamAudioDestinationNode? _destinationNode;
   web.Worker? _recorderWorker;
+  WebBrowserFingerprintAnalysisBridge? _fingerprintBridge;
 
   Completer<void>? _recorderStartCompleter;
   Completer<BrowserRecordingArtifact>? _recorderStopCompleter;
@@ -85,6 +91,7 @@ class WebAudioWorkletGateway
 
     final context = web.AudioContext();
     web.Worker? startedRecorderWorker;
+    WebBrowserFingerprintAnalysisBridge? fingerprintBridge;
     try {
       await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;
 
@@ -97,6 +104,28 @@ class WebAudioWorkletGateway
       );
       startedRecorderWorker = recorderWorker;
 
+      final preparedFingerprintHandler = _preparedFingerprintHandler;
+      if (preparedFingerprintHandler != null) {
+        fingerprintBridge = WebBrowserFingerprintAnalysisBridge(
+          preparedFingerprintHandler: preparedFingerprintHandler,
+          onReady: (maximumOutstandingPcm) {
+            _setWorkletAnalysis(
+              workletNode,
+              enabled: true,
+              maxOutstandingPcm: maximumOutstandingPcm,
+            );
+          },
+          onAnalysisAck: () {
+            workletNode.port.postMessage(
+              <String, Object?>{'type': 'analysisAck'}.jsify(),
+            );
+          },
+          onUnavailable: () {
+            _setWorkletAnalysis(workletNode, enabled: false);
+          },
+        );
+      }
+
       workletNode.port.addEventListener(
         'message',
         ((web.Event event) {
@@ -104,6 +133,9 @@ class WebAudioWorkletGateway
           switch (_messageType(message)) {
             case 'pcm':
               recorderWorker.postMessage(message);
+              break;
+            case 'analysisPcm':
+              fingerprintBridge?.forwardAnalysisPcm(message);
               break;
             case 'telemetry':
               final telemetry =
@@ -189,6 +221,10 @@ class WebAudioWorkletGateway
         }).toJS,
       );
 
+      if (fingerprintBridge != null) {
+        unawaited(fingerprintBridge.start());
+      }
+
       sourceNode.connect(workletNode);
       workletNode.connect(destinationNode);
       await context.resume().toDart;
@@ -198,12 +234,16 @@ class WebAudioWorkletGateway
       _workletNode = workletNode;
       _destinationNode = destinationNode;
       _recorderWorker = recorderWorker;
+      _fingerprintBridge = fingerprintBridge;
       _lastRecordingArtifact = null;
       _recordingActive = false;
 
       return const BrowserAudioProcessingAttempt.started();
     } on Object catch (error) {
       startedRecorderWorker?.terminate();
+      if (fingerprintBridge != null) {
+        await fingerprintBridge.dispose();
+      }
       try {
         await context.close().toDart;
       } on Object {
@@ -322,7 +362,6 @@ class WebAudioWorkletGateway
     );
 
     try {
-      // Await the recordingExport message from the Worker.
       final blob = await _recorderExportCompleter!.future.timeout(
         _recorderExportTimeout,
       );
@@ -355,21 +394,28 @@ class WebAudioWorkletGateway
     final workletNode = _workletNode;
     final destinationNode = _destinationNode;
     final recorderWorker = _recorderWorker;
+    final fingerprintBridge = _fingerprintBridge;
     final context = _context;
 
     _sourceNode = null;
     _workletNode = null;
     _destinationNode = null;
     _recorderWorker = null;
+    _fingerprintBridge = null;
     _context = null;
     _recordingActive = false;
 
     sourceNode?.disconnect();
     if (workletNode != null) {
       _setWorkletRecording(workletNode, enabled: false);
+      _setWorkletAnalysis(workletNode, enabled: false);
       workletNode.disconnect();
     }
     destinationNode?.disconnect();
+
+    if (fingerprintBridge != null) {
+      await fingerprintBridge.dispose();
+    }
 
     if (recorderWorker != null) {
       final stopCompleter = Completer<BrowserRecordingArtifact>();
@@ -417,6 +463,21 @@ class WebAudioWorkletGateway
   }) {
     final message = <String, Object?>{
       'type': 'recording',
+      'enabled': enabled,
+    };
+    if (maxOutstandingPcm != null) {
+      message['maxOutstandingPcm'] = maxOutstandingPcm;
+    }
+    workletNode.port.postMessage(message.jsify());
+  }
+
+  void _setWorkletAnalysis(
+    web.AudioWorkletNode workletNode, {
+    required bool enabled,
+    int? maxOutstandingPcm,
+  }) {
+    final message = <String, Object?>{
+      'type': 'analysis',
       'enabled': enabled,
     };
     if (maxOutstandingPcm != null) {
