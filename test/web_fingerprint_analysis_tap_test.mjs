@@ -51,7 +51,11 @@ test('fingerprint analysis tap is bounded independently from recording handoff',
   let analysis = processor.port.messages.filter((message) => message.type === 'analysisPcm');
   assert.equal(analysis.length, 1, 'analysis must run while recording is disabled');
   assert.equal(processor.port.messages.filter((message) => message.type === 'pcm').length, 0);
-  assert.deepEqual(Array.from(analysis[0].samples), [0.98, -0.98], 'analysis must receive post-master PCM');
+  assert.deepEqual(
+    Array.from(analysis[0].samples),
+    Array.from(Float32Array.of(0.98, -0.98)),
+    'analysis must receive post-master PCM',
+  );
   assert.equal(analysis[0].sampleRate, 48000);
   assert.equal(analysis[0].channels, 2);
 
