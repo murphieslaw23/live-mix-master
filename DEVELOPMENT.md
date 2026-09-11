@@ -4,26 +4,61 @@
 
 The first verified desktop host is macOS. Windows and Linux remain planned targets and are not implied as runnable by this document.
 
-Issue #2 validates a local debug-development baseline only. Distribution signing, notarization, App Store packaging, physical audio capture, loopback capture, recording correctness, fingerprint-provider E2E, and broadcast-delivery E2E are separate gates.
+Flutter Web/PWA is a separate release target tracked by Issue #16. Its compile boundary is intentionally independent from the native FFI loader: Web builds select the browser audio backend through conditional exports and must not require the native C++ engine or `dart:io` / `dart:ffi` at compile time.
+
+Issue #2 validates a local macOS debug-development baseline only. Distribution signing, notarization, App Store packaging, physical audio capture, loopback capture, recording correctness, fingerprint-provider E2E, and broadcast-delivery E2E are separate gates.
 
 ## Prerequisites
 
-- macOS with Xcode and the Xcode command-line tools
+Shared:
+
 - Flutter 3.47.2
 - Dart supplied by Flutter 3.47.2
+
+For the verified macOS desktop path:
+
+- macOS with Xcode and the Xcode command-line tools
 - CMake 3.20+
 - a C++17-capable compiler (Apple Clang on macOS)
 
 Check the toolchain:
 
 ```sh
+flutter --version
+```
+
+For macOS desktop work also check:
+
+```sh
 sw_vers
 xcodebuild -version
-flutter --version
 cmake --version
 ```
 
 ## Clean-clone setup
+
+### Web / PWA — Issue #16 W1
+
+From a fresh checkout at the repository root:
+
+```sh
+bash tool/bootstrap_fonts.sh
+flutter pub get
+flutter analyze --no-fatal-warnings --no-fatal-infos
+TEST_FILES=$(find test -maxdepth 1 -name '*_test.dart' ! -name 'golden_fixture_render_test.dart' -print | sort)
+flutter test --reporter expanded $TEST_FILES
+flutter build web --release
+test -f build/web/index.html
+test -f build/web/manifest.json
+```
+
+The committed `web/` runner and `web/manifest.json` are repository inputs. Do not run `flutter create .` as part of the Web build: a clean clone must build the committed runner without regenerating or rewriting desktop host files.
+
+The Web build does not require CMake or `liblive_mixer_engine.dylib`. `lib/audio/audio_engine_factory.dart` selects the browser implementation for Web and keeps `native_library_loader.dart` behind the desktop-only conditional branch. This is the W1 compile boundary that prevents Web compilation from loading native-only libraries while preserving the existing desktop startup path.
+
+The GitHub Actions **Web Release Compile Contract** is the authoritative clean-checkout reproduction of this path and uploads the resulting `build/web` artifact. Browser capture, AudioWorklet DSP, recording, installability, browser E2E, and Vercel promotion are later release gates and are not implied by a successful W1 compile.
+
+### macOS desktop — Issue #2
 
 From the repository root:
 
@@ -118,7 +153,8 @@ test -f build/native/liblive_mixer_engine.dylib
 ## Known limits
 
 - macOS is the only desktop runner verified by Issue #2.
-- The generated debug runner is sandboxed; audio-input and loopback permission/capture work belongs to Issue #3.
+- Flutter Web/PWA has a verified clean-clone compile path, but browser/device capability parity with native desktop is not implied.
+- The generated macOS debug runner is sandboxed; audio-input and loopback permission/capture work belongs to Issue #3.
 - The native C++ engine is still a prototype; this baseline verifies build/load/host startup, not device-backed PCM correctness.
 - Recording, fingerprinting, and broadcast-metadata modules have source/contract tests, but real service/device E2E remains outside this baseline.
 - Signing/notarization/distribution are not part of Issue #2.
