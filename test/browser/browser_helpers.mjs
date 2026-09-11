@@ -3,15 +3,30 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 export async function enableFlutterAccessibility(page) {
-  const placeholder = page.locator('flt-semantics-placeholder');
-  if (await placeholder.count()) {
-    try {
-      await placeholder.click({ timeout: 3_000 });
-    } catch {
-      await placeholder.evaluate((node) => node.click());
+  const appTitle = page.getByText('LIVEMIXMASTER', { exact: true });
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    if (await appTitle.isVisible().catch(() => false)) {
+      return;
     }
+
+    const placeholder = page.locator('flt-semantics-placeholder');
+    if (await placeholder.count()) {
+      try {
+        await placeholder.click({ timeout: 1_500 });
+      } catch {
+        try {
+          await placeholder.evaluate((node) => node.click());
+        } catch {
+          // Flutter may replace the placeholder while semantics initializes.
+        }
+      }
+    }
+
+    await page.waitForTimeout(500);
   }
-  await expect(page.getByText('LIVEMIXMASTER', { exact: true })).toBeVisible();
+
+  await expect(appTitle).toBeVisible({ timeout: 8_000 });
 }
 
 export function collectPageFailures(page, bucket) {
