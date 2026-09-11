@@ -6,7 +6,6 @@ import 'package:live_mix_master/services/web/browser_fingerprint_lookup_controll
 import 'package:live_mix_master/services/web/fingerprint_proxy_client.dart';
 import 'package:live_mix_master/services/web/browser_session_controller.dart';
 import 'package:live_mix_master/services/reliability_models.dart';
-import 'package:live_mix_master/services/session_tracklist_repository.dart';
 
 void main() {
   group('BrowserFingerprintLookupController', () {
@@ -193,9 +192,6 @@ void main() {
 }
 
 class _RecordingSessionPort implements BrowserSessionPort {
-  final Set<BrowserSessionStateListener> _listeners =
-      <BrowserSessionStateListener>{};
-
   FingerprintProxyTrack? recordedTrack;
 
   @override
@@ -207,14 +203,10 @@ class _RecordingSessionPort implements BrowserSessionPort {
   );
 
   @override
-  void addListener(BrowserSessionStateListener listener) {
-    _listeners.add(listener);
-  }
+  void addListener(BrowserSessionStateListener listener) {}
 
   @override
-  void removeListener(BrowserSessionStateListener listener) {
-    _listeners.remove(listener);
-  }
+  void removeListener(BrowserSessionStateListener listener) {}
 
   @override
   Future<void> initialize() async {}
