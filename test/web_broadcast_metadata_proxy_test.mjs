@@ -42,7 +42,7 @@ test('browser payload may select only a server-configured destination and normal
     }),
     fetchImpl: async () => {
       fetchCount += 1;
-      return new Response('', {status: 204});
+      return new Response(null, {status: 204});
     },
   });
 
@@ -75,7 +75,7 @@ test('public webhook destination resolves server-side URL and authorization with
     }),
     fetchImpl: async (url, init) => {
       observedRequest = {url: String(url), init};
-      return new Response('', {status: 204});
+      return new Response(null, {status: 204});
     },
   });
 
@@ -116,7 +116,7 @@ test('unknown destinations fail before fetch with no endpoint disclosure', async
     }),
     fetchImpl: async () => {
       fetchCount += 1;
-      return new Response('', {status: 204});
+      return new Response(null, {status: 204});
     },
   });
 
@@ -144,7 +144,7 @@ test('local or LAN destinations require a local bridge and never use serverless 
     }),
     fetchImpl: async () => {
       fetchCount += 1;
-      return new Response('', {status: 204});
+      return new Response(null, {status: 204});
     },
   });
 
@@ -172,7 +172,9 @@ test('retryable upstream response is retried once and then succeeds', async () =
     }),
     fetchImpl: async () => {
       attempts += 1;
-      return new Response('', {status: attempts === 1 ? 503 : 204});
+      return attempts === 1
+        ? new Response('', {status: 503})
+        : new Response(null, {status: 204});
     },
     sleepImpl: async (ms) => delays.push(ms),
     retryDelayMs: 7,
@@ -212,7 +214,7 @@ test('timeout and malformed server configuration fail closed with safe typed res
 
   const malformedHandler = createBroadcastMetadataHandler({
     env: {LMM_BROADCAST_DESTINATIONS_JSON: '{not-json'},
-    fetchImpl: async () => new Response('', {status: 204}),
+    fetchImpl: async () => new Response(null, {status: 204}),
   });
   const malformed = await malformedHandler(request({destinationId: 'radio', track: normalizedTrack}));
   assert.equal(malformed.status, 503);
