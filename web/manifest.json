@@ -11,7 +11,7 @@
   "categories": ["music", "utilities"],
   "icons": [
     {
-      "src": "https://gcdn.picsart.com/editing-temp/b78df138-ec9f-4be8-8173-ba8d1f2540e2.svg",
+      "src": "icons/livemixmaster-maskable.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
