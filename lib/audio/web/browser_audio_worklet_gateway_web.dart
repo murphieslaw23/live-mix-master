@@ -13,6 +13,7 @@ import 'browser_recording_controller.dart';
 typedef BrowserActiveStreamProvider = web.MediaStream? Function();
 
 const int _recorderMaxBytes = 64 * 1024 * 1024;
+const int _recorderMaxOutstandingPcm = 128;
 const Duration _recorderHandshakeTimeout = Duration(seconds: 2);
 const Duration _recorderStopTimeout = Duration(seconds: 2);
 const Duration _recorderExportTimeout = Duration(seconds: 2);
@@ -403,7 +404,7 @@ class WebAudioWorkletGateway
       <String, Object?>{
         'type': 'recording',
         'enabled': enabled,
-        'maxOutstandingPcm': 4,
+        'maxOutstandingPcm': _recorderMaxOutstandingPcm,
       }.jsify(),
     );
   }
