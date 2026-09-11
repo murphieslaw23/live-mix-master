@@ -9,6 +9,7 @@ import '../audio/web/browser_recording_controller.dart';
 import '../design/live_mix_tokens.dart';
 import '../services/reliability_models.dart';
 import '../services/web/browser_fingerprint_lookup_controller.dart';
+import '../services/web/fingerprint_proxy_client.dart';
 import '../services/web/browser_session_controller.dart';
 import '../services/web/browser_session_runtime.dart';
 
@@ -96,7 +97,24 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
 
   void _handleControllerState(BrowserCaptureState _) => _refresh();
   void _handleRecordingState(BrowserRecordingState _) => _refresh();
-  void _handleFingerprintState(BrowserFingerprintLookupState _) => _refresh();
+  void _handleFingerprintState(BrowserFingerprintLookupState state) {
+    final track = state.track;
+    if (state.status == BrowserFingerprintLookupStatus.matched && track != null) {
+      unawaited(_recordMatchedFingerprint(track));
+    }
+    _refresh();
+  }
+
+  Future<void> _recordMatchedFingerprint(FingerprintProxyTrack track) async {
+    try {
+      if (!_sessionController.state.initialized) {
+        await _sessionController.initialize();
+      }
+      await _sessionController.recordFingerprintMatch(track: track);
+    } on Object {
+      // A session persistence error is represented by its non-fatal status panel.
+    }
+  }
   void _handleMixerState(BrowserMixerState _) => _refresh();
   void _handleSessionState(BrowserSessionState _) => _refresh();
 

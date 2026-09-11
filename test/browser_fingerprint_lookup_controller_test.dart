@@ -4,6 +4,8 @@ import 'package:live_mix_master/app/app_surface_web.dart';
 import 'package:live_mix_master/audio/web/browser_capture_controller.dart';
 import 'package:live_mix_master/services/web/browser_fingerprint_lookup_controller.dart';
 import 'package:live_mix_master/services/web/fingerprint_proxy_client.dart';
+import 'package:live_mix_master/services/web/browser_session_controller.dart';
+import 'package:live_mix_master/services/reliability_models.dart';
 
 void main() {
   group('BrowserFingerprintLookupController', () {
@@ -37,90 +39,206 @@ void main() {
         durationSeconds: 10,
       );
       expect(controller.state.status, BrowserFingerprintLookupStatus.noMatch);
-      expect(controller.state.message, 'NO CONFIDENT TRACK MATCH — SESSION CONTINUES');
-    });
-
-    test('maps provider failure code to fixed safe operator copy and notifies listeners', () async {
-      final gateway = _QueueFingerprintGateway([
-        const FingerprintProxyResult.failed(
-          failureCode: FingerprintProxyFailureCode.rateLimited,
-          message: 'arbitrary server wording must not become operator copy',
-        ),
-      ]);
-      final controller = BrowserFingerprintLookupController(gateway: gateway);
-      final states = <BrowserFingerprintLookupStatus>[];
-      controller.addListener((state) => states.add(state.status));
-
-      await controller.lookupPreparedFingerprint(
-        fingerprint: 'prepared',
-        durationSeconds: 10,
-      );
-
-      expect(states, [
-        BrowserFingerprintLookupStatus.lookingUp,
-        BrowserFingerprintLookupStatus.failed,
-      ]);
-      expect(controller.state.failureCode, FingerprintProxyFailureCode.rateLimited);
       expect(
         controller.state.message,
-        'FINGERPRINT PROVIDER RATE LIMITED — RETRY LATER',
+        'NO CONFIDENT TRACK MATCH — SESSION CONTINUES',
       );
-      expect(controller.state.message, isNot(contains('arbitrary server wording')));
     });
+
+    test(
+      'maps provider failure code to fixed safe operator copy and notifies listeners',
+      () async {
+        final gateway = _QueueFingerprintGateway([
+          const FingerprintProxyResult.failed(
+            failureCode: FingerprintProxyFailureCode.rateLimited,
+            message: 'arbitrary server wording must not become operator copy',
+          ),
+        ]);
+        final controller = BrowserFingerprintLookupController(gateway: gateway);
+        final states = <BrowserFingerprintLookupStatus>[];
+        controller.addListener((state) => states.add(state.status));
+
+        await controller.lookupPreparedFingerprint(
+          fingerprint: 'prepared',
+          durationSeconds: 10,
+        );
+
+        expect(states, [
+          BrowserFingerprintLookupStatus.lookingUp,
+          BrowserFingerprintLookupStatus.failed,
+        ]);
+        expect(
+          controller.state.failureCode,
+          FingerprintProxyFailureCode.rateLimited,
+        );
+        expect(
+          controller.state.message,
+          'FINGERPRINT PROVIDER RATE LIMITED — RETRY LATER',
+        );
+        expect(
+          controller.state.message,
+          isNot(contains('arbitrary server wording')),
+        );
+      },
+    );
   });
 
-
   test('maps a preparation failure to explicit safe operator copy', () {
-    final controller = BrowserFingerprintLookupController(gateway: _QueueFingerprintGateway([]));
+    final controller = BrowserFingerprintLookupController(
+      gateway: _QueueFingerprintGateway([]),
+    );
 
     controller.reportPreparationUnavailable();
 
     expect(controller.state.status, BrowserFingerprintLookupStatus.failed);
-    expect(controller.state.failureCode, FingerprintProxyFailureCode.unavailable);
+    expect(
+      controller.state.failureCode,
+      FingerprintProxyFailureCode.unavailable,
+    );
     expect(
       controller.state.message,
       'FINGERPRINT PREPARATION UNAVAILABLE — MIX / RECORDING CONTINUE',
     );
   });
 
-  testWidgets('WebReleaseShell visibly reacts to asynchronous provider failure', (tester) async {
-    final fingerprintController = BrowserFingerprintLookupController(
-      gateway: _QueueFingerprintGateway([
-        const FingerprintProxyResult.failed(
-          failureCode: FingerprintProxyFailureCode.unavailable,
-          message: 'internal provider detail',
+  testWidgets(
+    'WebReleaseShell forwards a matched fingerprint to the session tracklist',
+    (tester) async {
+      final sessionController = _RecordingSessionPort();
+      final fingerprintController = BrowserFingerprintLookupController(
+        gateway: _QueueFingerprintGateway([
+          const FingerprintProxyResult.matched(
+            FingerprintProxyTrack(
+              artist: 'System Corrupt',
+              title: 'Signal Ritual',
+              release: null,
+              providerId: 'acoustid-1',
+              confidence: 0.93,
+            ),
+          ),
+        ]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WebReleaseShell(
+            controller: BrowserCaptureController(gateway: _CaptureGateway()),
+            fingerprintController: fingerprintController,
+            sessionController: sessionController,
+          ),
         ),
-      ]),
-    );
-    final captureController = BrowserCaptureController(gateway: _CaptureGateway());
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: WebReleaseShell(
-          controller: captureController,
-          fingerprintController: fingerprintController,
+      await fingerprintController.lookupPreparedFingerprint(
+        fingerprint: 'prepared',
+        durationSeconds: 10,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+
+      expect(sessionController.recordedTrack?.artist, 'System Corrupt');
+      expect(sessionController.recordedTrack?.title, 'Signal Ritual');
+      expect(sessionController.recordedTrack?.providerId, 'acoustid-1');
+    },
+  );
+
+  testWidgets(
+    'WebReleaseShell visibly reacts to asynchronous provider failure',
+    (tester) async {
+      final fingerprintController = BrowserFingerprintLookupController(
+        gateway: _QueueFingerprintGateway([
+          const FingerprintProxyResult.failed(
+            failureCode: FingerprintProxyFailureCode.unavailable,
+            message: 'internal provider detail',
+          ),
+        ]),
+      );
+      final captureController = BrowserCaptureController(
+        gateway: _CaptureGateway(),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WebReleaseShell(
+            controller: captureController,
+            fingerprintController: fingerprintController,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text('FINGERPRINT PROXY READY — AWAITING PREPARED FINGERPRINT'),
-      findsOneWidget,
-    );
+      expect(
+        find.text('FINGERPRINT PROXY READY — AWAITING PREPARED FINGERPRINT'),
+        findsOneWidget,
+      );
 
-    await fingerprintController.lookupPreparedFingerprint(
-      fingerprint: 'prepared',
-      durationSeconds: 10,
-    );
-    await tester.pump();
+      await fingerprintController.lookupPreparedFingerprint(
+        fingerprint: 'prepared',
+        durationSeconds: 10,
+      );
+      await tester.pump();
 
-    expect(
-      find.text('FINGERPRINT PROVIDER UNAVAILABLE — MIX / RECORDING CONTINUE'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('internal provider detail'), findsNothing);
-  });
+      expect(
+        find.text(
+          'FINGERPRINT PROVIDER UNAVAILABLE — MIX / RECORDING CONTINUE',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('internal provider detail'), findsNothing);
+    },
+  );
+}
+
+class _RecordingSessionPort implements BrowserSessionPort {
+  FingerprintProxyTrack? recordedTrack;
+
+  @override
+  BrowserSessionState get state => const BrowserSessionState(
+    initialized: true,
+    sessionId: 'web-session',
+    entries: <TracklistEntry>[],
+    persistenceStatus: ServiceStatus.idle(),
+  );
+
+  @override
+  void addListener(BrowserSessionStateListener listener) {}
+
+  @override
+  void removeListener(BrowserSessionStateListener listener) {}
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> recordFingerprintMatch({
+    required FingerprintProxyTrack track,
+  }) async {
+    recordedTrack = track;
+    return true;
+  }
+
+  @override
+  Future<TracklistEntry> correct({
+    required int index,
+    required String artist,
+    required String title,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> exportJson() async {}
+
+  @override
+  Future<void> exportCsv() async {}
+
+  @override
+  Future<void> exportM3u() async {}
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class _QueueFingerprintGateway implements BrowserFingerprintLookupGateway {

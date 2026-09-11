@@ -9,6 +9,7 @@ import 'package:live_mix_master/audio/web/browser_mixer_protocol.dart';
 import 'package:live_mix_master/audio/web/browser_recording_controller.dart';
 import 'package:live_mix_master/services/reliability_models.dart';
 import 'package:live_mix_master/services/web/browser_session_controller.dart';
+import 'package:live_mix_master/services/web/fingerprint_proxy_client.dart';
 
 void main() {
   testWidgets(
@@ -370,6 +371,11 @@ class _SessionPort implements BrowserSessionPort {
       ),
     );
   }
+
+  @override
+  Future<bool> recordFingerprintMatch({
+    required FingerprintProxyTrack track,
+  }) async => false;
 
   @override
   Future<TracklistEntry> correct({
