@@ -174,6 +174,7 @@ jobs:
       - name: Verify built PWA offline shell
         run: |
           test -f build/web/lmm-service-worker.js
+          test -f build/web/offline.html
           test -f build/web/icons/livemixmaster-maskable-192.png
           test -f build/web/icons/livemixmaster-maskable-512.png
           grep -F 'lmm-service-worker.js' build/web/index.html
