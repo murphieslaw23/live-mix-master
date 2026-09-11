@@ -1,0 +1,20 @@
+{
+  "name": "LiveMixMaster",
+  "short_name": "LiveMixMaster",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#111315",
+  "theme_color": "#111315",
+  "description": "Live audio routing, metering and session control with explicit browser capability boundaries.",
+  "orientation": "any",
+  "categories": ["music", "utilities"],
+  "icons": [
+    {
+      "src": "icons/livemixmaster-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

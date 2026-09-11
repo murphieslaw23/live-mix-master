@@ -19,6 +19,9 @@ void main() {
     persister.schedule([entry('First')]);
     persister.schedule([entry('Latest')]);
     await Future<void>.delayed(const Duration(milliseconds: 30));
+    // The debounce timer starts an asynchronous atomic save. Join that in-flight
+    // write before reading or tearing down the temporary directory.
+    await persister.flush();
     expect((await store.load()).single.title, 'Latest');
     await persister.dispose();
   });

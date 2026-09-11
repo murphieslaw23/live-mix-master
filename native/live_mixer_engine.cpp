@@ -1,7 +1,8 @@
-#include <algorithm>
+#include "dsp_kernel.hpp"
+
 #include <array>
 #include <atomic>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -10,8 +11,7 @@
 // the temporary source reads with a lock-free per-channel PCM ring buffer.
 
 namespace lmm {
-constexpr size_t kMaxChannels = 16;
-constexpr float kLimiterCeiling = 0.98F;
+constexpr std::size_t kMaxChannels = 16;
 
 struct Meter {
   std::atomic<float> peakLeft {0};
@@ -75,52 +75,46 @@ class Engine {
 
   // Called only by the audio callback. `channelInput` must point to an
   // interleaved stereo block already fetched from the selected source.
-  void sumBlock(const float* const* channelInput, float* masterOutput, size_t frames) {
-    std::fill(masterOutput, masterOutput + frames * 2, 0.0F);
-    bool soloed = false;
-    for (const auto& channel : channels_) soloed |= channel.active && channel.solo;
+  void sumBlock(const float* const* channelInput, float* masterOutput, std::size_t frames) {
+    std::array<DspChannelConfig, kMaxChannels> configs {};
+    std::array<DspChannelMeter, kMaxChannels> meters {};
 
-    for (size_t c = 0; c < channels_.size(); ++c) {
-      auto& channel = channels_[c];
-      if (!channel.active || channel.muted || (soloed && !channel.solo) || !channelInput[c]) continue;
-      const float gain = channel.linearTrim.load(std::memory_order_relaxed) *
-          std::pow(channel.fader.load(std::memory_order_relaxed), 2.0F);
-      float squareL = 0, squareR = 0, peakL = 0, peakR = 0;
-      for (size_t frame = 0; frame < frames; ++frame) {
-        const float left = channelInput[c][frame * 2] * gain;
-        const float right = channelInput[c][frame * 2 + 1] * gain;
-        masterOutput[frame * 2] += left;
-        masterOutput[frame * 2 + 1] += right;
-        peakL = std::max(peakL, std::abs(left)); peakR = std::max(peakR, std::abs(right));
-        squareL += left * left; squareR += right * right;
-      }
-      channel.meter.peakLeft.store(peakL, std::memory_order_relaxed);
-      channel.meter.peakRight.store(peakR, std::memory_order_relaxed);
-      channel.meter.rmsLeft.store(std::sqrt(squareL / frames), std::memory_order_relaxed);
-      channel.meter.rmsRight.store(std::sqrt(squareR / frames), std::memory_order_relaxed);
-      channel.meter.clipping.store(peakL >= 1 || peakR >= 1, std::memory_order_relaxed);
+    for (std::size_t channelIndex = 0; channelIndex < channels_.size(); ++channelIndex) {
+      const auto& channel = channels_[channelIndex];
+      configs[channelIndex] = DspChannelConfig{
+          channel.active,
+          channel.muted,
+          channel.solo,
+          channel.linearTrim.load(std::memory_order_relaxed),
+          channel.fader.load(std::memory_order_relaxed),
+      };
     }
-    limit(masterOutput, frames);
-  }
 
-  void limit(float* output, size_t frames) {
-    float peakL = 0, peakR = 0;
-    bool limited = false;
-    const float gain = master_.gain.load(std::memory_order_relaxed);
-    for (size_t frame = 0; frame < frames; ++frame) {
-      float left = output[frame * 2] * gain;
-      float right = output[frame * 2 + 1] * gain;
-      if (std::abs(left) > kLimiterCeiling || std::abs(right) > kLimiterCeiling) {
-        limited = true;
-        left = std::clamp(left, -kLimiterCeiling, kLimiterCeiling);
-        right = std::clamp(right, -kLimiterCeiling, kLimiterCeiling);
+    const auto masterMeter = processStereoBlock(
+        configs.data(),
+        channelInput,
+        configs.size(),
+        masterOutput,
+        frames,
+        master_.gain.load(std::memory_order_relaxed),
+        meters.data());
+
+    for (std::size_t channelIndex = 0; channelIndex < channels_.size(); ++channelIndex) {
+      if (!meters[channelIndex].processed) {
+        continue;
       }
-      output[frame * 2] = left; output[frame * 2 + 1] = right;
-      peakL = std::max(peakL, std::abs(left)); peakR = std::max(peakR, std::abs(right));
+      auto& meter = channels_[channelIndex].meter;
+      const auto& result = meters[channelIndex];
+      meter.peakLeft.store(result.peakLeft, std::memory_order_relaxed);
+      meter.peakRight.store(result.peakRight, std::memory_order_relaxed);
+      meter.rmsLeft.store(result.rmsLeft, std::memory_order_relaxed);
+      meter.rmsRight.store(result.rmsRight, std::memory_order_relaxed);
+      meter.clipping.store(result.clipping, std::memory_order_relaxed);
     }
-    master_.truePeakLeft.store(peakL, std::memory_order_relaxed);
-    master_.truePeakRight.store(peakR, std::memory_order_relaxed);
-    master_.limiterActive.store(limited, std::memory_order_relaxed);
+
+    master_.truePeakLeft.store(masterMeter.peakLeft, std::memory_order_relaxed);
+    master_.truePeakRight.store(masterMeter.peakRight, std::memory_order_relaxed);
+    master_.limiterActive.store(masterMeter.limiterActive, std::memory_order_relaxed);
   }
 
  private:

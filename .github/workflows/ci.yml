@@ -108,6 +108,76 @@ jobs:
       - run: flutter pub get
       - run: flutter test test/mixer_user_flow_test.dart
 
+  web-release-compile:
+    name: Web Release Compile Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          cache: true
+      - run: bash tool/bootstrap_fonts.sh
+      - run: flutter pub get
+      - name: Verify native DSP parity vectors
+        run: |
+          mkdir -p build/native-parity
+          c++ -std=c++17 -O2 -I native native/tests/dsp_parity_vectors_test.cpp -o build/native-parity/dsp-parity
+          build/native-parity/dsp-parity test/fixtures/dsp_parity_vectors.tsv
+      - name: Verify PWA manifest icon contract
+        run: node --test test/web_pwa_manifest_contract_test.mjs
+      - name: Verify AudioWorklet processor contract
+        run: node --test test/web_audio_worklet_processor_test.mjs
+      - name: Verify Web Audio graph integration contract
+        run: node --test test/web_audio_graph_integration_test.mjs
+      - name: Verify >=10s Web WAV worker contract
+        run: node --test test/web_wav_recorder_worker_test.mjs
+      - name: Verify recorder failure cleanup contract
+        run: node --test test/web_recorder_failure_cleanup_test.mjs
+      - name: Verify finalized recording export contract
+        run: node --test test/web_recorder_export_test.mjs
+      - name: Verify operator-controlled recording gateway
+        run: node --test test/web_recording_operator_gateway_test.mjs
+      - name: Verify graceful recorder finalization contract
+        run: node --test test/web_recorder_finalize_test.mjs
+      - name: Verify Worklet-to-Worker recorder pipeline contract
+        run: node --test test/web_recorder_pipeline_integration_test.mjs
+      - name: Prepare official fpcalc 1.6.1 reference
+        run: |
+          mkdir -p build/fpcalc-reference
+          curl -fsSL https://github.com/acoustid/chromaprint/releases/download/v1.6.1/chromaprint-fpcalc-1.6.1-linux-x86_64.tar.gz -o build/fpcalc-reference/fpcalc.tar.gz
+          echo 'fc16cd37a70168040bc9ceb45f1d4d1216f5a75bc4c9cf8564bea70ac6a45733  build/fpcalc-reference/fpcalc.tar.gz' | sha256sum --check -
+          tar -xzf build/fpcalc-reference/fpcalc.tar.gz -C build/fpcalc-reference
+          FPCALC_BIN="$(find build/fpcalc-reference -type f -name fpcalc | head -1)"
+          test -n "$FPCALC_BIN"
+          chmod +x "$FPCALC_BIN"
+          echo "FPCALC_BIN=$FPCALC_BIN" >> "$GITHUB_ENV"
+      - name: Build official Chromaprint 1.6.1 Wasm
+        run: docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_chromaprint_wasm.sh
+      - name: Verify official Chromaprint Wasm parity
+        run: node --test test/web_chromaprint_wasm_parity_test.mjs
+      - name: Verify server-side fingerprint provider proxy contract
+        run: node --test test/web_fingerprint_proxy_test.mjs
+      - name: Verify server-side broadcast metadata proxy contract
+        run: node --test test/web_broadcast_metadata_proxy_test.mjs
+      - name: Verify Flutter fingerprint proxy client contract
+        run: flutter test test/web_fingerprint_proxy_client_test.dart
+      - name: Verify fingerprint operator state contract
+        run: flutter test test/browser_fingerprint_lookup_controller_test.dart
+      - name: Verify web platform, capture, DSP, and recording state contracts
+        run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart test/browser_media_gateway_test.dart test/web_dsp_kernel_test.dart test/browser_audio_processing_controller_test.dart test/browser_recording_controller_test.dart
+      - name: Build Flutter Web release artifact
+        run: flutter build web --release
+      - name: Upload Flutter Web artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-mix-master-web
+          path: build/web
+          if-no-files-found: error
+          retention-days: 14
+
   native-engine-build:
     name: Native Engine Build (macos-latest)
     runs-on: macos-latest

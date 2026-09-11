@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc" data-safe-zone="102 102 308 308">
+  <title id="title">LiveMixMaster</title>
+  <desc id="desc">A compact industrial audio totem with speaker drivers and signal bars.</desc>
+  <rect width="512" height="512" rx="72" fill="#111315"/>
+  <g transform="translate(102 102)" fill="none" stroke-linecap="square">
+    <rect x="8" y="8" width="292" height="292" rx="28" fill="#1C1F23" stroke="#D96528" stroke-width="16"/>
+    <path d="M54 76H254M54 154H254M54 232H254" stroke="#2A7A6D" stroke-width="12"/>
+    <path d="M154 42V266M104 42V266M204 42V266" stroke="#D96528" stroke-width="10"/>
+    <circle cx="104" cy="104" r="42" fill="#111315" stroke="#D96528" stroke-width="14"/>
+    <circle cx="204" cy="104" r="42" fill="#111315" stroke="#D96528" stroke-width="14"/>
+    <circle cx="104" cy="204" r="42" fill="#111315" stroke="#D96528" stroke-width="14"/>
+    <circle cx="204" cy="204" r="42" fill="#111315" stroke="#D96528" stroke-width="14"/>
+    <circle cx="104" cy="104" r="10" fill="#D96528" stroke="none"/>
+    <circle cx="204" cy="104" r="10" fill="#D96528" stroke="none"/>
+    <circle cx="104" cy="204" r="10" fill="#D96528" stroke="none"/>
+    <circle cx="204" cy="204" r="10" fill="#D96528" stroke="none"/>
+  </g>
+</svg>
