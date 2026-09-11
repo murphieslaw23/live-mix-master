@@ -1,0 +1,24 @@
+name: Web Chromaprint Package Contract
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-chromaprint-package-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromaprint-package:
+    name: Chromaprint Browser Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build checksum-pinned Chromaprint Wasm
+        run: docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_chromaprint_wasm.sh
+      - name: Verify packaged browser assets
+        run: node --test test/web_chromaprint_package_contract_test.mjs
