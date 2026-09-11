@@ -4,101 +4,101 @@
 
 **Goal:** Close the remaining W5 Web/PWA blocker by exposing the existing AudioWorklet mixer controls and telemetry to Flutter Web, adding browser-safe session recovery/export, validating the complete operator path in real browsers, and preserving exact tested-artifact provenance through Vercel promotion.
 
-**Architecture:** Keep the current DSP, recording Worker, capture lifecycle, fingerprint proxy, PWA service worker, and desktop file store. Add a typed Dart mixer protocol/controller around the existing Worklet `configure`/`telemetry` messages, introduce a storage interface that preserves the current `List<TracklistEntry>` persistence shape, provide a Web `localStorage` adapter plus download adapter, and wire these into the Web release shell. Browser acceptance runs against the already-built `build/web` artifact; it must never rebuild the app in the E2E job.
+**Architecture:** Keep the current DSP, recorder Worker, capture lifecycle, fingerprint proxy, PWA service worker, and desktop file store. Add a typed Dart mixer protocol/controller around the existing Worklet `configure`/`telemetry` messages, introduce a persistence interface that preserves the existing `List<TracklistEntry>` snapshot shape, provide Web `localStorage` and download adapters, and wire these into the Web release shell. GitHub Actions browser acceptance downloads the artifact produced by `web-release-compile`; it never rebuilds Flutter Web.
 
-**Tech Stack:** Flutter 3.47.2, Dart 3.5+, `package:web` JS interop, Web Audio/AudioWorklet, browser `localStorage`, existing WAV Worker, Node.js test runner, Playwright, GitHub Actions, Vercel exact-artifact promotion.
+**Tech Stack:** Flutter 3.47.2, Dart 3.5+, `package:web`, Web Audio/AudioWorklet, browser `localStorage`, existing WAV Worker, Node.js, Playwright, GitHub Actions, Vercel exact-artifact promotion.
 
 **Spec:** `docs/superpowers/specs/2026-09-11-web-operator-e2e-design.md`
 
 ## Global Constraints
 
-- Base implementation from `2cc6335ebc66825ed552994842dbe87fd422e0d4`; design/plan branch starts from that commit.
-- Do not rewrite `web/audio/livemixmaster-worklet.js` DSP behavior unless a failing contract test proves the existing protocol itself is defective.
-- Do not alter the existing PWA service-worker ownership model: `lmm-service-worker.js` remains the sole application service worker.
-- Do not add a test-only production build mode such as `LMM_E2E_TEST_MODE`.
-- Do not require live fingerprint-provider credentials in browser E2E.
-- Browser session storage contains only non-secret tracklist/correction state; no audio blobs, credentials, tokens, or provider secrets.
-- Browser E2E must consume the exact artifact built by `web-release-compile`; a second `flutter build web` in the browser job is forbidden.
-- Existing desktop `SessionTracklistStore` atomic file/backup behavior remains unchanged behind an interface.
-- Exact-artifact promotion remains gated by artifact ID, SHA-256 digest, exact commit SHA, and successful CI on that commit.
-- Commit author/committer identity must remain `Murphies Law <emilach82@gmail.com>`.
-- Implementation uses RED -> GREEN -> refactor; run the smallest relevant test first, then the affected suite.
-- Type-level refinement from the approved design: `BrowserChannelMeter` mirrors the actual Worklet payload (`peakLeft`, `peakRight`, `rmsLeft`, `rmsRight`, `clipping`) rather than collapsing stereo telemetry to one peak/RMS value.
-- Persistence-interface refinement from the approved design: preserve the existing entry-list shape (`Future<List<TracklistEntry>> load()` / `Future<void> save(Iterable<TracklistEntry>)`) so desktop storage is adapted rather than rewritten.
+- Implementation baseline: `2cc6335ebc66825ed552994842dbe87fd422e0d4`.
+- Do not rewrite `web/audio/livemixmaster-worklet.js` DSP behavior unless a characterization test proves the current protocol is defective.
+- `lmm-service-worker.js` remains the sole application service worker.
+- Do not add a test-only production build mode.
+- Browser E2E must not require fingerprint-provider credentials.
+- Browser storage contains only non-secret tracklist/correction state; no audio blobs or credentials.
+- Existing desktop `SessionTracklistStore` atomic temp/backup behavior remains unchanged behind an interface.
+- Exact-artifact promotion remains keyed by artifact ID, SHA-256 digest, exact commit SHA, and successful CI.
+- Author/committer identity remains `Murphies Law <emilach82@gmail.com>`.
+- Use RED -> GREEN -> refactor and commit after each independently testable slice.
+- Type refinement: `BrowserChannelMeter` mirrors the actual Worklet fields `peakLeft`, `peakRight`, `rmsLeft`, `rmsRight`, `clipping`.
+- Persistence refinement: repository methods preserve the current entry-list shape rather than replacing it with a new session aggregate type.
+- Deterministic browser source teardown uses a production-safe `DISCONNECT SOURCE` action that stops the active stream and drives the same `BrowserCaptureController.handleTrackEnded()` recovery transition. The native `MediaStreamTrack.ended` callback remains covered separately by lifecycle tests.
 
 ---
 
-## File Structure
+## File Map
 
-### New Dart files
-
-- `lib/audio/web/browser_mixer_controller.dart` — platform-neutral mixer configuration, telemetry types, gateway contract, controller state/actions.
-- `lib/audio/web/browser_mixer_protocol.dart` — pure-Dart serialization/parsing helpers for Worklet messages so protocol tests run on the VM.
-- `lib/services/session_tracklist_repository.dart` — platform-neutral persistence contract used by `SessionTracklistPersister`.
-- `lib/services/web/browser_session_tracklist_repository.dart` — `localStorage` implementation using the existing `SessionTracklistCodec` payload.
-- `lib/services/web/browser_tracklist_download_gateway.dart` — Blob/object-URL download adapter for JSON/CSV/M3U.
-- `lib/services/web/browser_session_controller.dart` — active local session recovery, correction, persistence warning state, and export orchestration.
-
-### New tests
-
-- `test/browser_mixer_controller_test.dart`
+**Create**
+- `lib/audio/web/browser_mixer_protocol.dart` — pure-Dart Worklet message types/parser.
+- `lib/audio/web/browser_mixer_controller.dart` — operator state and serialized configure writes.
+- `lib/services/session_tracklist_repository.dart` — persistence interface.
+- `lib/services/web/browser_session_tracklist_repository.dart` — Web `localStorage` adapter.
+- `lib/services/web/browser_tracklist_download_gateway.dart` — Blob/object-URL export adapter.
+- `lib/services/web/browser_session_controller.dart` — recovery/correction/export orchestration.
 - `test/browser_mixer_protocol_test.dart`
+- `test/browser_mixer_controller_test.dart`
 - `test/browser_session_controller_test.dart`
-- `test/browser_session_tracklist_repository_contract_test.dart` — source/compile contract for the Web adapter plus pure codec tests; browser behavior itself is proven in Playwright.
+- `test/browser_session_tracklist_repository_contract_test.dart`
 - `test/web_release_shell_operator_test.dart`
 - `test/web_operator_e2e.spec.mjs`
 - `test/web_browser_capability_matrix.spec.mjs`
-- `test/fixtures/web-fake-mic.wav`
 - `test/fixtures/generate-web-fake-mic.mjs`
+- `test/fixtures/web-fake-mic.wav`
 - `tool/web-e2e-server.mjs`
-- `package.json` / `package-lock.json` — only Playwright test dependency and scripts required for browser acceptance.
+- `package.json`, `package-lock.json`
 
-### Existing files to modify
-
-- `lib/audio/web/browser_audio_worklet_gateway_web.dart` — implement mixer gateway, parse telemetry, preserve ACK and recording behavior.
-- `lib/audio/web/browser_audio_processing_controller.dart` — coordinate mixer attach/detach after processing start/stop without changing capture semantics.
-- `lib/audio/web/browser_capture_runtime_web.dart` — expose one shared runtime containing capture, processing, mixer, and recording controllers backed by the same Worklet gateway.
-- `lib/audio/web/browser_capture_runtime_stub.dart` — keep non-Web compile boundary compatible with the expanded runtime shape.
-- `lib/services/session_tracklist_store.dart` — implement repository interface; retain `dart:io` behavior.
-- `lib/services/session_tracklist_persister.dart` — depend on repository interface instead of concrete file store.
-- `lib/services/live_session_tracklist_controller.dart` — no behavior rewrite; compile against repository-backed persister and expose the same correction/accept flow.
-- `lib/app/app_surface_web.dart` — add compact mixer panel, recovered session panel, correction/export controls, and stable semantics.
-- `test/browser_audio_processing_controller_test.dart` — prove source-ended teardown also detaches mixer.
-- `test/session_tracklist_persister_test.dart` — use fake repository for abstraction behavior while retaining file-store tests separately.
-- `test/live_session_tracklist_controller_test.dart` — verify corrections schedule repository persistence.
-- `test/web_audio_worklet_processor_test.mjs` — lock existing configure/telemetry schema.
-- `test/web_release_compile_boundary_test.dart` — prove Web compile graph does not import `dart:io` storage implementation through shared code.
-- `.github/workflows/ci.yml` — make browser E2E download and consume the `web-release-compile` artifact; add browser matrix evidence.
-- `docs/release/tested-web-artifact-promotion.md` — record the browser-gate prerequisite before preview promotion.
+**Modify**
+- `lib/audio/web/browser_audio_worklet_gateway_web.dart`
+- `lib/audio/web/browser_audio_processing_controller.dart`
+- `lib/audio/web/browser_capture_controller.dart`
+- `lib/audio/web/browser_media_gateway.dart`
+- `lib/audio/web/browser_media_client_web.dart`
+- `lib/audio/web/browser_capture_runtime_web.dart`
+- `lib/audio/web/browser_capture_runtime_stub.dart`
+- `lib/services/session_tracklist_store.dart`
+- `lib/services/session_tracklist_persister.dart`
+- `lib/app/app_surface_web.dart`
+- `test/browser_audio_processing_controller_test.dart`
+- `test/browser_capture_controller_test.dart`
+- `test/session_tracklist_store_test.dart`
+- `test/session_tracklist_persister_test.dart`
+- `test/live_session_tracklist_controller_test.dart`
+- `test/web_audio_worklet_processor_test.mjs`
+- `test/web_release_compile_boundary_test.dart`
+- `.github/workflows/ci.yml`
+- `docs/release/tested-web-artifact-promotion.md`
 
 ---
 
-### Task 1: Add the pure Dart mixer protocol and controller
+### Task 1: Pure Dart mixer protocol and controller
 
-**Files:**
-- Create: `lib/audio/web/browser_mixer_protocol.dart`
-- Create: `lib/audio/web/browser_mixer_controller.dart`
-- Create: `test/browser_mixer_protocol_test.dart`
-- Create: `test/browser_mixer_controller_test.dart`
+**Files:** create `lib/audio/web/browser_mixer_protocol.dart`, `lib/audio/web/browser_mixer_controller.dart`, `test/browser_mixer_protocol_test.dart`, `test/browser_mixer_controller_test.dart`.
 
 **Interfaces:**
-- Produces `BrowserMixerGateway`, `BrowserMixerConfiguration`, `BrowserMixerChannelConfiguration`, `BrowserMixerTelemetry`, `BrowserChannelMeter`, `BrowserMixerState`, `BrowserMixerController`.
-- `BrowserMixerGateway.telemetry` is `Stream<BrowserMixerTelemetry>`.
-- `BrowserMixerGateway.configure(...)` accepts one `BrowserMixerConfiguration`.
-- `BrowserMixerController.attach(String channelId)` enables controls and sends neutral configuration; `detach()` disables controls and clears live meters.
-
-- [ ] **Step 1: Write failing protocol tests for the exact Worklet schema**
 
 ```dart
-test('configuration serializes the existing Worklet configure schema', () {
-  const configuration = BrowserMixerConfiguration(
+abstract interface class BrowserMixerGateway {
+  Stream<BrowserMixerTelemetry> get telemetry;
+  Future<void> configure(BrowserMixerConfiguration configuration);
+}
+```
+
+`BrowserMixerController.attach(String channelId)` sends neutral state. `detach()` disables controls and clears live meters. `setFader`, `setMuted`, `setSolo` serialize writes through one future chain.
+
+- [ ] **Step 1: Write RED protocol tests**
+
+```dart
+test('configure message matches Worklet schema', () {
+  const value = BrowserMixerConfiguration(
     masterGainLinear: 1,
     telemetryEvery: 20,
     channels: [BrowserMixerChannelConfiguration(
       id: 'mic-1', linearTrim: 1, fader: .5, muted: true, solo: false,
     )],
   );
-  expect(configuration.toMessage(), {
+  expect(value.toMessage(), {
     'type': 'configure',
     'masterGainLinear': 1.0,
     'telemetryEvery': 20,
@@ -109,65 +109,71 @@ test('configuration serializes the existing Worklet configure schema', () {
   });
 });
 
-test('telemetry preserves stereo peak RMS and clipping fields', () {
-  final telemetry = BrowserMixerTelemetry.tryParse({
+test('telemetry preserves stereo fields', () {
+  final value = BrowserMixerTelemetry.tryParse({
     'type': 'telemetry',
     'channelMeters': [{
-      'channelId': 'mic-1', 'peakLeft': .4, 'peakRight': .5,
-      'rmsLeft': .2, 'rmsRight': .25, 'clipping': false,
+      'channelId': 'mic-1',
+      'peakLeft': .4, 'peakRight': .5,
+      'rmsLeft': .2, 'rmsRight': .25,
+      'clipping': false,
     }],
     'masterPeakLeft': .4,
     'masterPeakRight': .5,
     'limiterActive': false,
   });
-  expect(telemetry!.channelMeters['mic-1']!.peakRight, .5);
+  expect(value!.channelMeters['mic-1']!.rmsRight, .25);
 });
 ```
 
-- [ ] **Step 2: Run the protocol tests and confirm RED**
-
 Run: `flutter test test/browser_mixer_protocol_test.dart`
 
-Expected: FAIL because mixer protocol types do not exist.
+Expected: FAIL because the protocol types are absent.
 
-- [ ] **Step 3: Implement immutable protocol types and strict `tryParse` validation**
+- [ ] **Step 2: Implement protocol types/parser**
 
-Reject telemetry if the root type is not `telemetry`, `channelMeters` is not a list, a channel lacks a non-empty `channelId`, any numeric field is non-finite/non-numeric, or `limiterActive`/`clipping` are not booleans. Return `null` instead of throwing on malformed browser messages.
+`tryParse` returns `null` for wrong `type`, non-list `channelMeters`, empty `channelId`, non-numeric/non-finite meter values, or non-boolean `clipping`/`limiterActive`.
 
-- [ ] **Step 4: Write failing controller tests for attach, fader, mute, solo, telemetry, and detach**
+- [ ] **Step 3: Write RED controller test**
 
 ```dart
 await controller.attach('mic-1');
-expect(gateway.configurations.single.channels.single.fader, 1.0);
 await controller.setFader(.6);
 await controller.setMuted(true);
 await controller.setSolo(true);
-gateway.emit(const BrowserMixerTelemetry(/* mic-1 stereo meter values */));
-expect(controller.state.enabled, isTrue);
+gateway.emit(const BrowserMixerTelemetry(
+  channelMeters: {
+    'mic-1': BrowserChannelMeter(
+      peakLeft: .4, peakRight: .5,
+      rmsLeft: .2, rmsRight: .25,
+      clipping: false,
+    ),
+  },
+  masterPeakLeft: .4,
+  masterPeakRight: .5,
+  limiterActive: false,
+));
 expect(controller.state.fader, .6);
 expect(controller.state.muted, isTrue);
 expect(controller.state.solo, isTrue);
+expect(controller.state.channelMeter!.peakRight, .5);
 await controller.detach();
 expect(controller.state.enabled, isFalse);
 ```
 
-- [ ] **Step 5: Run controller tests and confirm RED**
-
 Run: `flutter test test/browser_mixer_controller_test.dart`
 
-Expected: FAIL because `BrowserMixerController` does not exist.
+Expected: FAIL because the controller is absent.
 
-- [ ] **Step 6: Implement the minimal controller**
+- [ ] **Step 4: Implement controller**
 
-Use neutral defaults exactly: `linearTrim=1`, `fader=1`, `muted=false`, `solo=false`, `masterGainLinear=1`, `telemetryEvery=20`. Clamp fader to `0..1`. Keep one telemetry subscription for the controller lifetime; ignore meters for other channel IDs. Configuration sends must be serialized through a single future chain so rapid slider changes cannot reorder Worklet commands.
+Defaults: `linearTrim=1`, `fader=1`, `muted=false`, `solo=false`, `masterGainLinear=1`, `telemetryEvery=20`. Clamp fader to `0..1`; ignore telemetry from other channel IDs.
 
-- [ ] **Step 7: Run both new test files GREEN**
+- [ ] **Step 5: Verify and commit**
 
 Run: `flutter test test/browser_mixer_protocol_test.dart test/browser_mixer_controller_test.dart`
 
 Expected: PASS.
-
-- [ ] **Step 8: Commit**
 
 ```bash
 git add lib/audio/web/browser_mixer_protocol.dart lib/audio/web/browser_mixer_controller.dart test/browser_mixer_protocol_test.dart test/browser_mixer_controller_test.dart
@@ -176,76 +182,102 @@ git commit -m "feat(web): add typed mixer control protocol"
 
 ---
 
-### Task 2: Bridge Worklet configure/telemetry through the shared Web runtime
+### Task 2: Worklet gateway and shared runtime wiring
 
-**Files:**
-- Modify: `lib/audio/web/browser_audio_worklet_gateway_web.dart`
-- Modify: `lib/audio/web/browser_audio_processing_controller.dart`
-- Modify: `lib/audio/web/browser_capture_runtime_web.dart`
-- Modify: `lib/audio/web/browser_capture_runtime_stub.dart`
-- Modify: `test/browser_audio_processing_controller_test.dart`
-- Modify: `test/web_audio_worklet_processor_test.mjs`
+**Files:** modify `browser_audio_worklet_gateway_web.dart`, `browser_audio_processing_controller.dart`, `browser_capture_runtime_web.dart`, `browser_capture_runtime_stub.dart`, `test/browser_audio_processing_controller_test.dart`, `test/web_audio_worklet_processor_test.mjs`.
 
-**Interfaces:**
-- Consumes Task 1 `BrowserMixerGateway` and `BrowserMixerController`.
-- Produces `BrowserWebRuntime.mixerController` and `BrowserWebRuntime.processingController` using the same `WebAudioWorkletGateway` instance as recording.
+**Consumes:** Task 1 `BrowserMixerGateway` / `BrowserMixerController`.
 
-- [ ] **Step 1: Extend the Node Worklet contract test before Dart gateway changes**
+**Produces:** one `BrowserWebRuntime` whose capture, processing, mixer, and recording controllers share the same `WebAudioWorkletGateway`.
 
-Assert a `configure` message with `id/fader/muted/solo` changes processor state and emitted telemetry contains `channelId`, stereo peak/RMS, `clipping`, master L/R peak, and `limiterActive`.
+- [ ] **Step 1: Characterize current Worklet contract**
+
+Extend the Node test so a `configure` message changes `id/fader/muted/solo`, and emitted telemetry contains `channelId`, stereo peak/RMS, `clipping`, master L/R peak, `limiterActive`.
 
 Run: `node --test test/web_audio_worklet_processor_test.mjs`
 
-Expected: PASS against current Worklet. This is a characterization test, not a reason to edit DSP code.
+Expected: PASS before Dart gateway edits.
 
-- [ ] **Step 2: Add RED coordinator tests for mixer attach/detach**
+- [ ] **Step 2: Add RED coordinator test**
 
-After `capture.requestMicrophone()` + `coordinator.synchronize()`, assert `mixer.state.enabled == true` and `activeChannelId == 'mic-1'`. After `endActiveTrack()` + synchronize, assert processing is idle and mixer is disabled.
+After microphone capture + `coordinator.synchronize()`, assert mixer enabled with `mic-1`; after lifecycle `endActiveTrack()` + synchronize, assert processing idle and mixer disabled.
 
 Run: `flutter test test/browser_audio_processing_controller_test.dart`
 
-Expected: FAIL because coordinator does not own mixer lifecycle.
+Expected: FAIL because mixer lifecycle is not wired.
 
 - [ ] **Step 3: Implement `BrowserMixerGateway` in `WebAudioWorkletGateway`**
 
-Add a broadcast `StreamController<BrowserMixerTelemetry>`. On Worklet `telemetry`, dartify the message, parse with `BrowserMixerTelemetry.tryParse`, add valid telemetry to the stream, then send the existing `telemetryAck`. `configure()` must fail with a sanitized not-ready error when `_workletNode` is null and otherwise post `configuration.toMessage().jsify()`.
+Add a broadcast telemetry controller. On Worklet `telemetry`: `dartify`, parse, publish valid telemetry, then send the existing `telemetryAck`. `configure()` posts `configuration.toMessage().jsify()` and throws a sanitized not-ready state if no Worklet node exists.
 
-- [ ] **Step 4: Wire runtime and coordinator**
+- [ ] **Step 4: Wire coordinator/runtime**
 
-Construct one `WebAudioWorkletGateway`, then one processing controller, mixer controller, and recording controller from it. Extend `BrowserAudioRuntimeCoordinator` with `BrowserMixerController mixerController`; after successful processing start call `mixer.attach(source.id)`, and after stop/failure call `mixer.detach()`.
+After successful processing start call `mixer.attach(source.id)`. After processing stop/failure call `mixer.detach()`. Expose `processingController` and `mixerController` from `BrowserWebRuntime`.
 
-- [ ] **Step 5: Run focused GREEN tests**
+- [ ] **Step 5: Verify recording regressions and commit**
 
-Run: `flutter test test/browser_audio_processing_controller_test.dart test/browser_mixer_controller_test.dart`
+Run:
+
+```bash
+flutter test test/browser_audio_processing_controller_test.dart test/browser_mixer_controller_test.dart test/browser_recording_controller_test.dart
+node --test test/web_audio_worklet_processor_test.mjs test/web_recording_operator_gateway_test.mjs test/web_recorder_pipeline_integration_test.mjs
+```
 
 Expected: PASS.
 
-- [ ] **Step 6: Run existing recording/Worklet regression contracts**
-
-Run: `node --test test/web_audio_worklet_processor_test.mjs test/web_recording_operator_gateway_test.mjs test/web_recorder_pipeline_integration_test.mjs && flutter test test/browser_recording_controller_test.dart`
-
-Expected: PASS with no recording regressions.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add lib/audio/web/browser_audio_worklet_gateway_web.dart lib/audio/web/browser_audio_processing_controller.dart lib/audio/web/browser_capture_runtime_web.dart lib/audio/web/browser_capture_runtime_stub.dart test/browser_audio_processing_controller_test.dart test/web_audio_worklet_processor_test.mjs
-git commit -m "feat(web): bridge mixer controls and telemetry"
-```
+Commit: `feat(web): bridge mixer controls and telemetry`.
 
 ---
 
-### Task 3: Introduce a platform-neutral session repository without changing desktop persistence
+### Task 3: Production-safe source disconnect and native-ended convergence
 
-**Files:**
-- Create: `lib/services/session_tracklist_repository.dart`
-- Modify: `lib/services/session_tracklist_store.dart`
-- Modify: `lib/services/session_tracklist_persister.dart`
-- Modify: `test/session_tracklist_store_test.dart`
-- Modify: `test/session_tracklist_persister_test.dart`
-- Modify: `test/live_session_tracklist_controller_test.dart`
+**Files:** modify `browser_capture_controller.dart`, `browser_media_gateway.dart`, `browser_media_client_web.dart`, `browser_capture_runtime_web.dart`, `test/browser_capture_controller_test.dart`, `test/browser_audio_processing_controller_test.dart`.
 
 **Interfaces:**
+
+```dart
+abstract interface class BrowserMediaDisconnectGateway {
+  void disconnectActiveStream();
+}
+```
+
+`DefaultBrowserMediaGateway` implements it when its client can stop the active stream. `BrowserCaptureController.disconnect()` stops the stream and then calls the same `handleTrackEnded()` transition used by the native `ended` callback.
+
+- [ ] **Step 1: Add RED controller test**
+
+```dart
+await controller.requestMicrophone();
+controller.disconnect();
+expect(gateway.disconnectCount, 1);
+expect(controller.state.status, BrowserCaptureStatus.reconnectRequired);
+expect(controller.state.source, isNull);
+```
+
+Run: `flutter test test/browser_capture_controller_test.dart`
+
+Expected: FAIL because disconnect is absent.
+
+- [ ] **Step 2: Implement client/gateway disconnect**
+
+Expose a public `disconnectActiveStream()` in `WebBrowserMediaClient` that calls existing `_stopActiveStream()`. Gateway delegates when supported. Controller invokes gateway disconnect and `handleTrackEnded()` exactly once.
+
+- [ ] **Step 3: Prove native and operator teardown converge**
+
+Keep the existing lifecycle fake test for `endActiveTrack()`. Add one coordinator assertion showing both native ended and explicit disconnect leave processing idle and mixer disabled.
+
+Run: `flutter test test/browser_capture_controller_test.dart test/browser_audio_processing_controller_test.dart`
+
+Expected: PASS.
+
+Commit: `feat(web): add deterministic source disconnect recovery`.
+
+---
+
+### Task 4: Platform-neutral session persistence and Web adapters
+
+**Files:** create `session_tracklist_repository.dart`, `browser_session_tracklist_repository.dart`, `browser_tracklist_download_gateway.dart`, `browser_session_controller.dart`; modify store/persister tests and compile-boundary test.
+
+**Repository interface:**
 
 ```dart
 abstract interface class SessionTracklistRepository {
@@ -256,262 +288,189 @@ abstract interface class SessionTracklistRepository {
 }
 ```
 
-- [ ] **Step 1: Rewrite persister tests to use a fake repository and confirm RED**
+- [ ] **Step 1: RED persister abstraction test**
 
-The fake records `save()` snapshots and exposes a broadcast status stream. Assert rapid schedules persist only the latest snapshot and `flush()` writes immediately.
+Replace direct `SessionTracklistStore` dependency in `test/session_tracklist_persister_test.dart` with a fake repository that records snapshots. Assert debounce writes only the newest entry and `flush()` writes immediately.
 
 Run: `flutter test test/session_tracklist_persister_test.dart`
 
-Expected: FAIL until `SessionTracklistPersister.store` accepts `SessionTracklistRepository`.
+Expected: FAIL until persister accepts the interface.
 
-- [ ] **Step 2: Add the repository interface and make `SessionTracklistStore implements SessionTracklistRepository`**
+- [ ] **Step 2: Add interface and adapt desktop store**
 
-Do not alter temporary-file, backup, malformed-file recovery, or status behavior in `SessionTracklistStore`.
-
-- [ ] **Step 3: Change `SessionTracklistPersister` constructor/field to the interface**
-
-No debounce semantics change.
-
-- [ ] **Step 4: Run persistence and live-session tests GREEN**
+`SessionTracklistStore implements SessionTracklistRepository`; do not change temp-file/backup/recovery behavior. Change `SessionTracklistPersister.store` type only.
 
 Run: `flutter test test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: RED browser session controller test**
 
-```bash
-git add lib/services/session_tracklist_repository.dart lib/services/session_tracklist_store.dart lib/services/session_tracklist_persister.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart
-git commit -m "refactor(session): isolate persistence repository"
-```
-
----
-
-### Task 4: Add Web session recovery, correction, and export adapters
-
-**Files:**
-- Create: `lib/services/web/browser_session_tracklist_repository.dart`
-- Create: `lib/services/web/browser_tracklist_download_gateway.dart`
-- Create: `lib/services/web/browser_session_controller.dart`
-- Create: `test/browser_session_controller_test.dart`
-- Create: `test/browser_session_tracklist_repository_contract_test.dart`
-- Modify: `test/web_release_compile_boundary_test.dart`
-
-**Interfaces:**
-- `BrowserSessionTracklistRepository(storageKey: 'lmm.session.active')` implements `SessionTracklistRepository` with `SessionTracklistCodec` JSON.
-- `BrowserTracklistDownloadGateway.download({required String fileName, required String mimeType, required String contents})` creates Blob -> object URL -> anchor click -> revoke.
-- `BrowserSessionController.initialize()` loads entries; `correct(...)` delegates to `LiveSessionTracklistController`; `exportJson/Csv/M3u()` delegates to existing `TracklistExporter` plus download gateway.
-
-- [ ] **Step 1: Add RED pure controller tests with fake repository/download gateway**
-
-Seed repository with one synthetic entry, initialize, correct its title, flush, then assert the saved snapshot contains the corrected title. Export JSON and assert the fake download receives a `.json` filename and exporter output containing the corrected title.
+Seed fake repository with one entry, initialize, correct title, flush, export JSON through a fake download gateway; assert saved/exported title is corrected.
 
 Run: `flutter test test/browser_session_controller_test.dart`
 
-Expected: FAIL because controller/adapters do not exist.
+Expected: FAIL because Web session orchestration is absent.
 
-- [ ] **Step 2: Implement `BrowserSessionController` without Web APIs**
+- [ ] **Step 4: Implement Web adapters**
 
-Keep Web APIs outside this file so unit tests remain VM-safe. Generate a stable session ID only when no recovered entries exist; recovered entries keep their stored `sessionId`.
+`BrowserSessionTracklistRepository` uses key `lmm.session.active` and existing `SessionTracklistCodec`. Missing key loads `[]`; malformed data emits malformed-response status and throws `FormatException`; storage exceptions emit write-failed status. Download gateway creates Blob -> object URL -> anchor click -> revoke in `finally`. MIME types: JSON `application/json`, CSV `text/csv;charset=utf-8`, M3U `audio/x-mpegurl`.
 
-- [ ] **Step 3: Implement the `localStorage` repository**
+- [ ] **Step 5: Strengthen compile boundary**
 
-Use the existing `SessionTracklistCodec` document (`schemaVersion: 1`, `entries`). Namespace the one active document at `lmm.session.active`. `load()` returns `[]` for absent storage, emits malformed-response status and throws `FormatException` for invalid data, and emits write-failed status for browser storage exceptions.
+`test/web_release_compile_boundary_test.dart` must prove Web/shared files use the repository interface/Web adapter while `session_tracklist_store.dart` remains the only session persistence implementation importing `dart:io`.
 
-- [ ] **Step 4: Implement Blob download adapter**
+Run:
 
-Always revoke the object URL in `finally` after `anchor.click()`. Use MIME types `application/json`, `text/csv;charset=utf-8`, and `audio/x-mpegurl`.
-
-- [ ] **Step 5: Strengthen Web compile-boundary test**
-
-Assert shared Web imports reference `session_tracklist_repository.dart` and Web adapter files, while `session_tracklist_store.dart` remains the only session persistence file importing `dart:io`.
-
-Run: `flutter test test/web_release_compile_boundary_test.dart test/browser_session_controller_test.dart test/browser_session_tracklist_repository_contract_test.dart`
+```bash
+flutter test test/browser_session_controller_test.dart test/browser_session_tracklist_repository_contract_test.dart test/web_release_compile_boundary_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart
+```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
-
-```bash
-git add lib/services/web/browser_session_tracklist_repository.dart lib/services/web/browser_tracklist_download_gateway.dart lib/services/web/browser_session_controller.dart test/browser_session_controller_test.dart test/browser_session_tracklist_repository_contract_test.dart test/web_release_compile_boundary_test.dart
-git commit -m "feat(web): persist and export local sessions"
-```
+Commit: `feat(web): persist and export local sessions`.
 
 ---
 
-### Task 5: Expose mixer, recovery, correction, and export in the Web operator shell
+### Task 5: Web operator shell UI and semantics
 
-**Files:**
-- Modify: `lib/app/app_surface_web.dart`
-- Modify: `lib/audio/web/browser_capture_runtime_web.dart`
-- Create: `test/web_release_shell_operator_test.dart`
+**Files:** modify `lib/app/app_surface_web.dart`, `browser_capture_runtime_web.dart`; create `test/web_release_shell_operator_test.dart`.
 
-**Interfaces:**
-- `WebReleaseShell` receives injectable `BrowserMixerController? mixerController` and `BrowserSessionController? sessionController` for widget tests.
-- Stable semantic labels: `Channel fader`, `Mute`, `Solo`, `Channel peak`, `Channel RMS`, `Master peak`, `Limiter`, `Session tracklist`, `Export session JSON`, `Export session CSV`, `Export session M3U`.
+**Stable semantics:** `Channel fader`, `Mute`, `Solo`, `Channel peak`, `Channel RMS`, `Master peak`, `Limiter`, `Disconnect source`, `Session tracklist`, `Export session JSON`, `Export session CSV`, `Export session M3U`.
 
-- [ ] **Step 1: Write RED widget tests for disabled and active mixer states**
+- [ ] **Step 1: RED mixer widget tests**
 
-Pump shell with fake controllers. Assert fader/mute/solo are disabled when mixer is detached. Attach `mic-1`, pump, assert controls enabled, set fader to `.5`, press mute/solo, emit telemetry, and assert rendered meter text changes.
+Pump injected fake controllers. Detached state: fader/mute/solo disabled. Attached state: controls enabled; move fader to `.5`; press mute/solo; emit stereo telemetry; assert rendered peak/RMS text changes.
 
-- [ ] **Step 2: Write RED widget tests for recovered session and correction/export**
+- [ ] **Step 2: RED session widget tests**
 
-Seed a fake session with `Artist / Original`, initialize, pump shell, edit title to `Corrected`, submit correction, and assert `Corrected` renders. Tap each export button and assert the fake download gateway records JSON/CSV/M3U requests.
+Seed `Artist / Original`, initialize, edit title to `Corrected`, submit correction, assert `Corrected` renders, and assert all three export actions reach fake download gateway.
 
-- [ ] **Step 3: Run widget test and confirm RED**
+- [ ] **Step 3: RED disconnect widget test**
+
+With active capture, tap `Disconnect source`; assert capture state text becomes `CAPTURE ENDED / ACCESS REVOKED — RECONNECT REQUIRED` and mixer controls disable while session panel remains visible.
 
 Run: `flutter test test/web_release_shell_operator_test.dart`
 
-Expected: FAIL because the operator/session panels are absent.
+Expected: FAIL because panels/actions are absent.
 
-- [ ] **Step 4: Implement compact mixer panel**
+- [ ] **Step 4: Implement compact mixer/session panels**
 
-Place it between capture and recording panels. Use existing `LiveMixTokens`/text styles. Render stereo telemetry as an accessible combined display such as `PEAK L 0.42 / R 0.44` and `RMS L 0.21 / R 0.22`; do not invent a new meter algorithm in Flutter.
+Use current `LiveMixTokens`/styles. Render `PEAK L 0.42 / R 0.44` and `RMS L 0.21 / R 0.22`; Flutter displays telemetry only and does not calculate replacement DSP meters. Mute/solo expose pressed state; slider exposes value semantics; controls disable unless mixer is attached.
 
-- [ ] **Step 5: Implement session panel**
+- [ ] **Step 5: Implement disconnect button and reconnect behavior**
 
-Show recovered entries, artist/title correction fields for the selected entry, non-fatal persistence warning text, and JSON/CSV/M3U export buttons. The panel must remain usable when fingerprint provider status is failed/offline.
+Button calls `BrowserCaptureController.disconnect()`. Reconnect through existing capture action must recreate Worklet processing, reattach mixer, and send neutral configuration.
 
-- [ ] **Step 6: Preserve source-ended recovery semantics**
+- [ ] **Step 6: Verify**
 
-When capture enters `reconnectRequired`, processing/mixer disable automatically through the coordinator; session panel remains available. Reconnect must re-enable mixer and send neutral config to the new Worklet.
+Run:
 
-- [ ] **Step 7: Run widget + lifecycle regression tests GREEN**
-
-Run: `flutter test test/web_release_shell_operator_test.dart test/browser_audio_processing_controller_test.dart test/browser_capture_controller_test.dart test/browser_recording_controller_test.dart`
+```bash
+flutter test test/web_release_shell_operator_test.dart test/browser_capture_controller_test.dart test/browser_audio_processing_controller_test.dart test/browser_recording_controller_test.dart
+```
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
-
-```bash
-git add lib/app/app_surface_web.dart lib/audio/web/browser_capture_runtime_web.dart test/web_release_shell_operator_test.dart
-git commit -m "feat(web): expose W5 operator controls and session export"
-```
+Commit: `feat(web): expose W5 operator controls and session export`.
 
 ---
 
-### Task 6: Add deterministic browser fixtures and Playwright acceptance harness
+### Task 6: Deterministic Playwright acceptance
 
-**Files:**
-- Create: `package.json`
-- Create: `package-lock.json`
-- Create: `test/fixtures/generate-web-fake-mic.mjs`
-- Create: `test/fixtures/web-fake-mic.wav`
-- Create: `tool/web-e2e-server.mjs`
-- Create: `test/web_operator_e2e.spec.mjs`
-- Create: `test/web_browser_capability_matrix.spec.mjs`
+**Files:** create `package.json`, lockfile, fixture generator/WAV, static server, Chromium E2E, Firefox/WebKit matrix.
 
-**Interfaces:**
-- NPM scripts: `test:web:e2e` and `test:web:matrix`.
-- Static server serves only a supplied artifact directory and returns SPA fallback to `index.html`; it does not rebuild Flutter.
-- Chromium fake mic uses repository-owned deterministic WAV.
+- [ ] **Step 1: Generate deterministic fake microphone WAV**
 
-- [ ] **Step 1: Add deterministic WAV generator**
-
-Generate 16-bit PCM mono, 48 kHz, 440 Hz sine, 15 seconds, amplitude `0.25`. The generator must produce the committed fixture byte-for-byte.
+Generator output: PCM16 mono, 48,000 Hz, 440 Hz sine, 15 seconds, amplitude `0.25`.
 
 Run: `node test/fixtures/generate-web-fake-mic.mjs && git diff --exit-code test/fixtures/web-fake-mic.wav`
 
-Expected after committing the fixture: no diff.
+Expected after fixture commit: no diff.
 
-- [ ] **Step 2: Add Playwright dependency and browser install script**
+- [ ] **Step 2: Add Playwright dependency/scripts**
 
-`package.json` contains only repository metadata, `@playwright/test`, and scripts needed for these two test files. Pin the resolved version in `package-lock.json`.
+`package.json` adds only `@playwright/test` and scripts `test:web:e2e`, `test:web:matrix`; lock exact resolution in `package-lock.json`.
 
-- [ ] **Step 3: Implement artifact-only static server**
+- [ ] **Step 3: Add artifact-only server**
 
-Require `LMM_WEB_ARTIFACT_DIR`; exit non-zero if `index.html` is missing. Bind to `127.0.0.1`, default port `4173`, and serve correct content types for `.js`, `.wasm`, `.json`, `.wav`, `.html`.
+Require `LMM_WEB_ARTIFACT_DIR`, fail if `index.html` is absent, bind `127.0.0.1:4173`, serve `.html/.js/.wasm/.json/.wav` correctly, and use `index.html` for SPA fallback. It must contain no build command.
 
-- [ ] **Step 4: Write Chromium functional E2E**
+- [ ] **Step 4: Chromium functional E2E**
 
-Launch Chromium with fake-device flags and `test/fixtures/web-fake-mic.wav`. Flow:
-1. open artifact;
-2. press `CONNECT MIC / USB`;
-3. wait for `CAPTURE ACTIVE` and non-zero Peak/RMS text;
+Launch with fake-device flags and `web-fake-mic.wav`. Execute exact visible path:
+1. `CONNECT MIC / USB`;
+2. assert `CAPTURE ACTIVE`;
+3. wait for non-zero Peak/RMS;
 4. set `Channel fader` below unity;
-5. toggle `Mute`, verify master peak reaches zero/near-zero while input meter remains valid, restore mute;
-6. toggle `Solo` and verify pressed state;
-7. start recording, wait at least 10 seconds, stop, download WAV;
-8. parse RIFF/WAVE header and compute PCM duration >=10 seconds;
-9. stop the active browser capture track through the page's standards-visible `MediaStreamTrack.stop()` path if reachable; otherwise use the production disconnect action from the approved design fallback;
-10. verify `RECONNECT REQUIRED`, reconnect, and verify meters recover;
-11. pre-seed `lmm.session.active` with one valid synthetic entry before reload, verify recovery, correct it through the production UI, reload, verify correction persists;
-12. export JSON and validate corrected content.
+5. mute and assert master output reaches zero/near-zero, then unmute;
+6. toggle solo and assert pressed state;
+7. record for >=10 seconds;
+8. stop/download WAV and validate RIFF/WAVE header + PCM duration >=10 seconds;
+9. press `Disconnect source` and assert `RECONNECT REQUIRED`;
+10. reconnect and assert telemetry resumes;
+11. seed valid `lmm.session.active` data with one synthetic entry before reload;
+12. correct entry through production UI, reload, assert correction persists;
+13. export JSON and validate corrected content.
 
-The test fails on uncaught page errors and unexpected console `error` messages.
+Fail on uncaught page errors or unexpected console errors.
 
-- [ ] **Step 5: Write Firefox/WebKit capability matrix**
+- [ ] **Step 5: Firefox/WebKit capability matrix**
 
-For each browser: load shell, assert accessibility semantics/controls render, capability state is explicit, no page error occurs, and offline shell request returns the verified fallback where supported. Record unsupported capture as evidence instead of skipping the browser.
+For each browser: boot exact artifact, verify semantics/controls, explicit capability state, no page error, and offline fallback where supported. Unsupported capture is recorded as a capability result, not skipped or reported as parity.
 
-- [ ] **Step 6: Run locally only where browser navigation is permitted**
-
-Run: `npm ci && npx playwright install chromium firefox webkit && LMM_WEB_ARTIFACT_DIR=build/web npm run test:web:e2e && LMM_WEB_ARTIFACT_DIR=build/web npm run test:web:matrix`
-
-Expected: PASS in a normal CI/browser environment. In the current constrained container, `ERR_BLOCKED_BY_ADMINISTRATOR` is environment policy and is not accepted as product evidence.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Browser verification command**
 
 ```bash
-git add package.json package-lock.json test/fixtures/generate-web-fake-mic.mjs test/fixtures/web-fake-mic.wav tool/web-e2e-server.mjs test/web_operator_e2e.spec.mjs test/web_browser_capability_matrix.spec.mjs
-git commit -m "test(web): add deterministic browser acceptance"
+npm ci
+npx playwright install chromium firefox webkit
+LMM_WEB_ARTIFACT_DIR=build/web npm run test:web:e2e
+LMM_WEB_ARTIFACT_DIR=build/web npm run test:web:matrix
 ```
+
+Expected: PASS on a normal browser runner. Current-container `ERR_BLOCKED_BY_ADMINISTRATOR` is environment policy and is not product evidence.
+
+Commit: `test(web): add deterministic browser acceptance`.
 
 ---
 
-### Task 7: Make GitHub Actions test the exact built artifact
+### Task 7: GitHub Actions exact-artifact browser gate
 
-**Files:**
-- Modify: `.github/workflows/ci.yml`
+**File:** modify `.github/workflows/ci.yml`.
 
-**Interfaces:**
-- `web-release-compile` remains the only Flutter Web build producer.
-- New `web-browser-e2e` job has `needs: web-release-compile` and downloads artifact `live-mix-master-web` into `build/web`.
-- No `flutter build web` command exists in `web-browser-e2e`.
+**Invariant:** `web-release-compile` is the only Flutter Web build producer. `web-browser-e2e` has `needs: web-release-compile`, downloads `live-mix-master-web` into `build/web`, and contains no `flutter build web` command.
 
-- [ ] **Step 1: Add a failing workflow contract check before editing CI**
-
-Add a shell check in the PR review process:
+- [ ] **Step 1: RED workflow source contract**
 
 ```bash
 python - <<'PY'
 from pathlib import Path
 text = Path('.github/workflows/ci.yml').read_text()
 assert 'web-browser-e2e:' in text
-assert 'name: live-mix-master-web' in text
+assert 'needs: web-release-compile' in text
+assert 'actions/download-artifact@v4' in text
 PY
 ```
 
-Expected initially: FAIL because browser job does not exist.
+Expected: FAIL before job is added.
 
-- [ ] **Step 2: Add `web-browser-e2e` job**
+- [ ] **Step 2: Add browser job**
 
-Steps: checkout exact SHA, setup Node, `npm ci`, install Playwright browsers/deps, download `live-mix-master-web` with `actions/download-artifact@v4`, start `tool/web-e2e-server.mjs`, run Chromium functional E2E, run Firefox/WebKit matrix, upload Playwright report/downloaded WAV/browser logs as non-secret artifacts on failure and success where useful.
+Steps: checkout exact SHA, setup Node, `npm ci`, install Playwright browser dependencies, download artifact name `live-mix-master-web`, assert `build/web/index.html`, `main.dart.js`, `lmm-service-worker.js`, `offline.html`, print SHA-256 for index/main/manifest, run both Playwright scripts, upload report/WAV/browser logs as non-secret evidence.
 
-- [ ] **Step 3: Add same-artifact guard**
+- [ ] **Step 3: Validate source and commit**
 
-Before Playwright, require `build/web/index.html`, `build/web/main.dart.js`, `build/web/lmm-service-worker.js`, and `build/web/offline.html`. Print `sha256sum` for `index.html`, `main.dart.js`, and manifest into the job log for evidence; do not create a replacement release ZIP.
+Run the Python contract and inspect the `web-browser-e2e` block to confirm no Flutter build command appears.
 
-- [ ] **Step 4: Run YAML/source validation**
-
-Run the Python contract above and inspect the job to confirm there is no `flutter build web` under `web-browser-e2e`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add .github/workflows/ci.yml
-git commit -m "ci(web): gate release artifact with browser E2E"
-```
+Commit: `ci(web): gate release artifact with browser E2E`.
 
 ---
 
-### Task 8: Run full verification without repeating irrelevant green work
+### Task 8: Verification, PR, merge, exact artifact, Preview promotion
 
-**Files:**
-- Modify only if a failing verification requires a scoped fix.
+**Files:** update `docs/release/tested-web-artifact-promotion.md`; then update Issue #16 + matching Notion W5 page only with verified evidence.
 
-- [ ] **Step 1: Run focused Flutter suites**
+- [ ] **Step 1: Focused Flutter verification**
 
 ```bash
 flutter test test/browser_mixer_protocol_test.dart test/browser_mixer_controller_test.dart test/browser_audio_processing_controller_test.dart test/browser_capture_controller_test.dart test/browser_recording_controller_test.dart test/browser_session_controller_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart test/web_release_shell_operator_test.dart test/web_release_compile_boundary_test.dart
@@ -519,7 +478,7 @@ flutter test test/browser_mixer_protocol_test.dart test/browser_mixer_controller
 
 Expected: PASS.
 
-- [ ] **Step 2: Run affected Node contracts**
+- [ ] **Step 2: Affected Node/PWA regression verification**
 
 ```bash
 node --test test/web_audio_worklet_processor_test.mjs test/web_audio_graph_integration_test.mjs test/web_recording_operator_gateway_test.mjs test/web_recorder_pipeline_integration_test.mjs test/web_pwa_manifest_contract_test.mjs test/web_pwa_offline_accessibility_contract_test.mjs
@@ -527,7 +486,7 @@ node --test test/web_audio_worklet_processor_test.mjs test/web_audio_graph_integ
 
 Expected: PASS.
 
-- [ ] **Step 3: Run analyze and one release build**
+- [ ] **Step 3: Analyze + one developer release build**
 
 ```bash
 bash tool/bootstrap_fonts.sh
@@ -536,60 +495,35 @@ flutter analyze --no-fatal-warnings --no-fatal-infos
 flutter build web --release
 ```
 
-Expected: PASS. This local build is developer verification only; release evidence still comes from CI's exact artifact.
+Expected: PASS. This local output is never promoted.
 
-- [ ] **Step 4: Verify PWA ownership did not regress**
+- [ ] **Step 4: Verify PWA ownership unchanged**
 
-Confirm built `index.html` registers `lmm-service-worker.js`, `offline.html` exists, maskable icons remain valid, and generated Flutter bootstrap does not opt into Flutter service-worker registration.
+Built `index.html` references `lmm-service-worker.js`; `offline.html` and maskable icons exist; generated Flutter bootstrap does not opt into Flutter service-worker registration.
 
-- [ ] **Step 5: Push branch and wait for PR CI**
+- [ ] **Step 5: Update release doc and open PR**
 
-Do not manually deploy a local build. Use CI results to prove the exact branch commit and artifact.
+Document the new prerequisite: successful exact-artifact browser E2E + browser matrix. PR description distinguishes new W5 evidence from already-green W1-W4/PWA checks and does not claim native Safari capture parity from Playwright WebKit.
 
----
+- [ ] **Step 6: Merge only after required checks are green**
 
-### Task 9: PR, merge, exact artifact evidence, and Vercel Preview promotion
+After merge, record exact main SHA, CI run ID, browser E2E job conclusion, PWA contract conclusion, `live-mix-master-web` artifact ID, and artifact digest.
 
-**Files:**
-- Modify: `docs/release/tested-web-artifact-promotion.md`
-- Update: GitHub Issue #16 and matching Notion W5 page with non-secret evidence after verification.
+- [ ] **Step 7: Promote exact artifact to Vercel Preview**
 
-- [ ] **Step 1: Update release documentation**
+Invoke existing `promote-tested-web-artifact.yml` with exact artifact ID, exact digest, exact merged SHA, target `preview`. If the connector still cannot dispatch `workflow_dispatch`, use an authorized GitHub UI/CLI route; do not replace this with ad-hoc `vercel deploy`.
 
-Document that Preview promotion requires: exact merged SHA, successful standard CI including `web-browser-e2e`, artifact name/ID/digest, and browser matrix evidence. Keep the existing `promote-tested-web-artifact.yml` inputs unchanged.
+- [ ] **Step 8: Preview acceptance and tracker sync**
 
-- [ ] **Step 2: Open PR from implementation branch to `main`**
-
-PR summary must distinguish new W5 operator/browser evidence from already-green W1-W4/PWA checks. Do not claim Safari native-device equivalence from Playwright WebKit.
-
-- [ ] **Step 3: Verify PR checks and merge only when green**
-
-Required new evidence: Flutter/Node focused contracts plus `web-browser-e2e`. Existing standard CI and PWA contract must remain green; do not manually rerun unrelated historical workflows.
-
-- [ ] **Step 4: Verify post-merge exact main artifact**
-
-Record merged commit SHA, CI run ID, `live-mix-master-web` artifact ID, GitHub artifact digest/SHA-256, browser E2E job conclusion, and PWA contract conclusion.
-
-- [ ] **Step 5: Promote that exact artifact to Vercel Preview**
-
-Invoke the existing promotion workflow with the exact artifact ID, exact digest, exact 40-character merged SHA, and target `preview`. If connector tooling still cannot dispatch `workflow_dispatch`, use an authorized GitHub UI/CLI execution path rather than bypassing provenance with an ad-hoc Vercel deploy.
-
-- [ ] **Step 6: Validate Preview**
-
-Record Vercel deployment ID/URL and verify boot, capture capability state, operator controls, recording download, session recovery/export, `/api/` behavior, and no service-worker regression. Secrets remain out of notes/logs.
-
-- [ ] **Step 7: Sync trackers**
-
-Mark the W5 browser matrix, Web E2E, and exact tested-artifact Preview gates complete in Issue #16 and the Notion release page only after evidence exists. Leave production promotion open until Preview acceptance is explicit.
+Record Vercel deployment ID/URL and verify boot, capability state, operator controls, recording download, session recovery/export, `/api/` behavior, and service-worker ownership. Then mark W5 browser matrix, E2E, and exact tested-artifact Preview gates complete in Issue #16 and Notion. Leave production promotion open until Preview acceptance is explicit.
 
 ---
 
 ## Self-Review Results
 
-- **Spec coverage:** typed mixer bridge, telemetry, compact Web UI, source-ended recovery, persistence, correction/export, Chromium functional E2E, Firefox/WebKit matrix, exact-artifact CI, and Vercel Preview gating all have explicit tasks.
-- **Already-green preservation:** no task rebuilds the DSP algorithm, fingerprint proxy, recorder Worker, PWA icon/service-worker system, or desktop file-store semantics.
-- **No live-provider dependency:** browser session acceptance uses valid synthetic local session data and production correction/export UI; fingerprint credentials are not required.
-- **Type consistency:** Worklet telemetry fields are consistently stereo (`peakLeft/Right`, `rmsLeft/Right`, `clipping`) from protocol through controller/UI/tests.
-- **Persistence consistency:** repository/persister/store all use `List<TracklistEntry>` snapshots and the current `SessionTracklistCodec` document.
-- **Exact artifact:** only `web-release-compile` builds; browser E2E downloads its uploaded artifact and promotion uses its artifact ID/digest.
-- **Placeholder scan:** no implementation step depends on TBD/TODO behavior.
+- Spec coverage: mixer bridge, telemetry, UI, source-ended recovery, browser persistence/export, Chromium functional E2E, Firefox/WebKit matrix, exact-artifact CI, and Vercel Preview promotion all map to concrete tasks.
+- Placeholder scan: no TBD/TODO/example placeholders remain in executable test snippets.
+- Type consistency: telemetry fields stay stereo from Worklet -> parser -> controller -> UI -> E2E.
+- Lifecycle consistency: native track-ended and explicit disconnect converge on `handleTrackEnded()`; E2E uses the explicit production action deterministically.
+- Persistence consistency: repository/persister/store use `List<TracklistEntry>` and existing `SessionTracklistCodec`.
+- Exact-artifact consistency: browser job downloads the sole Web artifact and never rebuilds it.
