@@ -128,7 +128,10 @@ void main() {
     expect(captureGateway.disconnectCalls, 1);
     expect(captureController.state.status, BrowserCaptureStatus.reconnectRequired);
 
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
     await mixerController.dispose();
+    await mixerGateway.dispose();
     await sessionController.dispose();
   });
 }
@@ -188,6 +191,8 @@ class _MixerGateway implements BrowserMixerGateway {
   Future<void> configure(BrowserMixerConfiguration configuration) async {}
 
   void publish(BrowserMixerTelemetry telemetry) => _telemetry.add(telemetry);
+
+  Future<void> dispose() => _telemetry.close();
 }
 
 class _RecordingGateway implements BrowserRecordingGateway {
