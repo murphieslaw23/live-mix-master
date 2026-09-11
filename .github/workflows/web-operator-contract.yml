@@ -28,8 +28,10 @@ jobs:
           cache: true
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
-      - run: >-
-          flutter test
-          --timeout 90s
-          test/browser_capture_disconnect_test.dart
-          test/web_operator_surface_test.dart
+      - name: Run focused Web operator contracts
+        run: |
+          timeout --signal=TERM 120s flutter test \
+            --reporter expanded \
+            --timeout 60s \
+            test/browser_capture_disconnect_test.dart \
+            test/web_operator_surface_test.dart
