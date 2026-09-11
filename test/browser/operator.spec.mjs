@@ -27,6 +27,13 @@ const sessionSeed = {
   ],
 };
 
+async function activateButton(page, name) {
+  const button = page.getByRole('button', { name });
+  await expect(button).toBeEnabled();
+  await button.press('Enter');
+  return button;
+}
+
 test('capture, meter, mix, record, recover, persist, and export from the tested artifact', async ({ page }, testInfo) => {
   test.setTimeout(70_000);
   const failures = [];
@@ -37,7 +44,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
 
   const connect = page.getByRole('button', { name: 'CONNECT MIC / USB' });
   await expect(connect).toBeEnabled();
-  await connect.click();
+  await connect.press('Enter');
   await expect(page.getByText(/CAPTURE ACTIVE —/)).toBeVisible();
 
   const slider = page.getByRole('slider', { name: 'Channel fader' });
@@ -59,40 +66,40 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await page.keyboard.press('ArrowLeft');
   await expect.poll(() => slider.getAttribute('aria-valuenow')).not.toBe(beforeFader);
 
-  await mute.click();
+  await mute.press('Enter');
   await expect.poll(
     () => readNumericTelemetry(page, 'Master peak'),
     { timeout: 8_000 },
   ).toBeLessThan(0.005);
-  await mute.click();
+  await mute.press('Enter');
   await expect.poll(
     () => readNumericTelemetry(page, 'Master peak'),
     { timeout: 8_000 },
   ).toBeGreaterThan(0.01);
 
-  await solo.click();
+  await solo.press('Enter');
 
-  await page.getByRole('button', { name: 'START RECORDING' }).click();
+  await activateButton(page, 'START RECORDING');
   await expect(page.getByText('RECORDING ACTIVE — POST-MASTER PCM TO WAV')).toBeVisible();
   await page.waitForTimeout(10_500);
-  await page.getByRole('button', { name: 'STOP RECORDING' }).click();
+  await activateButton(page, 'STOP RECORDING');
   await expect(page.getByText(/WAV FINALIZED —/)).toBeVisible();
 
   const wavDownloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'DOWNLOAD WAV' }).click();
+  await activateButton(page, 'DOWNLOAD WAV');
   const wavDownload = await wavDownloadPromise;
   const wavPath = testInfo.outputPath('operator-recording.wav');
   await wavDownload.saveAs(wavPath);
   const wav = parseWav(wavPath);
   expect(wav.durationSeconds).toBeGreaterThanOrEqual(10);
 
-  await page.getByRole('button', { name: 'Disconnect source' }).click();
+  await activateButton(page, 'Disconnect source');
   await expect(
     page.getByText('CAPTURE ENDED / ACCESS REVOKED — RECONNECT REQUIRED'),
   ).toBeVisible();
   await expect(slider).toBeDisabled();
 
-  await connect.click();
+  await connect.press('Enter');
   await expect(page.getByText(/CAPTURE ACTIVE —/)).toBeVisible();
   await expect.poll(
     () => readNumericTelemetry(page, 'Channel peak'),
@@ -113,7 +120,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   const title = page.getByRole('textbox', { name: 'Title' });
   await artist.fill('Corrected Artist');
   await title.fill('Corrected Title');
-  await page.getByRole('button', { name: 'Save correction' }).click();
+  await activateButton(page, 'Save correction');
   await expect(artist).toHaveValue('Corrected Artist');
   await expect(title).toHaveValue('Corrected Title');
 
@@ -123,7 +130,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await expect(page.getByRole('textbox', { name: 'Title' })).toHaveValue('Corrected Title');
 
   const jsonDownloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export session JSON' }).click();
+  await activateButton(page, 'Export session JSON');
   const jsonDownload = await jsonDownloadPromise;
   const jsonPath = testInfo.outputPath('session-export.json');
   await jsonDownload.saveAs(jsonPath);
