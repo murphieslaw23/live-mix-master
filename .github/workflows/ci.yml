@@ -78,7 +78,7 @@ jobs:
           cache: true
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
-      - run: flutter test test/reliability_models_test.dart test/session_tracklist_test.dart test/fingerprint_tracklist_bridge_test.dart test/session_tracklist_codec_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart test/fingerprint_service_test.dart test/tracklist_exporter_test.dart
+      - run: flutter test test/reliability_models_test.dart test/session_tracklist_test.dart test/fingerprint_tracklist_bridge_test.dart test/session_tracklist_codec_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart test/fingerprint_service_test.dart test/tracklist_exporter_test.dart test/browser_session_controller_test.dart
 
   broadcast-pipeline-test:
     name: Broadcast Pipeline Test
@@ -187,6 +187,63 @@ jobs:
           name: live-mix-master-web
           path: build/web
           if-no-files-found: error
+          retention-days: 14
+
+  web-browser-e2e:
+    name: Web Browser E2E — Exact Artifact
+    needs: web-release-compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install pinned Playwright test runner
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install Playwright browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Download exact Web release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: live-mix-master-web
+          path: .artifacts/web
+      - name: Record tested artifact file digests
+        run: |
+          mkdir -p test-results/evidence
+          test -f .artifacts/web/index.html
+          test -f .artifacts/web/main.dart.js
+          find .artifacts/web -type f -print0 | sort -z | xargs -0 sha256sum > test-results/evidence/web-artifact-files.sha256
+          printf '{"commit":"%s","workflowRun":"%s","artifactName":"live-mix-master-web","source":"actions/download-artifact@v4","rebuiltInBrowserJob":false}\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" > test-results/evidence/artifact-lineage.json
+      - name: Generate deterministic 15s fake microphone WAV
+        run: node test/browser/generate_fake_wav.mjs
+      - name: Serve downloaded artifact without rebuilding
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory .artifacts/web > test-results/evidence/http-server.log 2>&1 &
+          echo $! > test-results/evidence/http-server.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat test-results/evidence/http-server.log
+          exit 1
+      - name: Run Chromium operator E2E and browser capability matrix
+        env:
+          LMM_WEB_BASE_URL: http://127.0.0.1:4173
+        run: npm run test:web:e2e
+      - name: Upload browser acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-browser-e2e-evidence-${{ github.sha }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: warn
           retention-days: 14
 
   native-engine-build:

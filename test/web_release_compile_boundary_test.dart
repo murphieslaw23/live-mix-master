@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/app/app_surface_web.dart';
@@ -23,6 +25,32 @@ void main() {
     expect(result.kind, AudioEngineKind.webBrowser);
     expect(result.message, 'Browser audio backend ready');
     expect(result.diagnostics, isEmpty);
+  });
+
+  test('session persistence keeps dart:io behind the desktop store boundary', () {
+    final repository = File(
+      'lib/services/session_tracklist_repository.dart',
+    ).readAsStringSync();
+    final persister = File(
+      'lib/services/session_tracklist_persister.dart',
+    ).readAsStringSync();
+    final desktopStore = File(
+      'lib/services/session_tracklist_store.dart',
+    ).readAsStringSync();
+    final browserStore = File(
+      'lib/services/web/browser_session_tracklist_repository.dart',
+    ).readAsStringSync();
+
+    expect(repository, isNot(contains('dart:io')));
+    expect(persister, contains("import 'session_tracklist_repository.dart';"));
+    expect(persister, isNot(contains("import 'session_tracklist_store.dart';")));
+    expect(browserStore, isNot(contains('dart:io')));
+    expect(browserStore, isNot(contains('session_tracklist_store.dart')));
+    expect(desktopStore, contains("import 'dart:io';"));
+    expect(
+      desktopStore,
+      contains('implements SessionTracklistRepository'),
+    );
   });
 
   testWidgets('web shell states browser audio limitations explicitly', (tester) async {

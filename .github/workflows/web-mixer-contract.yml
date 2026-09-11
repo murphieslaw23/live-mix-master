@@ -1,0 +1,30 @@
+name: Web Mixer Contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-mixer-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mixer-contract:
+    name: Mixer Protocol + Controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          cache: true
+      - run: bash tool/bootstrap_fonts.sh
+      - run: flutter pub get
+      - run: node --test test/web_mixer_worklet_protocol_test.mjs
+      - run: flutter test test/browser_mixer_protocol_test.dart test/browser_mixer_controller_test.dart test/browser_audio_processing_controller_test.dart

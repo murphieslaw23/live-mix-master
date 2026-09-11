@@ -7,7 +7,10 @@ import 'browser_capture_controller.dart';
 import 'browser_media_gateway.dart';
 
 class WebBrowserMediaClient
-    implements BrowserMediaClient, BrowserMediaDeviceChangeClient {
+    implements
+        BrowserMediaClient,
+        BrowserMediaDeviceChangeClient,
+        BrowserMediaDisconnectClient {
   WebBrowserMediaClient();
 
   web.MediaStream? _activeStream;
@@ -56,6 +59,11 @@ class WebBrowserMediaClient
       }).toJS,
     );
     _deviceChangeListenerInstalled = true;
+  }
+
+  @override
+  void disconnectActiveStream() {
+    _stopActiveStream();
   }
 
   @override

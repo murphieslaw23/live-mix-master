@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/audio/web/browser_audio_processing_controller.dart';
 import 'package:live_mix_master/audio/web/browser_capture_controller.dart';
+import 'package:live_mix_master/audio/web/browser_mixer_controller.dart';
+import 'package:live_mix_master/audio/web/browser_mixer_protocol.dart';
 
 void main() {
   group('BrowserAudioProcessingController', () {
@@ -41,14 +45,17 @@ void main() {
   });
 
   group('BrowserAudioRuntimeCoordinator', () {
-    test('starts processing on active capture and stops on ended capture', () async {
+    test('active processing attaches mixer and ended capture detaches it', () async {
       final captureGateway = _LifecycleCaptureGateway();
       final capture = BrowserCaptureController(gateway: captureGateway);
       final processingGateway = _FakeProcessingGateway();
       final processing = BrowserAudioProcessingController(gateway: processingGateway);
+      final mixerGateway = _FakeMixerGateway();
+      final mixer = BrowserMixerController(gateway: mixerGateway);
       final coordinator = BrowserAudioRuntimeCoordinator(
         captureController: capture,
         processingController: processing,
+        mixerController: mixer,
       );
 
       await capture.requestMicrophone();
@@ -56,22 +63,33 @@ void main() {
 
       expect(processing.state.status, BrowserAudioProcessingStatus.active);
       expect(processingGateway.startedSources, ['mic-1']);
+      expect(mixer.state.enabled, isTrue);
+      expect(mixer.state.activeChannelId, 'mic-1');
+      expect(mixerGateway.configurations.single.channels.single.id, 'mic-1');
 
       captureGateway.endActiveTrack();
       await coordinator.synchronize();
 
       expect(processing.state.status, BrowserAudioProcessingStatus.idle);
       expect(processingGateway.stopCount, 1);
+      expect(mixer.state.enabled, isFalse);
+
+      await coordinator.dispose();
+      await mixer.dispose();
+      await mixerGateway.dispose();
     });
 
-    test('device inventory warning does not invent a processing disconnect', () async {
+    test('device inventory warning keeps processing and mixer attached', () async {
       final captureGateway = _LifecycleCaptureGateway();
       final capture = BrowserCaptureController(gateway: captureGateway);
       final processingGateway = _FakeProcessingGateway();
       final processing = BrowserAudioProcessingController(gateway: processingGateway);
+      final mixerGateway = _FakeMixerGateway();
+      final mixer = BrowserMixerController(gateway: mixerGateway);
       final coordinator = BrowserAudioRuntimeCoordinator(
         captureController: capture,
         processingController: processing,
+        mixerController: mixer,
       );
 
       await capture.requestMicrophone();
@@ -81,6 +99,40 @@ void main() {
 
       expect(processing.state.status, BrowserAudioProcessingStatus.active);
       expect(processingGateway.stopCount, 0);
+      expect(mixer.state.enabled, isTrue);
+      expect(mixer.state.activeChannelId, 'mic-1');
+
+      await coordinator.dispose();
+      await mixer.dispose();
+      await mixerGateway.dispose();
+    });
+
+    test('failed processing never attaches the mixer', () async {
+      final captureGateway = _LifecycleCaptureGateway();
+      final capture = BrowserCaptureController(gateway: captureGateway);
+      final processing = BrowserAudioProcessingController(
+        gateway: _FakeProcessingGateway(
+          startAttempt: const BrowserAudioProcessingAttempt.failed('START FAILED'),
+        ),
+      );
+      final mixerGateway = _FakeMixerGateway();
+      final mixer = BrowserMixerController(gateway: mixerGateway);
+      final coordinator = BrowserAudioRuntimeCoordinator(
+        captureController: capture,
+        processingController: processing,
+        mixerController: mixer,
+      );
+
+      await capture.requestMicrophone();
+      await coordinator.synchronize();
+
+      expect(processing.state.status, BrowserAudioProcessingStatus.error);
+      expect(mixer.state.enabled, isFalse);
+      expect(mixerGateway.configurations, isEmpty);
+
+      await coordinator.dispose();
+      await mixer.dispose();
+      await mixerGateway.dispose();
     });
   });
 }
@@ -104,6 +156,23 @@ class _FakeProcessingGateway implements BrowserAudioProcessingGateway {
   Future<void> stop() async {
     stopCount += 1;
   }
+}
+
+class _FakeMixerGateway implements BrowserMixerGateway {
+  final StreamController<BrowserMixerTelemetry> _telemetry =
+      StreamController<BrowserMixerTelemetry>.broadcast();
+  final List<BrowserMixerConfiguration> configurations =
+      <BrowserMixerConfiguration>[];
+
+  @override
+  Stream<BrowserMixerTelemetry> get telemetry => _telemetry.stream;
+
+  @override
+  Future<void> configure(BrowserMixerConfiguration configuration) async {
+    configurations.add(configuration);
+  }
+
+  Future<void> dispose() => _telemetry.close();
 }
 
 class _LifecycleCaptureGateway

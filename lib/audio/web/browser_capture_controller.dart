@@ -101,6 +101,10 @@ abstract interface class BrowserMediaLifecycleGateway {
   void setDeviceChangeHandler(void Function() handler);
 }
 
+abstract interface class BrowserMediaDisconnectGateway {
+  void disconnectActiveStream();
+}
+
 typedef BrowserCaptureStateListener = void Function(BrowserCaptureState state);
 
 class BrowserCaptureState {
@@ -209,6 +213,14 @@ class BrowserCaptureController {
       request: _gateway.requestDisplayAudio,
       fallbackKind: BrowserCaptureKind.displayAudio,
     );
+  }
+
+  void disconnect() {
+    final gateway = _gateway;
+    if (gateway is BrowserMediaDisconnectGateway) {
+      (gateway as BrowserMediaDisconnectGateway).disconnectActiveStream();
+    }
+    handleTrackEnded();
   }
 
   void handleTrackEnded() {

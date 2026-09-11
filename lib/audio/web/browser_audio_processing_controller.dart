@@ -1,4 +1,5 @@
 import 'browser_capture_controller.dart';
+import 'browser_mixer_controller.dart';
 
 enum BrowserAudioProcessingStatus {
   idle,
@@ -139,13 +140,16 @@ class BrowserAudioRuntimeCoordinator {
   BrowserAudioRuntimeCoordinator({
     required BrowserCaptureController captureController,
     required BrowserAudioProcessingController processingController,
+    required BrowserMixerController mixerController,
   })  : _captureController = captureController,
-        _processingController = processingController {
+        _processingController = processingController,
+        _mixerController = mixerController {
     _captureController.addListener(_handleCaptureState);
   }
 
   final BrowserCaptureController _captureController;
   final BrowserAudioProcessingController _processingController;
+  final BrowserMixerController _mixerController;
   Future<void> _transition = Future<void>.value();
   bool _disposed = false;
 
@@ -158,9 +162,14 @@ class BrowserAudioRuntimeCoordinator {
 
     if (state.status == BrowserCaptureStatus.active && state.source != null) {
       final source = state.source!;
-      _transition = _transition.then(
-        (_) => _processingController.startForSource(source),
-      );
+      _transition = _transition.then((_) async {
+        await _mixerController.detach();
+        await _processingController.startForSource(source);
+        if (_processingController.state.status ==
+            BrowserAudioProcessingStatus.active) {
+          await _mixerController.attach(source.id);
+        }
+      });
       return;
     }
 
@@ -170,7 +179,10 @@ class BrowserAudioRuntimeCoordinator {
       case BrowserCaptureStatus.noAudioTrack:
       case BrowserCaptureStatus.unsupported:
       case BrowserCaptureStatus.error:
-        _transition = _transition.then((_) => _processingController.stop());
+        _transition = _transition.then((_) async {
+          await _mixerController.detach();
+          await _processingController.stop();
+        });
       case BrowserCaptureStatus.idle:
       case BrowserCaptureStatus.permissionRequired:
       case BrowserCaptureStatus.requesting:
@@ -187,6 +199,7 @@ class BrowserAudioRuntimeCoordinator {
     _disposed = true;
     _captureController.removeListener(_handleCaptureState);
     await _transition;
+    await _mixerController.detach();
     await _processingController.stop();
   }
 }

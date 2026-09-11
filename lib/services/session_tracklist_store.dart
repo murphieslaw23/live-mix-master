@@ -3,17 +3,21 @@ import 'dart:io';
 
 import 'reliability_models.dart';
 import 'session_tracklist_codec.dart';
+import 'session_tracklist_repository.dart';
 
-class SessionTracklistStore {
+class SessionTracklistStore implements SessionTracklistRepository {
   SessionTracklistStore({required this.file, SessionTracklistCodec? codec})
       : _codec = codec ?? const SessionTracklistCodec();
 
   final File file;
   final SessionTracklistCodec _codec;
-  final StreamController<ServiceStatus> _statuses = StreamController<ServiceStatus>.broadcast();
+  final StreamController<ServiceStatus> _statuses =
+      StreamController<ServiceStatus>.broadcast();
 
+  @override
   Stream<ServiceStatus> get onStatus => _statuses.stream;
 
+  @override
   Future<List<TracklistEntry>> load() async {
     _emit(const ServiceStatus.running());
     try {
@@ -30,18 +34,29 @@ class SessionTracklistStore {
       }
       if (!await file.exists() && !await backup.exists()) {
         _emit(const ServiceStatus.succeeded());
-        return const [];
+        return const <TracklistEntry>[];
       }
       throw const FormatException('Saved tracklist is invalid');
     } on FormatException {
-      _emit(const ServiceStatus.failed(failureCode: ServiceFailureCode.malformedResponse, message: 'Saved tracklist is invalid'));
+      _emit(
+        const ServiceStatus.failed(
+          failureCode: ServiceFailureCode.malformedResponse,
+          message: 'Saved tracklist is invalid',
+        ),
+      );
       rethrow;
     } on FileSystemException {
-      _emit(const ServiceStatus.failed(failureCode: ServiceFailureCode.writeFailed, message: 'Saved tracklist could not be read'));
+      _emit(
+        const ServiceStatus.failed(
+          failureCode: ServiceFailureCode.writeFailed,
+          message: 'Saved tracklist could not be read',
+        ),
+      );
       rethrow;
     }
   }
 
+  @override
   Future<void> save(Iterable<TracklistEntry> entries) async {
     _emit(const ServiceStatus.running());
     final temporary = File('${file.path}.tmp');
@@ -55,7 +70,12 @@ class SessionTracklistStore {
       if (await backup.exists()) await backup.delete();
       _emit(const ServiceStatus.succeeded());
     } on FileSystemException {
-      _emit(const ServiceStatus.failed(failureCode: ServiceFailureCode.writeFailed, message: 'Tracklist could not be saved'));
+      _emit(
+        const ServiceStatus.failed(
+          failureCode: ServiceFailureCode.writeFailed,
+          message: 'Tracklist could not be saved',
+        ),
+      );
       rethrow;
     } finally {
       if (await temporary.exists()) await temporary.delete();
@@ -71,6 +91,10 @@ class SessionTracklistStore {
     }
   }
 
+  @override
   Future<void> dispose() => _statuses.close();
-  void _emit(ServiceStatus status) { if (!_statuses.isClosed) _statuses.add(status); }
+
+  void _emit(ServiceStatus status) {
+    if (!_statuses.isClosed) _statuses.add(status);
+  }
 }

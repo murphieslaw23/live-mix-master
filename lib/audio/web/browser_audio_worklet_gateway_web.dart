@@ -6,11 +6,15 @@ import 'package:web/web.dart' as web;
 
 import 'browser_audio_processing_controller.dart';
 import 'browser_capture_controller.dart';
+import 'browser_mixer_controller.dart';
+import 'browser_mixer_protocol.dart';
 import 'browser_recording_controller.dart';
 
 typedef BrowserActiveStreamProvider = web.MediaStream? Function();
 
 const int _recorderMaxBytes = 64 * 1024 * 1024;
+const int _recorderRenderQuantumFrames = 128;
+const int _recorderBackpressureBudgetMilliseconds = 500;
 const Duration _recorderHandshakeTimeout = Duration(seconds: 2);
 const Duration _recorderStopTimeout = Duration(seconds: 2);
 const Duration _recorderExportTimeout = Duration(seconds: 2);
@@ -18,12 +22,15 @@ const Duration _recorderExportTimeout = Duration(seconds: 2);
 class WebAudioWorkletGateway
     implements
         BrowserAudioProcessingGateway,
+        BrowserMixerGateway,
         BrowserRecordingGateway,
         BrowserRecordingLifecycleGateway {
   WebAudioWorkletGateway({required BrowserActiveStreamProvider activeStream})
       : _activeStream = activeStream;
 
   final BrowserActiveStreamProvider _activeStream;
+  final StreamController<BrowserMixerTelemetry> _mixerTelemetry =
+      StreamController<BrowserMixerTelemetry>.broadcast();
 
   web.AudioContext? _context;
   web.MediaStreamAudioSourceNode? _sourceNode;
@@ -37,6 +44,20 @@ class WebAudioWorkletGateway
   BrowserRecordingArtifact? _lastRecordingArtifact;
   void Function(BrowserRecordingException failure)? _recordingFailureHandler;
   bool _recordingActive = false;
+
+  @override
+  Stream<BrowserMixerTelemetry> get telemetry => _mixerTelemetry.stream;
+
+  @override
+  Future<void> configure(BrowserMixerConfiguration configuration) async {
+    final workletNode = _workletNode;
+    if (workletNode == null) {
+      throw StateError(
+        'MIXER CONFIGURATION UNAVAILABLE — AUDIOWORKLET NOT ACTIVE',
+      );
+    }
+    workletNode.port.postMessage(configuration.toMessage().jsify());
+  }
 
   @override
   void setRecordingFailureHandler(
@@ -85,6 +106,11 @@ class WebAudioWorkletGateway
               recorderWorker.postMessage(message);
               break;
             case 'telemetry':
+              final telemetry =
+                  BrowserMixerTelemetry.tryParse(message?.dartify());
+              if (telemetry != null && !_mixerTelemetry.isClosed) {
+                _mixerTelemetry.add(telemetry);
+              }
               workletNode.port.postMessage(
                 <String, Object?>{'type': 'telemetryAck'}.jsify(),
               );
@@ -236,7 +262,11 @@ class WebAudioWorkletGateway
       }
     }
 
-    _setWorkletRecording(workletNode, enabled: true);
+    _setWorkletRecording(
+      workletNode,
+      enabled: true,
+      maxOutstandingPcm: _recorderMaxOutstandingPcm(context.sampleRate),
+    );
     _recordingActive = true;
   }
 
@@ -371,17 +401,28 @@ class WebAudioWorkletGateway
     }
   }
 
+  int _recorderMaxOutstandingPcm(num sampleRate) {
+    final framesInBudget =
+        sampleRate * _recorderBackpressureBudgetMilliseconds / 1000;
+    return (framesInBudget / _recorderRenderQuantumFrames)
+        .ceil()
+        .clamp(1, 4096)
+        .toInt();
+  }
+
   void _setWorkletRecording(
     web.AudioWorkletNode workletNode, {
     required bool enabled,
+    int? maxOutstandingPcm,
   }) {
-    workletNode.port.postMessage(
-      <String, Object?>{
-        'type': 'recording',
-        'enabled': enabled,
-        'maxOutstandingPcm': 4,
-      }.jsify(),
-    );
+    final message = <String, Object?>{
+      'type': 'recording',
+      'enabled': enabled,
+    };
+    if (maxOutstandingPcm != null) {
+      message['maxOutstandingPcm'] = maxOutstandingPcm;
+    }
+    workletNode.port.postMessage(message.jsify());
   }
 
   void _failPendingRecordingOperations(BrowserRecordingException failure) {

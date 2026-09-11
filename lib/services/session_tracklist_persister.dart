@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'reliability_models.dart';
-import 'session_tracklist_store.dart';
+import 'session_tracklist_repository.dart';
 
 class SessionTracklistPersister {
   SessionTracklistPersister({
@@ -9,7 +9,7 @@ class SessionTracklistPersister {
     this.debounce = const Duration(seconds: 2),
   });
 
-  final SessionTracklistStore store;
+  final SessionTracklistRepository store;
   final Duration debounce;
   Timer? _timer;
   List<TracklistEntry>? _pending;
@@ -18,7 +18,7 @@ class SessionTracklistPersister {
   Stream<ServiceStatus> get onStatus => store.onStatus;
 
   void schedule(Iterable<TracklistEntry> entries) {
-    _pending = List.unmodifiable(entries);
+    _pending = List<TracklistEntry>.unmodifiable(entries);
     _timer?.cancel();
     _timer = Timer(debounce, flush);
   }

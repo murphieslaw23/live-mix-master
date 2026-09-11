@@ -54,8 +54,15 @@ abstract interface class BrowserMediaDeviceChangeClient {
   void setDeviceChangeHandler(void Function() handler);
 }
 
+abstract interface class BrowserMediaDisconnectClient {
+  void disconnectActiveStream();
+}
+
 class DefaultBrowserMediaGateway
-    implements BrowserMediaGateway, BrowserMediaLifecycleGateway {
+    implements
+        BrowserMediaGateway,
+        BrowserMediaLifecycleGateway,
+        BrowserMediaDisconnectGateway {
   DefaultBrowserMediaGateway({required BrowserMediaClient client})
       : _client = client;
 
@@ -75,6 +82,14 @@ class DefaultBrowserMediaGateway
     if (client is BrowserMediaDeviceChangeClient) {
       (client as BrowserMediaDeviceChangeClient)
           .setDeviceChangeHandler(_handleDeviceChange);
+    }
+  }
+
+  @override
+  void disconnectActiveStream() {
+    final client = _client;
+    if (client is BrowserMediaDisconnectClient) {
+      (client as BrowserMediaDisconnectClient).disconnectActiveStream();
     }
   }
 
