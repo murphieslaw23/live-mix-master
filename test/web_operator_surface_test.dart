@@ -71,22 +71,25 @@ void main() {
     await _tapVisible(tester, 'Solo');
     expect(mixerController.state.solo, isTrue);
 
-    mixerGateway.publish(
-      const BrowserMixerTelemetry(
-        channelMeters: <String, BrowserChannelMeter>{
-          'mic-test': BrowserChannelMeter(
-            peakLeft: 0.5,
-            peakRight: 0.4,
-            rmsLeft: 0.25,
-            rmsRight: 0.2,
-            clipping: false,
-          ),
-        },
-        masterPeakLeft: 0.45,
-        masterPeakRight: 0.35,
-        limiterActive: false,
-      ),
-    );
+    await tester.runAsync(() async {
+      mixerGateway.publish(
+        const BrowserMixerTelemetry(
+          channelMeters: <String, BrowserChannelMeter>{
+            'mic-test': BrowserChannelMeter(
+              peakLeft: 0.5,
+              peakRight: 0.4,
+              rmsLeft: 0.25,
+              rmsRight: 0.2,
+              clipping: false,
+            ),
+          },
+          masterPeakLeft: 0.45,
+          masterPeakRight: 0.35,
+          limiterActive: false,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    });
     await _pumpBounded(tester);
     expect(find.textContaining('0.500'), findsOneWidget);
     expect(find.textContaining('0.250'), findsOneWidget);
@@ -201,7 +204,7 @@ class _CaptureGateway
 
 class _MixerGateway implements BrowserMixerGateway {
   final StreamController<BrowserMixerTelemetry> _telemetry =
-      StreamController<BrowserMixerTelemetry>.broadcast(sync: true);
+      StreamController<BrowserMixerTelemetry>.broadcast();
 
   @override
   Stream<BrowserMixerTelemetry> get telemetry => _telemetry.stream;
