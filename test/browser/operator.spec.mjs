@@ -102,7 +102,11 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await expect(
     page.getByText('CAPTURE ENDED / ACCESS REVOKED — RECONNECT REQUIRED'),
   ).toBeVisible();
-  await expect(slider).toBeDisabled();
+  await expect(mute).toBeDisabled();
+  await expect(solo).toBeDisabled();
+  await expect(
+    page.getByRole('group', { name: /^Channel fader/ }).getByRole('slider'),
+  ).toHaveCount(0);
 
   await activateControl(connect);
   await expect(page.getByText(/CAPTURE ACTIVE —/)).toBeVisible();
