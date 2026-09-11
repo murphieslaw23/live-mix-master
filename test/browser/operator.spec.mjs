@@ -150,6 +150,8 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await title.fill('Corrected Title');
   await expect(artist).toHaveValue('Corrected Artist');
   await expect(title).toHaveValue('Corrected Title');
+  await title.press('Tab');
+  await expect(title).not.toBeFocused();
   await activateButton(page, 'Save correction');
 
   await page.reload();
