@@ -5,11 +5,15 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHROMAPRINT_VERSION="1.6.1"
 CHROMAPRINT_SHA256="3368805af0ee47b9df74df10b5001a44569e01df2844dab520031720dde9ad23"
 CHROMAPRINT_URL="https://github.com/acoustid/chromaprint/releases/download/v${CHROMAPRINT_VERSION}/chromaprint-${CHROMAPRINT_VERSION}.tar.gz"
+KISSFFT_COMMIT="febd4caeed32e33ad8b2e0bb5ea77542c40f18ec"
+KISSFFT_TREE="ee008383aef701c09030914b8a2878b656bb25b7"
+KISSFFT_URL="https://github.com/mborgerding/kissfft.git"
 EXPECTED_EMSCRIPTEN_VERSION="6.0.9"
 
 VENDOR_DIR="$ROOT_DIR/build/vendor"
 ARCHIVE="$VENDOR_DIR/chromaprint-${CHROMAPRINT_VERSION}.tar.gz"
 SOURCE_DIR="$VENDOR_DIR/chromaprint-${CHROMAPRINT_VERSION}"
+KISSFFT_DIR="$VENDOR_DIR/kissfft-${KISSFFT_COMMIT}"
 CMAKE_BUILD_DIR="$ROOT_DIR/build/chromaprint-cmake"
 OUTPUT_DIR="$ROOT_DIR/build/chromaprint-wasm"
 WRAPPER="$ROOT_DIR/web/fingerprint/chromaprint/lmm_chromaprint_wrapper.cpp"
@@ -28,6 +32,7 @@ require_command em++
 require_command cmake
 require_command tar
 require_command sha256sum
+require_command git
 
 EMSCRIPTEN_VERSION="$(emcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 if [[ "$EMSCRIPTEN_VERSION" != "$EXPECTED_EMSCRIPTEN_VERSION" ]]; then
@@ -58,9 +63,23 @@ fi
 
 echo "$CHROMAPRINT_SHA256  $ARCHIVE" | sha256sum --check -
 
-rm -rf "$SOURCE_DIR" "$CMAKE_BUILD_DIR"
-mkdir -p "$SOURCE_DIR" "$CMAKE_BUILD_DIR"
+rm -rf "$SOURCE_DIR" "$KISSFFT_DIR" "$CMAKE_BUILD_DIR"
+mkdir -p "$SOURCE_DIR" "$KISSFFT_DIR" "$CMAKE_BUILD_DIR"
 tar -xzf "$ARCHIVE" --strip-components=1 -C "$SOURCE_DIR"
+
+# Chromaprint v1.6.1 vendors this exact KissFFT commit via its
+# src/3rdparty/update_kissfft.sh helper, but the release archive omits the
+# subtree contents. Fetch the pinned commit and verify both commit and tree.
+git -C "$KISSFFT_DIR" init -q
+git -C "$KISSFFT_DIR" remote add origin "$KISSFFT_URL"
+git -C "$KISSFFT_DIR" fetch -q --depth 1 origin "$KISSFFT_COMMIT"
+git -C "$KISSFFT_DIR" checkout -q --detach FETCH_HEAD
+ACTUAL_KISSFFT_COMMIT="$(git -C "$KISSFFT_DIR" rev-parse HEAD)"
+ACTUAL_KISSFFT_TREE="$(git -C "$KISSFFT_DIR" rev-parse 'HEAD^{tree}')"
+if [[ "$ACTUAL_KISSFFT_COMMIT" != "$KISSFFT_COMMIT" || "$ACTUAL_KISSFFT_TREE" != "$KISSFFT_TREE" ]]; then
+  echo "KissFFT provenance mismatch" >&2
+  exit 2
+fi
 
 emcmake cmake \
   -S "$SOURCE_DIR" \
@@ -71,7 +90,7 @@ emcmake cmake \
   -DBUILD_TESTS=OFF \
   -DUSE_INTERNAL_AVRESAMPLE=ON \
   -DFFT_LIB=kissfft \
-  -DKISSFFT_ROOT="$SOURCE_DIR/src/3rdparty/kissfft"
+  -DKISSFFT_ROOT="$KISSFFT_DIR"
 
 cmake --build "$CMAKE_BUILD_DIR" --target chromaprint --parallel
 
