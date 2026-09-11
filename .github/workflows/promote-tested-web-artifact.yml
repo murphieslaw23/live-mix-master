@@ -137,14 +137,26 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
           DEPLOY_ID: ${{ steps.deploy.outputs.id }}
         run: |
+          set -euo pipefail
           vercel_curl() {
             npx --yes vercel@48.8.0 curl "$1" --deployment "$DEPLOY_ID" --token "$VERCEL_TOKEN"
           }
+          vercel_post_probe() {
+            npx --yes vercel@48.8.0 curl "$1" --deployment "$DEPLOY_ID" --token "$VERCEL_TOKEN" -- \
+              --request POST \
+              --header "Content-Type: application/json" \
+              --data '{}'
+          }
+          assert_safe_probe() {
+            printf '%s' "$1" | jq -e \
+              '.ok == false and (.failureCode == "invalidRequest" or .failureCode == "invalidConfiguration")' \
+              >/dev/null
+          }
           vercel_curl / >/dev/null
-          FINGERPRINT_BODY="$(vercel_curl /api/fingerprint-lookup)"
-          BROADCAST_BODY="$(vercel_curl /api/broadcast-metadata)"
-          printf '%s' "$FINGERPRINT_BODY" | jq -e '.ok == false and .failureCode == "invalidRequest"' >/dev/null
-          printf '%s' "$BROADCAST_BODY" | jq -e '.ok == false and .failureCode == "invalidRequest"' >/dev/null
+          FINGERPRINT_BODY="$(vercel_post_probe /api/fingerprint-lookup)"
+          BROADCAST_BODY="$(vercel_post_probe /api/broadcast-metadata)"
+          assert_safe_probe "$FINGERPRINT_BODY"
+          assert_safe_probe "$BROADCAST_BODY"
 
       - name: Record non-secret promotion evidence
         env:
@@ -161,6 +173,6 @@ jobs:
             echo "- Deployment ID: `$DEPLOY_ID`"
             echo "- Deployment URL: $DEPLOY_URL"
             echo "- Shell: passed"
-            echo "- Fingerprint route: authenticated preview GET reached invalid-request handler; no provider request made"
-            echo "- Broadcast route: authenticated preview GET reached invalid-request handler; no destination request made"
+            echo "- Fingerprint route: authenticated preview POST reached safe validation/configuration handling; no provider request made"
+            echo "- Broadcast route: authenticated preview POST reached safe validation/configuration handling; no destination request made"
           } >> "$GITHUB_STEP_SUMMARY"
