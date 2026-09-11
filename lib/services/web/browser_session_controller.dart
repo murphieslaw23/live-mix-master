@@ -43,7 +43,31 @@ class BrowserSessionState {
           : null;
 }
 
-class BrowserSessionController {
+abstract interface class BrowserSessionPort {
+  BrowserSessionState get state;
+
+  void addListener(BrowserSessionStateListener listener);
+
+  void removeListener(BrowserSessionStateListener listener);
+
+  Future<void> initialize();
+
+  Future<TracklistEntry> correct({
+    required int index,
+    required String artist,
+    required String title,
+  });
+
+  Future<void> exportJson();
+
+  Future<void> exportCsv();
+
+  Future<void> exportM3u();
+
+  Future<void> dispose();
+}
+
+class BrowserSessionController implements BrowserSessionPort {
   BrowserSessionController({
     required SessionTracklistRepository repository,
     required BrowserTracklistDownloadGateway downloadGateway,
@@ -73,20 +97,24 @@ class BrowserSessionController {
   LiveSessionTracklistController? _live;
   bool _disposed = false;
 
+  @override
   BrowserSessionState get state => _state;
   String? get sessionId => _state.sessionId;
   List<TracklistEntry> get entries => _state.entries;
 
+  @override
   void addListener(BrowserSessionStateListener listener) {
     if (!_disposed) {
       _listeners.add(listener);
     }
   }
 
+  @override
   void removeListener(BrowserSessionStateListener listener) {
     _listeners.remove(listener);
   }
 
+  @override
   Future<void> initialize() async {
     _ensureNotDisposed();
     if (_state.initialized) {
@@ -132,6 +160,7 @@ class BrowserSessionController {
     );
   }
 
+  @override
   Future<TracklistEntry> correct({
     required int index,
     required String artist,
@@ -155,24 +184,28 @@ class BrowserSessionController {
     return corrected;
   }
 
+  @override
   Future<void> exportJson() => _export(
         format: ExportFormat.json,
         extension: 'json',
         mimeType: 'application/json',
       );
 
+  @override
   Future<void> exportCsv() => _export(
         format: ExportFormat.csv,
         extension: 'csv',
         mimeType: 'text/csv;charset=utf-8',
       );
 
+  @override
   Future<void> exportM3u() => _export(
         format: ExportFormat.m3u,
         extension: 'm3u',
         mimeType: 'audio/x-mpegurl',
       );
 
+  @override
   Future<void> dispose() async {
     if (_disposed) {
       return;
