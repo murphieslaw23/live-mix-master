@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/services/reliability_models.dart';
 import '../lib/services/session_tracklist_repository.dart';
 import '../lib/services/web/browser_session_controller.dart';
+import '../lib/services/web/fingerprint_proxy_client.dart';
 
 TracklistEntry recoveredEntry() => TracklistEntry(
       sessionId: 'stored-session',
@@ -81,6 +82,38 @@ void main() {
     expect(corrected.title, 'Corrected Title');
     expect(repository.savedSnapshots, hasLength(1));
     expect(repository.savedSnapshots.single.single.title, 'Corrected Title');
+
+    await controller.dispose();
+  });
+
+
+  test('matched fingerprint becomes a persisted automatic tracklist entry', () async {
+    final repository = _FakeSessionTracklistRepository();
+    final controller = BrowserSessionController(
+      repository: repository,
+      downloadGateway: _FakeDownloadGateway(),
+      createSessionId: () => 'generated-session',
+      clock: () => DateTime.utc(2026, 9, 11, 10, 0, 12),
+    );
+    await controller.initialize();
+
+    final accepted = await controller.recordFingerprintMatch(
+      track: const FingerprintProxyTrack(
+        artist: 'System Corrupt',
+        title: 'Signal Ritual',
+        release: null,
+        providerId: 'acoustid-1',
+        confidence: 0.93,
+      ),
+    );
+
+    expect(accepted, isTrue);
+    expect(controller.entries, hasLength(1));
+    expect(controller.entries.single.provenance, TrackProvenance.automatic);
+    expect(controller.entries.single.artist, 'System Corrupt');
+    expect(controller.entries.single.title, 'Signal Ritual');
+    expect(controller.entries.single.providerId, 'acoustid-1');
+    expect(repository.savedSnapshots, hasLength(1));
 
     await controller.dispose();
   });
