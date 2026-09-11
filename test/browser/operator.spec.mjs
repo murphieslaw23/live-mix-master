@@ -27,10 +27,14 @@ const sessionSeed = {
   ],
 };
 
+async function activateControl(control) {
+  await expect(control).toBeEnabled();
+  await control.evaluate((element) => element.click());
+}
+
 async function activateButton(page, name) {
   const button = page.getByRole('button', { name });
-  await expect(button).toBeEnabled();
-  await button.press('Enter');
+  await activateControl(button);
   return button;
 }
 
@@ -43,13 +47,12 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await enableFlutterAccessibility(page);
 
   const connect = page.getByRole('button', { name: 'CONNECT MIC / USB' });
-  await expect(connect).toBeEnabled();
-  await connect.press('Enter');
+  await activateControl(connect);
   await expect(page.getByText(/CAPTURE ACTIVE —/)).toBeVisible();
 
   const slider = page.getByRole('slider', { name: 'Channel fader' });
-  const mute = page.getByRole('button', { name: 'Mute' });
-  const solo = page.getByRole('button', { name: 'Solo' });
+  const mute = page.getByRole('switch', { name: 'Mute' });
+  const solo = page.getByRole('switch', { name: 'Solo' });
   await expect(slider).toBeEnabled();
   await expect(mute).toBeEnabled();
   await expect(solo).toBeEnabled();
@@ -66,18 +69,18 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await page.keyboard.press('ArrowLeft');
   await expect.poll(() => slider.getAttribute('aria-valuenow')).not.toBe(beforeFader);
 
-  await mute.press('Enter');
+  await activateControl(mute);
   await expect.poll(
     () => readNumericTelemetry(page, 'Master peak'),
     { timeout: 8_000 },
   ).toBeLessThan(0.005);
-  await mute.press('Enter');
+  await activateControl(mute);
   await expect.poll(
     () => readNumericTelemetry(page, 'Master peak'),
     { timeout: 8_000 },
   ).toBeGreaterThan(0.01);
 
-  await solo.press('Enter');
+  await activateControl(solo);
 
   await activateButton(page, 'START RECORDING');
   await expect(page.getByText('RECORDING ACTIVE — POST-MASTER PCM TO WAV')).toBeVisible();
@@ -99,7 +102,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   ).toBeVisible();
   await expect(slider).toBeDisabled();
 
-  await connect.press('Enter');
+  await activateControl(connect);
   await expect(page.getByText(/CAPTURE ACTIVE —/)).toBeVisible();
   await expect.poll(
     () => readNumericTelemetry(page, 'Channel peak'),
