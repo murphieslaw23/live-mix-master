@@ -141,6 +141,18 @@ jobs:
         run: node --test test/web_recorder_finalize_test.mjs
       - name: Verify Worklet-to-Worker recorder pipeline contract
         run: node --test test/web_recorder_pipeline_integration_test.mjs
+      - name: Prepare official fpcalc 1.6.1 reference
+        run: |
+          mkdir -p build/fpcalc-reference
+          curl -fsSL https://github.com/acoustid/chromaprint/releases/download/v1.6.1/chromaprint-fpcalc-1.6.1-linux-x86_64.tar.gz -o build/fpcalc-reference/fpcalc.tar.gz
+          echo 'fc16cd37a70168040bc9ceb45f1d4d1216f5a75bc4c9cf8564bea70ac6a45733  build/fpcalc-reference/fpcalc.tar.gz' | sha256sum --check -
+          tar -xzf build/fpcalc-reference/fpcalc.tar.gz -C build/fpcalc-reference
+          FPCALC_BIN="$(find build/fpcalc-reference -type f -name fpcalc | head -1)"
+          test -n "$FPCALC_BIN"
+          chmod +x "$FPCALC_BIN"
+          echo "FPCALC_BIN=$FPCALC_BIN" >> "$GITHUB_ENV"
+      - name: Verify official Chromaprint Wasm parity
+        run: node --test test/web_chromaprint_wasm_parity_test.mjs
       - name: Verify server-side fingerprint provider proxy contract
         run: node --test test/web_fingerprint_proxy_test.mjs
       - name: Verify server-side broadcast metadata proxy contract
