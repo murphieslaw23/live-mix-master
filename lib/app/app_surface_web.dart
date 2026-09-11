@@ -9,6 +9,7 @@ import '../audio/web/browser_recording_controller.dart';
 import '../design/live_mix_tokens.dart';
 import '../services/reliability_models.dart';
 import '../services/web/browser_fingerprint_lookup_controller.dart';
+import '../services/web/fingerprint_proxy_client.dart';
 import '../services/web/browser_session_controller.dart';
 import '../services/web/browser_session_runtime.dart';
 
