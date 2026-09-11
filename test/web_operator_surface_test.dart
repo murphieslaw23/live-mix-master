@@ -142,14 +142,10 @@ void main() {
     _stage('shell-unmounted');
     await mixerController.dispose();
     _stage('mixer-controller-disposed');
-    await tester.runAsync(() async {
-      await mixerGateway.dispose();
-      _stage('mixer-gateway-disposed');
-    });
-    // The session controller is injected into WebReleaseShell, so the shell does
-    // not own or dispose it. BrowserSessionController lifecycle is covered by
-    // its dedicated controller tests; forcing disposal here crosses widget-test
-    // ownership boundaries and deadlocks Flutter's fake-time stream cleanup.
+    // WebReleaseShell does not own the injected mixer gateway or session
+    // controller. Their lifecycle is verified by their dedicated controller
+    // contracts; closing injected dependency streams from a widget test can
+    // deadlock Flutter's fake-time test channel during finalization.
   });
 }
 
@@ -218,8 +214,6 @@ class _MixerGateway implements BrowserMixerGateway {
   Future<void> configure(BrowserMixerConfiguration configuration) async {}
 
   void publish(BrowserMixerTelemetry telemetry) => _telemetry.add(telemetry);
-
-  Future<void> dispose() => _telemetry.close();
 }
 
 class _RecordingGateway implements BrowserRecordingGateway {
