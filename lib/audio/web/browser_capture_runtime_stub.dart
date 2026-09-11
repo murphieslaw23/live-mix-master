@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'browser_audio_processing_controller.dart';
 import 'browser_capture_controller.dart';
 import 'browser_mixer_controller.dart';
