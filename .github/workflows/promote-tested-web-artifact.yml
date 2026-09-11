@@ -163,16 +163,17 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
           DEPLOY_ID: ${{ steps.deploy.outputs.id }}
         run: |
+          set -euo pipefail
           {
-            echo "## LiveMixMaster Web artifact promotion"
-            echo
-            echo "- Target: `$TARGET`"
-            echo "- Commit: `$COMMIT_SHA`"
-            echo "- Artifact ID: `$ARTIFACT_ID`"
-            echo "- Artifact digest: `$ARTIFACT_DIGEST`"
-            echo "- Deployment ID: `$DEPLOY_ID`"
-            echo "- Deployment URL: $DEPLOY_URL"
-            echo "- Shell: passed"
-            echo "- Fingerprint route: authenticated preview POST reached safe validation/configuration handling; no provider request made"
-            echo "- Broadcast route: authenticated preview POST reached safe validation/configuration handling; no destination request made"
+            printf '%s\n' '## LiveMixMaster Web artifact promotion'
+            printf '\n'
+            printf -- '- Target: `%s`\n' "$TARGET"
+            printf -- '- Commit: `%s`\n' "$COMMIT_SHA"
+            printf -- '- Artifact ID: `%s`\n' "$ARTIFACT_ID"
+            printf -- '- Artifact digest: `%s`\n' "$ARTIFACT_DIGEST"
+            printf -- '- Deployment ID: `%s`\n' "$DEPLOY_ID"
+            printf -- '- Deployment URL: %s\n' "$DEPLOY_URL"
+            printf '%s\n' '- Shell: passed'
+            printf '%s\n' '- Fingerprint route: authenticated preview POST reached safe validation/configuration handling; no provider request made'
+            printf '%s\n' '- Broadcast route: authenticated preview POST reached safe validation/configuration handling; no destination request made'
           } >> "$GITHUB_STEP_SUMMARY"
