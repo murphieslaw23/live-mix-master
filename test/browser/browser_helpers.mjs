@@ -76,10 +76,19 @@ export function writeEvidence(relativePath, value) {
 export async function readNumericTelemetry(page, label) {
   const row = page.getByText(label, { exact: true });
   await expect(row).toBeVisible();
-  const parentText = await row.locator('xpath=..').innerText();
-  const match = parentText.match(/(-?\d+(?:\.\d+)?)/g);
-  if (!match?.length) {
-    throw new Error(`No numeric telemetry found for ${label}: ${parentText}`);
+  const valueText = await row.evaluate((element) => {
+    let sibling = element.nextElementSibling;
+    for (let index = 0; sibling && index < 3; index += 1) {
+      const text = sibling.textContent?.trim() ?? '';
+      if (/^-?\d+(?:\.\d+)?$/.test(text)) {
+        return text;
+      }
+      sibling = sibling.nextElementSibling;
+    }
+    return null;
+  });
+  if (valueText == null) {
+    throw new Error(`No numeric telemetry sibling found for ${label}`);
   }
-  return Number(match.at(-1));
+  return Number(valueText);
 }
