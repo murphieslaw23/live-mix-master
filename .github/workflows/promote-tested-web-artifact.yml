@@ -112,20 +112,33 @@ jobs:
         id: deploy
         working-directory: release-payload
         run: |
+          set -euo pipefail
           if [ "$TARGET" = production ]; then
             DEPLOY_URL="$(npx --yes vercel@48.2.8 deploy --prod --yes --token "$VERCEL_TOKEN")"
           else
             DEPLOY_URL="$(npx --yes vercel@48.2.8 deploy --yes --token "$VERCEL_TOKEN")"
           fi
+          DEPLOY_HOST="${DEPLOY_URL#https://}"
+          DEPLOY_HOST="${DEPLOY_HOST%/}"
+          DEPLOY_JSON="$(curl --fail --silent --show-error --location --retry 3 \
+            --header "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/$DEPLOY_HOST?teamId=$VERCEL_ORG_ID")"
+          DEPLOY_ID="$(printf '%s' "$DEPLOY_JSON" | jq -r '.id')"
+          if ! [[ "$DEPLOY_ID" =~ ^dpl_[A-Za-z0-9]+$ ]]; then
+            echo "::error title=Invalid Vercel deployment ID::Could not resolve deployment ID for $DEPLOY_HOST"
+            exit 1
+          fi
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+          echo "id=$DEPLOY_ID" >> "$GITHUB_OUTPUT"
 
       - name: Verify protected release shell and server-route presence
         working-directory: release-payload
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          DEPLOY_ID: ${{ steps.deploy.outputs.id }}
         run: |
           vercel_curl() {
-            npx --yes vercel@48.8.0 curl "$1" --deployment "$DEPLOY_URL" --token "$VERCEL_TOKEN"
+            npx --yes vercel@48.8.0 curl "$1" --deployment "$DEPLOY_ID" --token "$VERCEL_TOKEN"
           }
           vercel_curl / >/dev/null
           FINGERPRINT_BODY="$(vercel_curl /api/fingerprint-lookup)"
@@ -136,6 +149,7 @@ jobs:
       - name: Record non-secret promotion evidence
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          DEPLOY_ID: ${{ steps.deploy.outputs.id }}
         run: |
           {
             echo "## LiveMixMaster Web artifact promotion"
@@ -144,6 +158,7 @@ jobs:
             echo "- Commit: `$COMMIT_SHA`"
             echo "- Artifact ID: `$ARTIFACT_ID`"
             echo "- Artifact digest: `$ARTIFACT_DIGEST`"
+            echo "- Deployment ID: `$DEPLOY_ID`"
             echo "- Deployment URL: $DEPLOY_URL"
             echo "- Shell: passed"
             echo "- Fingerprint route: authenticated preview GET reached invalid-request handler; no provider request made"
