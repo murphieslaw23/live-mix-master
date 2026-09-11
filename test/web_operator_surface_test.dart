@@ -143,7 +143,7 @@ void main() {
     _stage('shell-unmounted');
     await mixerController.dispose();
     _stage('mixer-controller-disposed');
-    await mixerGateway.dispose();
+    await tester.runAsync(mixerGateway.dispose);
     _stage('mixer-gateway-disposed');
   });
 }
