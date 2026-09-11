@@ -60,13 +60,21 @@ jobs:
           fetch-depth: 1
 
       - name: Verify checked-out source identity
-        run: test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
+          test -f vercel.json
+          test -d api
 
-      - name: Download the tested web artifact
+      - name: Verify artifact provenance and download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          curl --fail --location --retry 3             --header "Accept: application/vnd.github+json"             --header "Authorization: Bearer $GH_TOKEN"             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             --output web-artifact.zip
+          curl --fail --silent --show-error --location --retry 3 --header "Accept: application/vnd.github+json" --header "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" --output artifact-metadata.json
+          test "$(jq -r '.name' artifact-metadata.json)" = live-mix-master-web
+          test "$(jq -r '.expired' artifact-metadata.json)" = false
+          test "$(jq -r '.workflow_run.head_sha' artifact-metadata.json)" = "$COMMIT_SHA"
+          test "$(jq -r '.digest' artifact-metadata.json)" = "$ARTIFACT_DIGEST"
+          curl --fail --location --retry 3 --header "Accept: application/vnd.github+json" --header "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" --output web-artifact.zip
           printf '%s  %s\n' "${ARTIFACT_DIGEST#sha256:}" web-artifact.zip | sha256sum --check -
 
       - name: Assemble deployable exact-artifact payload
@@ -79,7 +87,6 @@ jobs:
           WEB_ROOT="$(dirname "$WEB_INDEX")"
           cp -a "$WEB_ROOT"/. release-payload/build/web/
           test -f release-payload/build/web/index.html
-          test -d api
           cp -a api release-payload/api
           cp vercel.json release-payload/vercel.json
           cat > release-payload/.vercel/project.json <<EOF
