@@ -12,6 +12,19 @@ function iconBySize(manifest, size) {
   );
 }
 
+function assertPngDimensions(relativePath, width, height) {
+  const bytes = readFileSync(resolve(root, relativePath));
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  assert.ok(
+    bytes.subarray(0, signature.length).equals(signature),
+    `${relativePath} must contain a real PNG payload`,
+  );
+  assert.equal(bytes.toString('ascii', 12, 16), 'IHDR');
+  assert.equal(bytes.readUInt32BE(16), width, `${relativePath} width must be ${width}`);
+  assert.equal(bytes.readUInt32BE(20), height, `${relativePath} height must be ${height}`);
+}
+
 test('PWA manifest packages deterministic 192 and 512 maskable PNG icons', () => {
   const manifest = JSON.parse(read('web/manifest.json'));
 
@@ -24,6 +37,9 @@ test('PWA manifest packages deterministic 192 and 512 maskable PNG icons', () =>
       existsSync(resolve(root, 'web', icon.src)),
       `manifest icon ${icon.src} must exist in web/`,
     );
+
+    const [width, height] = size.split('x').map(Number);
+    assertPngDimensions(`web/${icon.src}`, width, height);
   }
 });
 
