@@ -12,6 +12,7 @@ import 'browser_mixer_protocol.dart';
 import 'browser_recording_controller.dart';
 
 typedef BrowserActiveStreamProvider = web.MediaStream? Function();
+typedef BrowserFingerprintPreparationUnavailableHandler = void Function();
 
 const int _recorderMaxBytes = 64 * 1024 * 1024;
 const int _recorderRenderQuantumFrames = 128;
@@ -29,11 +30,17 @@ class WebAudioWorkletGateway
   WebAudioWorkletGateway({
     required BrowserActiveStreamProvider activeStream,
     BrowserPreparedFingerprintHandler? preparedFingerprintHandler,
+    BrowserFingerprintPreparationUnavailableHandler?
+        fingerprintPreparationUnavailableHandler,
   })  : _activeStream = activeStream,
-        _preparedFingerprintHandler = preparedFingerprintHandler;
+        _preparedFingerprintHandler = preparedFingerprintHandler,
+        _fingerprintPreparationUnavailableHandler =
+            fingerprintPreparationUnavailableHandler;
 
   final BrowserActiveStreamProvider _activeStream;
   final BrowserPreparedFingerprintHandler? _preparedFingerprintHandler;
+  final BrowserFingerprintPreparationUnavailableHandler?
+      _fingerprintPreparationUnavailableHandler;
   final StreamController<BrowserMixerTelemetry> _mixerTelemetry =
       StreamController<BrowserMixerTelemetry>.broadcast();
 
@@ -122,6 +129,7 @@ class WebAudioWorkletGateway
           },
           onUnavailable: () {
             _setWorkletAnalysis(workletNode, enabled: false);
+            _fingerprintPreparationUnavailableHandler?.call();
           },
         );
       }
