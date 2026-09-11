@@ -38,6 +38,15 @@ async function activateButton(page, name) {
   return button;
 }
 
+async function downloadSessionJson(page, testInfo, fileName) {
+  const downloadPromise = page.waitForEvent('download');
+  await activateButton(page, 'Export session JSON');
+  const download = await downloadPromise;
+  const path = testInfo.outputPath(fileName);
+  await download.saveAs(path);
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
 test('capture, meter, mix, record, recover, persist, and export from the tested artifact', async ({ page }, testInfo) => {
   test.setTimeout(70_000);
   const failures = [];
@@ -122,32 +131,39 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   await enableFlutterAccessibility(page);
 
   await expect(page.getByText('Session tracklist')).toBeVisible();
+  await expect(page.getByText('SESSION e2e-session — 1 ENTRIES')).toBeVisible();
+  const recoveredSession = await downloadSessionJson(
+    page,
+    testInfo,
+    'session-recovered.json',
+  );
+  expect(recoveredSession.trackCount).toBe(1);
+  expect(recoveredSession.entries[0].artist).toBe('Recovered Artist');
+  expect(recoveredSession.entries[0].title).toBe('Recovered Title');
+  expect(recoveredSession.entries[0].provenance).toBe('manual');
+
   const artist = page.getByRole('textbox', { name: 'Artist' });
   const title = page.getByRole('textbox', { name: 'Title' });
-  await expect(artist).toHaveValue('Recovered Artist');
-  await expect(title).toHaveValue('Recovered Title');
-
+  await expect(artist).toBeEditable();
+  await expect(title).toBeEditable();
   await artist.fill('Corrected Artist');
   await title.fill('Corrected Title');
-  await activateButton(page, 'Save correction');
   await expect(artist).toHaveValue('Corrected Artist');
   await expect(title).toHaveValue('Corrected Title');
+  await activateButton(page, 'Save correction');
 
   await page.reload();
   await enableFlutterAccessibility(page);
-  await expect(page.getByRole('textbox', { name: 'Artist' })).toHaveValue('Corrected Artist');
-  await expect(page.getByRole('textbox', { name: 'Title' })).toHaveValue('Corrected Title');
-
-  const jsonDownloadPromise = page.waitForEvent('download');
-  await activateButton(page, 'Export session JSON');
-  const jsonDownload = await jsonDownloadPromise;
-  const jsonPath = testInfo.outputPath('session-export.json');
-  await jsonDownload.saveAs(jsonPath);
-  const exportedSession = JSON.parse(readFileSync(jsonPath, 'utf8'));
-  expect(exportedSession.trackCount).toBe(1);
-  expect(exportedSession.entries[0].artist).toBe('Corrected Artist');
-  expect(exportedSession.entries[0].title).toBe('Corrected Title');
-  expect(exportedSession.entries[0].provenance).toBe('manual');
+  await expect(page.getByText('SESSION e2e-session — 1 ENTRIES')).toBeVisible();
+  const correctedSession = await downloadSessionJson(
+    page,
+    testInfo,
+    'session-corrected.json',
+  );
+  expect(correctedSession.trackCount).toBe(1);
+  expect(correctedSession.entries[0].artist).toBe('Corrected Artist');
+  expect(correctedSession.entries[0].title).toBe('Corrected Title');
+  expect(correctedSession.entries[0].provenance).toBe('manual');
 
   const evidencePath = writeEvidence('chromium-operator.json', {
     capture: 'fake microphone via Chromium media switches',
