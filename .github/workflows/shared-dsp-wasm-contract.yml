@@ -54,7 +54,10 @@ jobs:
           node --test test/web_dsp_wasm_build_contract_test.mjs test/web_dsp_wasm_parity_test.mjs
       - name: Verify DSP startup handshake contract
         run: |
-          node --test test/web_audio_graph_integration_test.mjs test/web_audio_worklet_processor_test.mjs
+          node --test \
+            test/web_audio_graph_integration_test.mjs \
+            test/web_audio_worklet_processor_test.mjs \
+            test/web_audio_worklet_wasm_transport_contract_test.mjs
           flutter test test/web_dsp_startup_boundary_test.dart
       - name: Verify DSP Wasm render cutover contract
         run: |
