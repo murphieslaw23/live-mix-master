@@ -40,6 +40,7 @@ class InputChannelConfig {
     required this.name,
     required this.kind,
     required this.endpointId,
+    this.channelPairIndex = 0,
     this.trimDb = 0,
     this.fader = .8,
     this.muted = false,
@@ -50,6 +51,7 @@ class InputChannelConfig {
   final String name;
   final AudioInputKind kind;
   final String endpointId;
+  final int channelPairIndex;
   final double trimDb;
   final double fader;
   final bool muted;
