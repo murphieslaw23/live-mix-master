@@ -23,8 +23,19 @@ void main() {
       expect(source, contains('CompactMonitorView('));
       expect(source, contains('currentTrackTitle: liveState.currentTrackTitle'));
       expect(source, contains('masterPeakLevel: liveState.masterPeakLevel'));
+      expect(source, contains('liveSourceLabel: liveState.sourceLabel'));
+      expect(source, contains('liveSourceActive: liveState.captureActive'));
       expect(source, contains('WebLiveMixerReference('));
       expect(source, contains('liveState: liveState'));
+    });
+
+    test('compact monitor keeps fixture devices only when no live source override exists', () async {
+      final source = await File('lib/features/monitor/compact_monitor_view.dart').readAsString();
+
+      expect(source, contains('String? liveSourceLabel'));
+      expect(source, contains('bool? liveSourceActive'));
+      expect(source, contains('if (liveSourceActive != null)'));
+      expect(source, contains("liveSourceLabel ?? 'NO ACTIVE SOURCE'"));
     });
 
     test('Web runtime factory reuses the same AudioWorklet graph on browser builds', () async {
