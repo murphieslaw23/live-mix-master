@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/app/web_reference_live_state.dart';
 import 'package:live_mix_master/audio/web/browser_capture_controller.dart';
 import 'package:live_mix_master/audio/web/browser_mixer_controller.dart';
+import 'package:live_mix_master/audio/web/browser_mixer_protocol.dart';
 import 'package:live_mix_master/audio/web/browser_recording_controller.dart';
 import 'package:live_mix_master/services/web/browser_fingerprint_lookup_controller.dart';
 import 'package:live_mix_master/services/web/fingerprint_proxy_client.dart';
@@ -24,7 +25,13 @@ void main() {
         fader: .72,
         muted: false,
         solo: true,
-        channelPeak: .57,
+        channelMeter: BrowserChannelMeter(
+          peakLeft: .43,
+          peakRight: .57,
+          rmsLeft: .21,
+          rmsRight: .28,
+          clipping: false,
+        ),
         masterPeakLeft: .61,
         masterPeakRight: .83,
         limiterActive: true,
