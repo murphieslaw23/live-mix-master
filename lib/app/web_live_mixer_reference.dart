@@ -131,18 +131,6 @@ class WebLiveMixerReference extends StatelessWidget {
             tone: LmmStatusTone.neutral,
             icon: Icons.portable_wifi_off,
           ),
-          if (onOpenOperator != null) ...[
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: 'WEB OPERATOR',
-              onPressed: onOpenOperator,
-              constraints: const BoxConstraints(
-                minWidth: LiveMixTokens.minimumTarget,
-                minHeight: LiveMixTokens.minimumTarget,
-              ),
-              icon: const Icon(Icons.tune_rounded),
-            ),
-          ],
         ],
       ),
     );
