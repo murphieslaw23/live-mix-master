@@ -192,7 +192,10 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     }
 
     try {
-      const instance = new WebAssembly.Instance(message.module, {});
+      const module = message.wasmBytes instanceof ArrayBuffer
+        ? new WebAssembly.Module(message.wasmBytes)
+        : message.module;
+      const instance = new WebAssembly.Instance(module, {});
       const abiVersion = instance.exports.lmm_dsp_abi_version;
       const maxChannels = instance.exports.lmm_dsp_max_channels;
       const memory = instance.exports.memory;
