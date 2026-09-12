@@ -71,11 +71,16 @@ void main() {
         const Size(390, 844),
         const CompactMonitorView(
           isStreaming: false,
+          broadcastConfigured: true,
           isRecording: true,
           currentTrackTitle: 'FORWARD THE REVOLUTION',
           currentArtist: 'SPIRAL TRIBE',
           streamBitrateKbps: 320,
           masterPeakLevel: .84,
+          matchConfidence: .94,
+          loudnessLufs: -14.2,
+          truePeakDbtp: -6.0,
+          limiterActive: true,
         ),
       );
 
@@ -88,8 +93,7 @@ void main() {
         '-14.2 LUFS',
         'TRUE PEAK',
         '-6.0 dBTP',
-        'RECONNECTING',
-        'Attempt 2 of 5',
+        'OFFLINE',
         'Local recording continues',
         'CURRENT TRACK',
         'ARTIST',
