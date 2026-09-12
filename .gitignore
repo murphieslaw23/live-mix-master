@@ -19,3 +19,4 @@ native/vendor/
 assets/fonts/*.ttf
 assets/fonts/*.tmp
 web/fingerprint/vendor/
+web/audio/livemixmaster-dsp.wasm

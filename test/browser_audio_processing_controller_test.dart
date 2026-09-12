@@ -42,6 +42,32 @@ void main() {
       expect(controller.state.status, BrowserAudioProcessingStatus.unsupported);
       expect(controller.state.message, contains('AUDIOWORKLET NOT AVAILABLE'));
     });
+
+    test('post-ready DSP failure becomes an explicit processing error', () async {
+      final gateway = _FakeProcessingGateway();
+      final controller = BrowserAudioProcessingController(gateway: gateway);
+      const source = BrowserCaptureSource(
+        kind: BrowserCaptureKind.microphone,
+        id: 'mic-1',
+        label: 'USB MIXER',
+      );
+      final observed = <BrowserAudioProcessingStatus>[];
+      controller.addListener((state) => observed.add(state.status));
+
+      await controller.startForSource(source);
+      gateway.emitFailure(
+        'DSP RENDER QUANTUM EXCEEDED — AUDIO ENGINE NOT READY',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.status, BrowserAudioProcessingStatus.error);
+      expect(
+        controller.state.message,
+        'DSP RENDER QUANTUM EXCEEDED — AUDIO ENGINE NOT READY',
+      );
+      expect(controller.state.source?.id, 'mic-1');
+      expect(observed, contains(BrowserAudioProcessingStatus.error));
+    });
   });
 
   group('BrowserAudioRuntimeCoordinator', () {
@@ -134,10 +160,42 @@ void main() {
       await mixer.dispose();
       await mixerGateway.dispose();
     });
+
+    test('post-ready DSP failure detaches mixer and preserves processing error', () async {
+      final captureGateway = _LifecycleCaptureGateway();
+      final capture = BrowserCaptureController(gateway: captureGateway);
+      final processingGateway = _FakeProcessingGateway();
+      final processing = BrowserAudioProcessingController(gateway: processingGateway);
+      final mixerGateway = _FakeMixerGateway();
+      final mixer = BrowserMixerController(gateway: mixerGateway);
+      final coordinator = BrowserAudioRuntimeCoordinator(
+        captureController: capture,
+        processingController: processing,
+        mixerController: mixer,
+      );
+
+      await capture.requestMicrophone();
+      await coordinator.synchronize();
+      expect(mixer.state.enabled, isTrue);
+
+      processingGateway.emitFailure(
+        'DSP RENDER QUANTUM EXCEEDED — AUDIO ENGINE NOT READY',
+      );
+      await coordinator.synchronize();
+
+      expect(processing.state.status, BrowserAudioProcessingStatus.error);
+      expect(mixer.state.enabled, isFalse);
+      expect(mixer.state.activeChannelId, isNull);
+
+      await coordinator.dispose();
+      await mixer.dispose();
+      await mixerGateway.dispose();
+    });
   });
 }
 
-class _FakeProcessingGateway implements BrowserAudioProcessingGateway {
+class _FakeProcessingGateway
+    implements BrowserAudioProcessingGateway, BrowserAudioProcessingLifecycleGateway {
   _FakeProcessingGateway({
     this.startAttempt = const BrowserAudioProcessingAttempt.started(),
   });
@@ -145,6 +203,16 @@ class _FakeProcessingGateway implements BrowserAudioProcessingGateway {
   final BrowserAudioProcessingAttempt startAttempt;
   final List<String> startedSources = <String>[];
   int stopCount = 0;
+  void Function(String message)? _failureHandler;
+
+  @override
+  void setProcessingFailureHandler(void Function(String message) handler) {
+    _failureHandler = handler;
+  }
+
+  void emitFailure(String message) {
+    _failureHandler?.call(message);
+  }
 
   @override
   Future<BrowserAudioProcessingAttempt> start(BrowserCaptureSource source) async {

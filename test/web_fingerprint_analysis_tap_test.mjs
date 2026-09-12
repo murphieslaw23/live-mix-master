@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import test from 'node:test';
 
 class MockPort {
@@ -8,7 +9,7 @@ class MockPort {
   }
 
   postMessage(message) {
-    this.messages.push(message);
+    this.messages.push(structuredClone(message));
   }
 
   dispatch(message) {
@@ -28,6 +29,17 @@ globalThis.registerProcessor = (_name, ctor) => {
 };
 
 await import(new URL('../web/audio/livemixmaster-worklet.js', import.meta.url));
+const validDspModule = await WebAssembly.compile(
+  await fs.readFile(new URL('../web/audio/livemixmaster-dsp.wasm', import.meta.url)),
+);
+
+function initializeDsp(processor) {
+  processor.port.dispatch({ type: 'dspInit', abiVersion: 1, module: validDspModule });
+  assert.ok(
+    processor.port.messages.some((message) => message.type === 'dspReady'),
+    'fingerprint tap test requires canonical DSP readiness',
+  );
+}
 
 function stereoOutput(frames) {
   return [[new Float32Array(frames), new Float32Array(frames)]];
@@ -39,6 +51,7 @@ function channel(left, right = left) {
 
 test('fingerprint analysis tap is bounded independently from recording handoff', () => {
   const processor = new Processor();
+  initializeDsp(processor);
   processor.port.dispatch({
     type: 'configure',
     telemetryEvery: 1000,
@@ -52,10 +65,11 @@ test('fingerprint analysis tap is bounded independently from recording handoff',
   assert.equal(analysis.length, 1, 'analysis must run while recording is disabled');
   assert.equal(processor.port.messages.filter((message) => message.type === 'pcm').length, 0);
   assert.deepEqual(
-    Array.from(analysis[0].samples),
+    Array.from(analysis[0].samples).slice(0, 2),
     Array.from(Float32Array.of(0.98, -0.98)),
-    'analysis must receive post-master PCM',
+    'analysis must receive canonical post-master PCM',
   );
+  assert.equal(analysis[0].frames, 1);
   assert.equal(analysis[0].sampleRate, 48000);
   assert.equal(analysis[0].channels, 2);
 

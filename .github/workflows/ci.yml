@@ -130,6 +130,16 @@ jobs:
           mkdir -p build/native-parity
           c++ -std=c++17 -O2 -I native native/tests/dsp_parity_vectors_test.cpp -o build/native-parity/dsp-parity
           build/native-parity/dsp-parity test/fixtures/dsp_parity_vectors.tsv
+      - name: Build canonical DSP Wasm
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_dsp_wasm.sh
+          sudo chown -R "$(id -u):$(id -g)" build
+      - name: Verify canonical DSP Wasm build contract
+        run: |
+          test -s build/dsp-wasm/livemixmaster-dsp.wasm.sha256
+          node --test test/web_dsp_wasm_build_contract_test.mjs test/web_dsp_wasm_parity_test.mjs
+      - name: Verify DSP Wasm release provenance contract
+        run: node --test test/web_dsp_release_provenance_contract_test.mjs
       - name: Verify PWA manifest icon contract
         run: node --test test/web_pwa_manifest_contract_test.mjs
       - name: Verify PWA offline/accessibility source contract
@@ -180,7 +190,7 @@ jobs:
         run: flutter test test/web_release_compile_boundary_test.dart test/browser_capture_controller_test.dart test/browser_media_gateway_test.dart test/web_dsp_kernel_test.dart test/browser_audio_processing_controller_test.dart test/browser_recording_controller_test.dart
       - name: Build Flutter Web release artifact
         run: flutter build web --release
-      - name: Verify built PWA offline shell
+      - name: Verify built PWA offline shell and canonical DSP bytes
         run: |
           test -f build/web/lmm-service-worker.js
           test -f build/web/offline.html
@@ -189,6 +199,20 @@ jobs:
           grep -F 'lmm-service-worker.js' build/web/index.html
           grep -F '"sizes": "192x192"' build/web/manifest.json
           grep -F '"sizes": "512x512"' build/web/manifest.json
+          test -s build/web/audio/livemixmaster-dsp.wasm
+          sha256sum web/audio/livemixmaster-dsp.wasm build/web/audio/livemixmaster-dsp.wasm
+          cmp -s web/audio/livemixmaster-dsp.wasm build/web/audio/livemixmaster-dsp.wasm
+          sha256sum build/web/audio/livemixmaster-dsp.wasm > test-results-dsp-wasm.sha256
+      - name: Upload canonical DSP Wasm build evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsp-wasm-build-evidence-${{ github.sha }}
+          path: |
+            build/dsp-wasm/livemixmaster-dsp.wasm.sha256
+            test-results-dsp-wasm.sha256
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload Flutter Web artifact
         if: success()
         id: web_artifact
@@ -224,7 +248,9 @@ jobs:
           mkdir -p test-results/evidence
           test -f .artifacts/web/index.html
           test -f .artifacts/web/main.dart.js
+          test -s .artifacts/web/audio/livemixmaster-dsp.wasm
           find .artifacts/web -type f -print0 | sort -z | xargs -0 sha256sum > test-results/evidence/web-artifact-files.sha256
+          sha256sum .artifacts/web/audio/livemixmaster-dsp.wasm > test-results/evidence/dsp-wasm-exact-artifact.sha256
           printf '{"commit":"%s","workflowRun":"%s","artifactName":"live-mix-master-web","source":"actions/download-artifact@v4","rebuiltInBrowserJob":false}\n' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" > test-results/evidence/artifact-lineage.json
       - name: Generate deterministic 15s fake microphone WAV

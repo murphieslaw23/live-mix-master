@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import test from 'node:test';
 
 class MockPort {
@@ -26,6 +27,9 @@ globalThis.registerProcessor = (_name, ctor) => {
 };
 
 await import(new URL('../web/audio/livemixmaster-worklet.js', import.meta.url));
+const validDspModule = await WebAssembly.compile(
+  await fs.readFile(new URL('../web/audio/livemixmaster-dsp.wasm', import.meta.url)),
+);
 
 function stereoOutput(frames) {
   return [[new Float32Array(frames), new Float32Array(frames)]];
@@ -37,6 +41,11 @@ function channel(left, right = left) {
 
 test('configure emits the stereo telemetry schema consumed by Dart', () => {
   const processor = new Processor();
+  processor.port.dispatch({ type: 'dspInit', abiVersion: 1, module: validDspModule });
+  assert.ok(
+    processor.port.messages.find((message) => message.type === 'dspReady'),
+    'mixer protocol test requires an initialized canonical DSP worklet',
+  );
   processor.port.dispatch({
     type: 'configure',
     masterGainLinear: 0.5,

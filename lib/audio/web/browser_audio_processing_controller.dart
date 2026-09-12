@@ -46,6 +46,10 @@ abstract interface class BrowserAudioProcessingGateway {
   Future<void> stop();
 }
 
+abstract interface class BrowserAudioProcessingLifecycleGateway {
+  void setProcessingFailureHandler(void Function(String message) handler);
+}
+
 class BrowserAudioProcessingState {
   const BrowserAudioProcessingState({
     required this.status,
@@ -63,49 +67,78 @@ class BrowserAudioProcessingState {
   final BrowserCaptureSource? source;
 }
 
+typedef BrowserAudioProcessingStateListener = void Function(
+  BrowserAudioProcessingState state,
+);
+
 class BrowserAudioProcessingController {
   BrowserAudioProcessingController({required BrowserAudioProcessingGateway gateway})
-      : _gateway = gateway;
+      : _gateway = gateway {
+    final lifecycleGateway = gateway is BrowserAudioProcessingLifecycleGateway
+        ? gateway as BrowserAudioProcessingLifecycleGateway
+        : null;
+    lifecycleGateway?.setProcessingFailureHandler(_handleGatewayFailure);
+  }
 
   final BrowserAudioProcessingGateway _gateway;
+  final Set<BrowserAudioProcessingStateListener> _listeners =
+      <BrowserAudioProcessingStateListener>{};
   BrowserAudioProcessingState _state = const BrowserAudioProcessingState.idle();
 
   BrowserAudioProcessingState get state => _state;
 
+  void addListener(BrowserAudioProcessingStateListener listener) {
+    _listeners.add(listener);
+  }
+
+  void removeListener(BrowserAudioProcessingStateListener listener) {
+    _listeners.remove(listener);
+  }
+
   Future<void> startForSource(BrowserCaptureSource source) async {
-    _state = BrowserAudioProcessingState(
-      status: BrowserAudioProcessingStatus.starting,
-      message: 'STARTING AUDIOWORKLET — ${source.label}',
-      source: source,
+    _setState(
+      BrowserAudioProcessingState(
+        status: BrowserAudioProcessingStatus.starting,
+        message: 'STARTING AUDIOWORKLET — ${source.label}',
+        source: source,
+      ),
     );
 
     try {
       final attempt = await _gateway.start(source);
       switch (attempt.status) {
         case BrowserAudioProcessingAttemptStatus.started:
-          _state = BrowserAudioProcessingState(
-            status: BrowserAudioProcessingStatus.active,
-            message: 'AUDIOWORKLET ACTIVE — ${source.label}',
-            source: source,
+          _setState(
+            BrowserAudioProcessingState(
+              status: BrowserAudioProcessingStatus.active,
+              message: 'AUDIOWORKLET ACTIVE — ${source.label}',
+              source: source,
+            ),
           );
         case BrowserAudioProcessingAttemptStatus.unsupported:
-          _state = BrowserAudioProcessingState(
-            status: BrowserAudioProcessingStatus.unsupported,
-            message: _messageOr(
-              attempt.message,
-              'AUDIOWORKLET NOT AVAILABLE — SECURE BROWSER CONTEXT REQUIRED',
+          _setState(
+            BrowserAudioProcessingState(
+              status: BrowserAudioProcessingStatus.unsupported,
+              message: _messageOr(
+                attempt.message,
+                'AUDIOWORKLET NOT AVAILABLE — SECURE BROWSER CONTEXT REQUIRED',
+              ),
             ),
           );
         case BrowserAudioProcessingAttemptStatus.failed:
-          _state = BrowserAudioProcessingState(
-            status: BrowserAudioProcessingStatus.error,
-            message: _messageOr(attempt.message, 'AUDIOWORKLET START FAILED'),
+          _setState(
+            BrowserAudioProcessingState(
+              status: BrowserAudioProcessingStatus.error,
+              message: _messageOr(attempt.message, 'AUDIOWORKLET START FAILED'),
+            ),
           );
       }
     } on Object catch (error) {
-      _state = BrowserAudioProcessingState(
-        status: BrowserAudioProcessingStatus.error,
-        message: 'AUDIOWORKLET START FAILED — ${_sanitize(error)}',
+      _setState(
+        BrowserAudioProcessingState(
+          status: BrowserAudioProcessingStatus.error,
+          message: 'AUDIOWORKLET START FAILED — ${_sanitize(error)}',
+        ),
       );
     }
   }
@@ -114,7 +147,33 @@ class BrowserAudioProcessingController {
     try {
       await _gateway.stop();
     } finally {
-      _state = const BrowserAudioProcessingState.idle();
+      _setState(const BrowserAudioProcessingState.idle());
+    }
+  }
+
+  void _handleGatewayFailure(String message) {
+    switch (_state.status) {
+      case BrowserAudioProcessingStatus.starting:
+      case BrowserAudioProcessingStatus.active:
+        _setState(
+          BrowserAudioProcessingState(
+            status: BrowserAudioProcessingStatus.error,
+            message: _messageOr(message, 'AUDIO ENGINE NOT READY'),
+            source: _state.source,
+          ),
+        );
+      case BrowserAudioProcessingStatus.idle:
+      case BrowserAudioProcessingStatus.unsupported:
+      case BrowserAudioProcessingStatus.error:
+        break;
+    }
+  }
+
+  void _setState(BrowserAudioProcessingState state) {
+    _state = state;
+    for (final listener
+        in List<BrowserAudioProcessingStateListener>.of(_listeners)) {
+      listener(state);
     }
   }
 
@@ -145,6 +204,7 @@ class BrowserAudioRuntimeCoordinator {
         _processingController = processingController,
         _mixerController = mixerController {
     _captureController.addListener(_handleCaptureState);
+    _processingController.addListener(_handleProcessingState);
   }
 
   final BrowserCaptureController _captureController;
@@ -192,12 +252,28 @@ class BrowserAudioRuntimeCoordinator {
     }
   }
 
+  void _handleProcessingState(BrowserAudioProcessingState state) {
+    if (_disposed) {
+      return;
+    }
+    switch (state.status) {
+      case BrowserAudioProcessingStatus.unsupported:
+      case BrowserAudioProcessingStatus.error:
+        _transition = _transition.then((_) => _mixerController.detach());
+      case BrowserAudioProcessingStatus.idle:
+      case BrowserAudioProcessingStatus.starting:
+      case BrowserAudioProcessingStatus.active:
+        break;
+    }
+  }
+
   Future<void> dispose() async {
     if (_disposed) {
       return;
     }
     _disposed = true;
     _captureController.removeListener(_handleCaptureState);
+    _processingController.removeListener(_handleProcessingState);
     await _transition;
     await _mixerController.detach();
     await _processingController.stop();

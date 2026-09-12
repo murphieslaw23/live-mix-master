@@ -15,12 +15,14 @@ jobs:
   fingerprint-analysis-tap:
     name: Fingerprint Analysis Tap
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Build canonical DSP Wasm fixture
+        run: docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_dsp_wasm.sh
       - name: Verify independent bounded post-master analysis tap
         run: node --test test/web_fingerprint_analysis_tap_test.mjs
       - name: Verify live Worklet-to-fingerprint-Worker bridge

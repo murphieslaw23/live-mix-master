@@ -42,3 +42,45 @@ test('web runtime wires the W2 active MediaStream into the W3 AudioWorklet graph
   assert.equal(runtime.includes('activeStream: () => client.activeStream'), true);
   assert.equal(runtime.includes('BrowserAudioRuntimeCoordinator'), true);
 });
+
+test('canonical DSP bytes are loaded and acknowledged before the live graph starts', async () => {
+  const gateway = await fs.readFile(gatewayUrl, 'utf8');
+  const initToken = "initMessage['type'] = 'dspInit'.toJS;";
+  const loadBytesToken = 'final dspBytes = await _loadDspBytes();';
+  const postBytesToken = "initMessage['wasmBytes'] = dspBytes;";
+
+  for (const token of [
+    "const String _dspAssetPath = 'audio/livemixmaster-dsp.wasm';",
+    'const int _dspAbiVersion = 1;',
+    loadBytesToken,
+    "await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;",
+    initToken,
+    postBytesToken,
+    "case 'dspReady':",
+    'await dspReady.future.timeout(_dspHandshakeTimeout)',
+    'sourceNode.connect(workletNode);',
+    'workletNode.connect(destinationNode);',
+    'await context.resume().toDart;',
+  ]) {
+    assert.equal(gateway.includes(token), true, `missing DSP startup token: ${token}`);
+  }
+
+  const loadBytesIndex = gateway.indexOf(loadBytesToken);
+  const addModuleIndex = gateway.indexOf("await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;");
+  const nodeIndex = gateway.indexOf("web.AudioWorkletNode(context, 'livemixmaster-dsp')");
+  const initIndex = gateway.indexOf(initToken);
+  const postBytesIndex = gateway.indexOf(postBytesToken);
+  const readyIndex = gateway.indexOf('await dspReady.future.timeout(_dspHandshakeTimeout)');
+  const connectIndex = gateway.indexOf('sourceNode.connect(workletNode);');
+  const resumeIndex = gateway.indexOf('await context.resume().toDart;');
+
+  assert.ok(loadBytesIndex < addModuleIndex, 'Wasm bytes must load before worklet module load');
+  assert.ok(addModuleIndex < nodeIndex, 'worklet module must load before AudioWorkletNode construction');
+  assert.ok(nodeIndex < initIndex, 'AudioWorkletNode must exist before dspInit');
+  assert.ok(initIndex < postBytesIndex, 'dspInit message must carry clone-safe Wasm bytes');
+  assert.ok(postBytesIndex < readyIndex, 'Wasm bytes must be posted before readiness wait');
+  assert.ok(readyIndex < connectIndex, 'dspReady must precede graph connection');
+  assert.ok(connectIndex < resumeIndex, 'graph connection must precede AudioContext resume');
+
+  assert.equal(gateway.includes("_dspAssetPath = '\${"), false, 'DSP asset path must not be session/user-derived');
+});
