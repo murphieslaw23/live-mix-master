@@ -84,3 +84,5 @@ jobs:
             test/web_recording_operator_gateway_test.mjs \
             test/web_recorder_finalize_test.mjs \
             test/web_recorder_pipeline_integration_test.mjs
+      - name: Verify DSP Wasm release provenance contract
+        run: node --test test/web_dsp_release_provenance_contract_test.mjs
