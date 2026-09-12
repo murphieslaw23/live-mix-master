@@ -53,3 +53,6 @@ jobs:
         run: |
           node --test test/web_audio_graph_integration_test.mjs test/web_audio_worklet_processor_test.mjs
           flutter test test/web_dsp_startup_boundary_test.dart
+      - name: Verify DSP Wasm render cutover contract
+        run: |
+          node --test test/web_dsp_worklet_allocation_contract_test.mjs test/web_audio_worklet_processor_test.mjs test/web_recorder_pipeline_integration_test.mjs
