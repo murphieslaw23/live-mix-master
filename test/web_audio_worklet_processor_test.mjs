@@ -35,6 +35,27 @@ const moduleUrl = new URL('../web/audio/livemixmaster-worklet.js', import.meta.u
 const parityFixtureUrl = new URL('./fixtures/dsp_parity_vectors.tsv', import.meta.url);
 await import(moduleUrl);
 
+// Minimal valid module for the Task 4 handshake tests. It exports only the
+// ABI version/max-channel probes; production render exports are exercised by
+// the dedicated generated-Wasm parity contract.
+const validDspModule = new WebAssembly.Module(Uint8Array.from([
+  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+  0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
+  0x03, 0x03, 0x02, 0x00, 0x00,
+  0x07, 0x2e, 0x02,
+  0x13, ...new TextEncoder().encode('lmm_dsp_abi_version'), 0x00, 0x00,
+  0x14, ...new TextEncoder().encode('lmm_dsp_max_channels'), 0x00, 0x01,
+  0x0a, 0x0b, 0x02,
+  0x04, 0x00, 0x41, 0x01, 0x0b,
+  0x04, 0x00, 0x41, 0x08, 0x0b,
+]));
+
+function initializeDsp(processor, { module = validDspModule, abiVersion = 1 } = {}) {
+  processor.port.dispatch({ type: 'dspInit', abiVersion, module });
+  const ready = processor.port.messages.find((message) => message.type === 'dspReady');
+  assert.ok(ready, 'processor must acknowledge canonical DSP readiness');
+}
+
 function stereoOutput(frames) {
   return [[new Float32Array(frames), new Float32Array(frames)]];
 }
@@ -107,8 +128,57 @@ test('registers the LiveMixMaster AudioWorklet processor', () => {
   assert.equal(typeof Processor, 'function');
 });
 
-test('executes native-parity fader, summing and limiter semantics in the worklet', () => {
+test('does not report DSP readiness before dspInit', () => {
   const processor = new Processor();
+  assert.equal(processor.port.messages.some((message) => message.type === 'dspReady'), false);
+});
+
+test('valid ABI v1 module yields exactly one dspReady acknowledgement', () => {
+  const processor = new Processor();
+  processor.port.dispatch({ type: 'dspInit', abiVersion: 1, module: validDspModule });
+  assert.equal(processor.port.messages.filter((message) => message.type === 'dspReady').length, 1);
+  assert.equal(processor.port.messages.some((message) => message.type === 'dspError'), false);
+});
+
+test('ABI version mismatch fails closed', () => {
+  const processor = new Processor();
+  processor.port.dispatch({ type: 'dspInit', abiVersion: 2, module: validDspModule });
+  assert.deepEqual(
+    processor.port.messages.find((message) => message.type === 'dspError'),
+    { type: 'dspError', code: 'VERSION_MISMATCH' },
+  );
+  assert.equal(processor.port.messages.some((message) => message.type === 'dspReady'), false);
+});
+
+test('module initialization failure is sanitized and fails closed', () => {
+  const processor = new Processor();
+  processor.port.dispatch({ type: 'dspInit', abiVersion: 1, module: {} });
+  assert.deepEqual(
+    processor.port.messages.find((message) => message.type === 'dspError'),
+    { type: 'dspError', code: 'INITIALIZATION_FAILED' },
+  );
+  assert.equal(processor.port.messages.some((message) => message.type === 'dspReady'), false);
+});
+
+test('process before dspReady stays alive, outputs silence, and emits no telemetry', () => {
+  const processor = new Processor();
+  processor.port.dispatch({
+    type: 'configure',
+    masterGainLinear: 1,
+    telemetryEvery: 1,
+    channels: [{ id: 'a', linearTrim: 1, fader: 1, muted: false, solo: false }],
+  });
+  const output = stereoOutput(2);
+  const keepAlive = processor.process([channel([1, 0.5])], output, {});
+  assert.equal(keepAlive, true);
+  assert.deepEqual(Array.from(output[0][0]), [0, 0]);
+  assert.deepEqual(Array.from(output[0][1]), [0, 0]);
+  assert.equal(processor.port.messages.some((message) => message.type === 'telemetry'), false);
+});
+
+test('executes native-parity fader, summing and limiter semantics in the worklet after dspReady', () => {
+  const processor = new Processor();
+  initializeDsp(processor);
   processor.port.dispatch({
     type: 'configure',
     masterGainLinear: 1,
@@ -144,12 +214,13 @@ test('executes native-parity fader, summing and limiter semantics in the worklet
   assert.ok(Math.abs(hotOutput[0][1][0] + 0.98) < 1e-6);
 });
 
-test('AudioWorklet executes the shared native DSP parity vectors', async () => {
+test('AudioWorklet executes the shared native DSP parity vectors after dspReady', async () => {
   const vectors = await loadParityVectors();
-  assert.ok(vectors.length >= 4, 'shared DSP parity fixture must include at least four cases');
+  assert.ok(vectors.length >= 10, 'shared DSP parity fixture must include at least ten cases');
 
   for (const vector of vectors) {
     const processor = new Processor();
+    initializeDsp(processor);
     processor.port.dispatch({
       type: 'configure',
       masterGainLinear: vector.masterGainLinear,
@@ -186,8 +257,9 @@ test('AudioWorklet executes the shared native DSP parity vectors', async () => {
   }
 });
 
-test('allows at most one unacknowledged telemetry message', () => {
+test('allows at most one unacknowledged telemetry message after dspReady', () => {
   const processor = new Processor();
+  initializeDsp(processor);
   processor.port.dispatch({
     type: 'configure',
     telemetryEvery: 1,
@@ -204,8 +276,9 @@ test('allows at most one unacknowledged telemetry message', () => {
   assert.equal(processor.port.messages.filter((m) => m.type === 'telemetry').length, 2);
 });
 
-test('recording PCM handoff is bounded and fails closed on backpressure', () => {
+test('recording PCM handoff is bounded and fails closed on backpressure after dspReady', () => {
   const processor = new Processor();
+  initializeDsp(processor);
   processor.port.dispatch({
     type: 'configure',
     telemetryEvery: 1000,
