@@ -7,6 +7,9 @@ import { runWasmVector } from './helpers/dsp_wasm_harness.mjs';
 const parityFixtureUrl = new URL('./fixtures/dsp_parity_vectors.tsv', import.meta.url);
 
 function parseFloatList(value) {
+  if (value === '~') {
+    return [];
+  }
   return value.split(',').map((token) => Number.parseFloat(token));
 }
 
@@ -46,12 +49,12 @@ async function loadParityVectors() {
       return {
         name: fields[0],
         masterGainLinear: Number.parseFloat(fields[1]),
-        channels: fields[2].split('|').map(parseChannel),
+        channels: fields[2] === '~' ? [] : fields[2].split('|').map(parseChannel),
         expected: parseFloatList(fields[3]),
         limiterActive: fields[4] === '1',
         masterPeakLeft: Number.parseFloat(fields[5]),
         masterPeakRight: Number.parseFloat(fields[6]),
-        meters: fields[7].split('|').map(parseMeter),
+        meters: fields[7] === '~' ? [] : fields[7].split('|').map(parseMeter),
       };
     });
 }
@@ -62,7 +65,7 @@ function assertClose(actual, expected, message) {
 
 test('Wasm DSP matches canonical parity vectors', async () => {
   const vectors = await loadParityVectors();
-  assert.ok(vectors.length >= 10, 'shared parity fixture must include at least ten cases');
+  assert.ok(vectors.length >= 11, 'shared parity fixture must include the empty-frame boundary');
 
   for (const vector of vectors) {
     const actual = await runWasmVector(vector);

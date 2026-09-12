@@ -47,8 +47,12 @@ class _FixtureVector {
   final List<_ExpectedMeter> meters;
 }
 
-List<double> _parseFloatList(String value) =>
-    value.split(',').map(double.parse).toList(growable: false);
+List<double> _parseFloatList(String value) {
+  if (value == '~') {
+    return const <double>[];
+  }
+  return value.split(',').map(double.parse).toList(growable: false);
+}
 
 _ExpectedMeter _parseMeter(String value) {
   final parts = value.split(';');
@@ -72,20 +76,22 @@ _FixtureVector _parseVector(String line) {
     throw FormatException('fixture row must contain 8 fields: $line');
   }
 
-  final channels = fields[2].split('|').map((spec) {
-    final parts = spec.split(';');
-    if (parts.length != 6) {
-      throw FormatException('channel spec must contain 6 fields: $spec');
-    }
-    return WebDspChannelBlock(
-      id: parts[0],
-      linearTrim: double.parse(parts[1]),
-      fader: double.parse(parts[2]),
-      muted: parts[3] == '1',
-      solo: parts[4] == '1',
-      interleavedStereo: Float32List.fromList(_parseFloatList(parts[5])),
-    );
-  }).toList(growable: false);
+  final channels = fields[2] == '~'
+      ? const <WebDspChannelBlock>[]
+      : fields[2].split('|').map((spec) {
+          final parts = spec.split(';');
+          if (parts.length != 6) {
+            throw FormatException('channel spec must contain 6 fields: $spec');
+          }
+          return WebDspChannelBlock(
+            id: parts[0],
+            linearTrim: double.parse(parts[1]),
+            fader: double.parse(parts[2]),
+            muted: parts[3] == '1',
+            solo: parts[4] == '1',
+            interleavedStereo: Float32List.fromList(_parseFloatList(parts[5])),
+          );
+        }).toList(growable: false);
 
   return _FixtureVector(
     name: fields[0],
@@ -95,7 +101,9 @@ _FixtureVector _parseVector(String line) {
     limiterActive: fields[4] == '1',
     masterPeakLeft: double.parse(fields[5]),
     masterPeakRight: double.parse(fields[6]),
-    meters: fields[7].split('|').map(_parseMeter).toList(growable: false),
+    meters: fields[7] == '~'
+        ? const <_ExpectedMeter>[]
+        : fields[7].split('|').map(_parseMeter).toList(growable: false),
   );
 }
 
@@ -193,7 +201,7 @@ void main() {
 
     test('matches every shared DSP parity vector', () {
       final vectors = _loadVectors();
-      expect(vectors.length, greaterThanOrEqualTo(10));
+      expect(vectors.length, greaterThanOrEqualTo(11));
 
       for (final vector in vectors) {
         final result = WebDspKernel.processStereoBlock(

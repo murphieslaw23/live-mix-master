@@ -41,6 +41,9 @@ std::vector<std::string> split(const std::string& value, char delimiter) {
 }
 
 std::vector<float> parseFloats(const std::string& value) {
+  if (value == "~") {
+    return {};
+  }
   std::vector<float> values;
   for (const auto& token : split(value, ',')) {
     values.push_back(std::stof(token));
@@ -77,14 +80,13 @@ void runCase(const std::vector<std::string>& fields) {
 
   const std::string& name = fields[0];
   const float masterGain = std::stof(fields[1]);
-  const auto channelSpecs = split(fields[2], '|');
+  const auto channelSpecs = fields[2] == "~" ? std::vector<std::string>{} : split(fields[2], '|');
   const auto expectedOutput = parseFloats(fields[3]);
   const bool expectedLimiter = fields[4] == "1";
   const float expectedPeakLeft = std::stof(fields[5]);
   const float expectedPeakRight = std::stof(fields[6]);
-  const auto meterSpecs = split(fields[7], '|');
+  const auto meterSpecs = fields[7] == "~" ? std::vector<std::string>{} : split(fields[7], '|');
 
-  require(!channelSpecs.empty(), name + ": requires at least one channel");
   require(expectedOutput.size() % 2 == 0, name + ": expected stereo output must be interleaved");
   require(meterSpecs.size() == channelSpecs.size(), name + ": meter count must match channel count");
   const std::size_t frames = expectedOutput.size() / 2;
@@ -130,7 +132,8 @@ void runCase(const std::vector<std::string>& fields) {
     inputs.push_back(channel.interleaved.data());
   }
 
-  std::vector<float> output(expectedOutput.size(), 0.0F);
+  const std::size_t outputStorageSize = expectedOutput.empty() ? 2u : expectedOutput.size();
+  std::vector<float> output(outputStorageSize, 0.0F);
   const auto master = lmm::processStereoBlock(
       configs.data(),
       inputs.data(),
