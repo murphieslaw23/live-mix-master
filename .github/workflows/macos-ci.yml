@@ -68,11 +68,12 @@ jobs:
           test -n "$TEST_FILES"
           flutter test --reporter expanded $TEST_FILES
 
-      - name: Build native debug engine
+      - name: Build and test native debug engine
         run: |
-          cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
+          cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
           cmake --build build/native --config Debug --parallel
           test -f build/native/liblive_mixer_engine.dylib
+          ctest --test-dir build/native --output-on-failure
 
       - name: Build Flutter debug app
         run: flutter build macos --debug

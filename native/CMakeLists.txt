@@ -24,3 +24,19 @@ elseif(UNIX AND NOT APPLE)
 elseif(WIN32)
     target_link_libraries(live_mixer_engine PRIVATE mfplat mfuuid ole32)
 endif()
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(native_gain_control_contract_tests
+        tests/native_gain_control_contract_tests.cpp
+    )
+    add_dependencies(native_gain_control_contract_tests live_mixer_engine)
+    if(UNIX)
+        target_link_libraries(native_gain_control_contract_tests PRIVATE ${CMAKE_DL_LIBS})
+    endif()
+    add_test(
+        NAME native_gain_control_contract_tests
+        COMMAND native_gain_control_contract_tests $<TARGET_FILE:live_mixer_engine>
+    )
+endif()
