@@ -8,25 +8,29 @@ class CompactMonitorView extends StatelessWidget {
   const CompactMonitorView({
     super.key,
     this.isStreaming = false,
+    this.broadcastConfigured = false,
     this.isRecording = false,
     this.currentTrackTitle = 'AWAITING TRACK DETECTION...',
     this.currentArtist = 'UNKNOWN ARTIST',
-    this.streamBitrateKbps = 320.0,
-    this.masterPeakLevel = 0.85,
-    this.matchConfidence = 0.94,
-    this.loudnessLufs = -14.2,
-    this.truePeakDbtp = -6.0,
+    this.streamBitrateKbps,
+    this.masterPeakLevel = 0,
+    this.matchConfidence,
+    this.loudnessLufs,
+    this.truePeakDbtp,
+    this.limiterActive,
   });
 
   final bool isStreaming;
+  final bool broadcastConfigured;
   final bool isRecording;
   final String currentTrackTitle;
   final String currentArtist;
-  final double streamBitrateKbps;
+  final double? streamBitrateKbps;
   final double masterPeakLevel;
-  final double matchConfidence;
-  final double loudnessLufs;
-  final double truePeakDbtp;
+  final double? matchConfidence;
+  final double? loudnessLufs;
+  final double? truePeakDbtp;
+  final bool? limiterActive;
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +51,7 @@ class CompactMonitorView extends StatelessWidget {
                     _buildMonitorHeading(),
                     const SizedBox(height: 10),
                     _buildMasterCard(peakDbfs),
-                    if (isRecording || !isStreaming) ...[
+                    if (isRecording || broadcastConfigured) ...[
                       const SizedBox(height: 10),
                       _buildRecoveryRow(),
                     ],
@@ -67,6 +71,7 @@ class CompactMonitorView extends StatelessWidget {
   }
 
   Widget _buildBrandHeader() {
+    final broadcastKnown = broadcastConfigured;
     return Container(
       constraints: const BoxConstraints(minHeight: 52),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -103,8 +108,14 @@ class CompactMonitorView extends StatelessWidget {
             ),
           ),
           Icon(
-            isStreaming ? Icons.wifi_tethering : Icons.wifi_tethering_off,
-            color: isStreaming ? LiveMixTokens.meterNominal : LiveMixTokens.statusWarn,
+            broadcastKnown && isStreaming
+                ? Icons.wifi_tethering
+                : broadcastKnown
+                    ? Icons.wifi_tethering_off
+                    : Icons.portable_wifi_off,
+            color: broadcastKnown
+                ? (isStreaming ? LiveMixTokens.meterNominal : LiveMixTokens.statusWarn)
+                : LiveMixTokens.textSecondary,
             size: 20,
           ),
         ],
@@ -123,6 +134,11 @@ class CompactMonitorView extends StatelessWidget {
   }
 
   Widget _buildMasterCard(double peakDbfs) {
+    final bitrate = streamBitrateKbps == null ? 'N/A' : '${streamBitrateKbps!.toInt()} KBPS';
+    final loudness = loudnessLufs == null ? 'N/A' : '${loudnessLufs!.toStringAsFixed(1)} LUFS';
+    final truePeak = truePeakDbtp == null ? 'N/A' : '${truePeakDbtp!.toStringAsFixed(1)} dBTP';
+    final limiter = limiterActive == null ? 'N/A' : (limiterActive! ? 'ON' : 'OFF');
+
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -141,7 +157,7 @@ class CompactMonitorView extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                '${streamBitrateKbps.toInt()} KBPS',
+                bitrate,
                 style: LiveMixTextStyles.numericTelemetry.copyWith(
                   color: LiveMixTokens.textSecondary,
                   fontSize: 10,
@@ -170,11 +186,11 @@ class CompactMonitorView extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: _telemetryCell('LOUDNESS', '${loudnessLufs.toStringAsFixed(1)} LUFS')),
+              Expanded(child: _telemetryCell('LOUDNESS', loudness)),
               const SizedBox(width: 6),
-              Expanded(child: _telemetryCell('TRUE PEAK', '${truePeakDbtp.toStringAsFixed(1)} dBTP')),
+              Expanded(child: _telemetryCell('TRUE PEAK', truePeak)),
               const SizedBox(width: 6),
-              Expanded(child: _telemetryCell('LIMITER', 'ON')),
+              Expanded(child: _telemetryCell('LIMITER', limiter)),
             ],
           ),
         ],
@@ -246,22 +262,35 @@ class CompactMonitorView extends StatelessWidget {
       builder: (context, constraints) {
         final recording = LmmStatusBadge(
           label: 'RECORDING',
-          status: isRecording ? '00:24:18' : 'IDLE',
-          detail: isRecording ? 'WAV · 86 GB FREE' : null,
+          status: isRecording ? 'ACTIVE' : 'IDLE',
+          detail: isRecording ? 'WAV' : null,
           tone: isRecording ? LmmStatusTone.critical : LmmStatusTone.neutral,
           icon: Icons.fiber_manual_record,
         );
+        final bitrate = streamBitrateKbps == null ? null : '${streamBitrateKbps!.toInt()} KBPS';
         final broadcast = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             LmmStatusBadge(
               label: 'BROADCAST',
-              status: isStreaming ? 'LIVE' : 'RECONNECTING',
-              detail: isStreaming ? '${streamBitrateKbps.toInt()} KBPS' : 'Attempt 2 of 5',
-              tone: isStreaming ? LmmStatusTone.healthy : LmmStatusTone.warning,
-              icon: isStreaming ? Icons.wifi_tethering : Icons.sync,
+              status: !broadcastConfigured
+                  ? 'UNAVAILABLE'
+                  : isStreaming
+                      ? 'LIVE'
+                      : 'OFFLINE',
+              detail: broadcastConfigured && isStreaming ? bitrate : null,
+              tone: !broadcastConfigured
+                  ? LmmStatusTone.neutral
+                  : isStreaming
+                      ? LmmStatusTone.healthy
+                      : LmmStatusTone.warning,
+              icon: !broadcastConfigured
+                  ? Icons.portable_wifi_off
+                  : isStreaming
+                      ? Icons.wifi_tethering
+                      : Icons.wifi_tethering_off,
             ),
-            if (!isStreaming && isRecording)
+            if (broadcastConfigured && !isStreaming && isRecording)
               Padding(
                 padding: const EdgeInsets.only(top: 4, left: 4),
                 child: Text(
@@ -298,6 +327,7 @@ class CompactMonitorView extends StatelessWidget {
   }
 
   Widget _buildCurrentTrackCard() {
+    final confidence = matchConfidence == null ? 'N/A' : '${(matchConfidence!.clamp(0.0, 1.0) * 100).round()}%';
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -326,7 +356,7 @@ class CompactMonitorView extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(child: _trackField('TITLE', currentTrackTitle)),
               const SizedBox(width: 8),
-              SizedBox(width: 62, child: _trackField('MATCH', '${(matchConfidence * 100).round()}%')),
+              SizedBox(width: 62, child: _trackField('MATCH', confidence)),
             ],
           ),
         ],
