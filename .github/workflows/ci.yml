@@ -4,11 +4,15 @@ on:
   push:
     branches: [main, preview]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
   actions: read
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   flutter-analyze:
@@ -53,8 +57,6 @@ jobs:
       - run: flutter pub get
       - name: Render deterministic approved fixtures
         run: flutter test --update-goldens test/golden_fixture_render_test.dart
-      - name: Record rendered pixel digests
-        run: sha256sum test/goldens/*.png
       - name: Verify approved pixel digests
         run: grep -v '^#' test/goldens/issue5-approved-sha256.txt | sha256sum --check -
       - name: Upload Issue #5 golden fixtures
@@ -106,15 +108,6 @@ jobs:
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
       - run: flutter test test/mixer_user_flow_test.dart
-
-  native-engine-build-macos:
-    name: Native Engine Build (macos-latest)
-    runs-on: macos-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
-      - run: cmake --build build/native --config Release --parallel
 
   web-release-compile:
     name: Web Release Compile Contract
@@ -237,15 +230,15 @@ jobs:
         run: node test/browser/generate_fake_wav.mjs
       - name: Serve downloaded artifact without rebuilding
         run: |
-          npx http-server .artifacts/web -p 4173 -c-1 > /tmp/lmm-http-server.log 2>&1 &
-          echo $! > /tmp/lmm-http-server.pid
-          for _ in $(seq 1 30); do
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory .artifacts/web > test-results/evidence/http-server.log 2>&1 &
+          echo $! > test-results/evidence/http-server.pid
+          for attempt in {1..30}; do
             if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
               exit 0
             fi
             sleep 1
           done
-          cat /tmp/lmm-http-server.log
+          cat test-results/evidence/http-server.log
           exit 1
       - name: Run Chromium operator E2E and browser capability matrix
         env:
@@ -256,30 +249,31 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-browser-e2e-evidence-${{ github.sha }}
-          path: test-results/evidence
-          if-no-files-found: error
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: warn
           retention-days: 14
 
   deploy-tested-web-artifact:
     name: Deploy tested Web artifact
+    needs: [web-release-compile, web-browser-e2e]
     if: >-
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/preview')
-    needs:
-      - flutter-analyze
-      - design-contract-test
-      - golden-fixture-contract
-      - reliability-models-test
-      - broadcast-pipeline-test
-      - mixer-user-flow-test
-      - native-engine-build-macos
-      - web-release-compile
-      - web-browser-e2e
     uses: ./.github/workflows/promote-tested-web-artifact.yml
     with:
       artifact_id: ${{ needs.web-release-compile.outputs.artifact_id }}
-      artifact_digest: ${{ needs.web-release-compile.outputs.artifact_digest }}
+      artifact_digest: sha256:${{ needs.web-release-compile.outputs.artifact_digest }}
       commit_sha: ${{ github.sha }}
-      target: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
-    secrets:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      target: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
+    secrets: inherit
+
+  native-engine-build:
+    name: Native Engine Build (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build/native --config Release --parallel
