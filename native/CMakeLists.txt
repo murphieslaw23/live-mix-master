@@ -106,6 +106,12 @@ if(BUILD_TESTING)
         add_test(NAME capture_conversion_tests
             COMMAND capture_conversion_tests $<TARGET_FILE:live_mixer_engine>)
 
+        add_executable(capture_pair_selection_tests tests/capture_pair_selection_tests.cpp)
+        add_dependencies(capture_pair_selection_tests live_mixer_engine)
+        target_link_libraries(capture_pair_selection_tests PRIVATE ${CMAKE_DL_LIBS})
+        add_test(NAME capture_pair_selection_tests
+            COMMAND capture_pair_selection_tests $<TARGET_FILE:live_mixer_engine>)
+
         add_executable(capture_handoff_integration_tests tests/capture_handoff_integration_tests.cpp)
         target_include_directories(capture_handoff_integration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
         add_dependencies(capture_handoff_integration_tests live_mixer_engine)
