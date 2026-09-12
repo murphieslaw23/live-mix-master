@@ -63,6 +63,7 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     this.maxOutstandingPcm = DEFAULT_MAX_OUTSTANDING_PCM;
     this.outstandingPcm = 0;
     this.recordingScratch = null;
+    this.recordingScratchViews = null;
     this.recordingMessage = null;
     this.recordingBackpressureMessage = {
       type: 'recordingError',
@@ -74,6 +75,7 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     this.analysisMaxOutstandingPcm = DEFAULT_MAX_OUTSTANDING_ANALYSIS_PCM;
     this.analysisOutstandingPcm = 0;
     this.analysisScratch = null;
+    this.analysisScratchViews = null;
     this.analysisMessage = null;
 
     this.dspReady = false;
@@ -178,7 +180,9 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     this.dspInputViews = null;
     this.dspOutputView = null;
     this.recordingScratch = null;
+    this.recordingScratchViews = null;
     this.analysisScratch = null;
+    this.analysisScratchViews = null;
     this.recordingMessage = null;
     this.analysisMessage = null;
 
@@ -273,15 +277,30 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
 
       this.recordingScratch = new Float32Array(256);
       this.analysisScratch = new Float32Array(256);
+      this.recordingScratchViews = new Array(DSP_RENDER_QUANTUM_FRAMES + 1);
+      this.analysisScratchViews = new Array(DSP_RENDER_QUANTUM_FRAMES + 1);
+      for (let frames = 0; frames <= DSP_RENDER_QUANTUM_FRAMES; frames += 1) {
+        const sampleCount = frames * 2;
+        this.recordingScratchViews[frames] = new Float32Array(
+          this.recordingScratch.buffer,
+          0,
+          sampleCount,
+        );
+        this.analysisScratchViews[frames] = new Float32Array(
+          this.analysisScratch.buffer,
+          0,
+          sampleCount,
+        );
+      }
       this.recordingMessage = {
         type: 'pcm',
-        samples: this.recordingScratch,
+        samples: this.recordingScratchViews[0],
         frames: 0,
         sampleRate,
       };
       this.analysisMessage = {
         type: 'analysisPcm',
-        samples: this.analysisScratch,
+        samples: this.analysisScratchViews[0],
         frames: 0,
         sampleRate,
         channels: 2,
@@ -438,6 +457,7 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
       for (let sampleIndex = 0; sampleIndex < frameCount * 2; sampleIndex += 1) {
         this.analysisScratch[sampleIndex] = this.dspOutputView[sampleIndex];
       }
+      this.analysisMessage.samples = this.analysisScratchViews[frameCount];
       this.analysisMessage.frames = frameCount;
       this.analysisOutstandingPcm += 1;
       this.port.postMessage(this.analysisMessage);
@@ -454,6 +474,7 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
         for (let sampleIndex = 0; sampleIndex < frameCount * 2; sampleIndex += 1) {
           this.recordingScratch[sampleIndex] = this.dspOutputView[sampleIndex];
         }
+        this.recordingMessage.samples = this.recordingScratchViews[frameCount];
         this.recordingMessage.frames = frameCount;
         this.outstandingPcm += 1;
         this.port.postMessage(this.recordingMessage);
