@@ -11,9 +11,6 @@ import 'browser_mixer_controller.dart';
 import 'browser_mixer_protocol.dart';
 import 'browser_recording_controller.dart';
 
-@JS('WebAssembly.compile')
-external JSPromise<JSObject> _compileWebAssembly(JSArrayBuffer bytes);
-
 typedef BrowserActiveStreamProvider = web.MediaStream? Function();
 typedef BrowserFingerprintPreparationUnavailableHandler = void Function();
 
@@ -151,7 +148,7 @@ class WebAudioWorkletGateway
     }
 
     try {
-      final dspModule = await _compileDspModule();
+      final dspBytes = await _loadDspBytes();
       await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;
 
       final sourceNode = context.createMediaStreamSource(stream);
@@ -263,7 +260,7 @@ class WebAudioWorkletGateway
       final initMessage = JSObject();
       initMessage['type'] = 'dspInit'.toJS;
       initMessage['abiVersion'] = _dspAbiVersion.toJS;
-      initMessage['module'] = dspModule;
+      initMessage['wasmBytes'] = dspBytes;
       workletNode.port.postMessage(initMessage);
       try {
         await dspReady.future.timeout(_dspHandshakeTimeout);
@@ -360,14 +357,13 @@ class WebAudioWorkletGateway
     }
   }
 
-  Future<JSObject> _compileDspModule() async {
+  Future<JSArrayBuffer> _loadDspBytes() async {
     try {
       final response = await web.window.fetch(_dspAssetPath.toJS).toDart;
       if (!response.ok) {
         throw const _DspStartupException(_dspUnavailableMessage);
       }
-      final bytes = await response.arrayBuffer().toDart;
-      return await _compileWebAssembly(bytes).toDart;
+      return await response.arrayBuffer().toDart;
     } on _DspStartupException {
       rethrow;
     } on Object {
