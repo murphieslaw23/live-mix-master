@@ -58,6 +58,7 @@ jobs:
         run: |
           node --test \
             test/web_dsp_worklet_allocation_contract_test.mjs \
+            test/web_dsp_partial_quantum_contract_test.mjs \
             test/web_audio_worklet_processor_test.mjs \
             test/web_recorder_pipeline_integration_test.mjs \
             test/web_wav_recorder_worker_test.mjs \
