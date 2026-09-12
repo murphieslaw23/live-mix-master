@@ -4,12 +4,43 @@ enum AudioInputKind { hardware, applicationLoopback }
 
 enum EngineState { idle, preparing, running, degraded, failed }
 
+enum AudioRouteState {
+  idle,
+  preparing,
+  active,
+  noDevice,
+  permissionDenied,
+  noSignal,
+  deviceLost,
+  formatError,
+  overrun,
+  recovered,
+  failed,
+}
+
+class AudioInputEndpoint {
+  const AudioInputEndpoint({
+    required this.uid,
+    required this.name,
+    required this.inputChannels,
+    required this.nominalSampleRate,
+    required this.bufferFrames,
+  });
+
+  final String uid;
+  final String name;
+  final int inputChannels;
+  final double nominalSampleRate;
+  final int bufferFrames;
+}
+
 class InputChannelConfig {
   const InputChannelConfig({
     required this.id,
     required this.name,
     required this.kind,
     required this.endpointId,
+    this.channelPairIndex = 0,
     this.trimDb = 0,
     this.fader = .8,
     this.muted = false,
@@ -20,6 +51,7 @@ class InputChannelConfig {
   final String name;
   final AudioInputKind kind;
   final String endpointId;
+  final int channelPairIndex;
   final double trimDb;
   final double fader;
   final bool muted;
@@ -84,11 +116,14 @@ class TrackMatch {
 
 abstract interface class AudioEngine {
   EngineState get state;
+  AudioRouteState get routeState;
+  Stream<AudioRouteState> get routeStates;
   Stream<List<ChannelMeterSnapshot>> get channelMeters;
   Stream<MasterMeterSnapshot> get masterMeters;
   Stream<TrackMatch> get trackMatches;
 
   Future<void> initialize({int sampleRate = 48000, int framesPerBuffer = 256});
+  Future<List<AudioInputEndpoint>> refreshInputDevices();
   Future<void> addChannel(InputChannelConfig channel);
   Future<void> removeChannel(String channelId);
   Future<void> setTrim(String channelId, double db);

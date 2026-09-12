@@ -9,15 +9,22 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   final audioEngine = createAudioEnginePort();
   final audioEngineResult = audioEngine.initialize();
-  runApp(LiveMixMasterApp(audioEngineResult: audioEngineResult));
+  runApp(
+    LiveMixMasterApp(
+      audioEngine: audioEngine,
+      audioEngineResult: audioEngineResult,
+    ),
+  );
 }
 
 class LiveMixMasterApp extends StatelessWidget {
   const LiveMixMasterApp({
-    Key? key,
+    super.key,
+    this.audioEngine,
     this.audioEngineResult,
-  }) : super(key: key);
+  });
 
+  final AudioEnginePort? audioEngine;
   final AudioEngineBootstrapResult? audioEngineResult;
 
   @override
@@ -28,7 +35,7 @@ class LiveMixMasterApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: LiveMixTheme.dark(),
       home: result == null || result.isAvailable
-          ? buildPrimaryOperatorSurface()
+          ? buildPrimaryOperatorSurface(audioEngine)
           : _AudioEngineUnavailable(result: result),
     );
   }
