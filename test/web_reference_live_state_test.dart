@@ -23,7 +23,8 @@ void main() {
         activeChannelId: 'mic-live',
         fader: .72,
         muted: false,
-        solo: false,
+        solo: true,
+        channelPeak: .57,
         masterPeakLeft: .61,
         masterPeakRight: .83,
         limiterActive: true,
@@ -55,6 +56,13 @@ void main() {
       expect(state.sourceId, 'mic-live');
       expect(state.sourceLabel, 'Booth Interface 1-2');
       expect(state.recordingActive, isTrue);
+      expect(state.mixerEnabled, isTrue);
+      expect(state.fader, .72);
+      expect(state.muted, isFalse);
+      expect(state.solo, isTrue);
+      expect(state.channelPeak, .57);
+      expect(state.masterPeakLeft, .61);
+      expect(state.masterPeakRight, .83);
       expect(state.masterPeakLevel, .83);
       expect(state.limiterActive, isTrue);
       expect(state.currentArtist, 'Live Artist');
@@ -79,6 +87,13 @@ void main() {
       expect(state.sourceId, isNull);
       expect(state.sourceLabel, 'NO ACTIVE SOURCE');
       expect(state.recordingActive, isFalse);
+      expect(state.mixerEnabled, isFalse);
+      expect(state.fader, 0);
+      expect(state.muted, isFalse);
+      expect(state.solo, isFalse);
+      expect(state.channelPeak, 0);
+      expect(state.masterPeakLeft, 0);
+      expect(state.masterPeakRight, 0);
       expect(state.masterPeakLevel, 0);
       expect(state.limiterActive, isFalse);
       expect(state.currentArtist, 'UNKNOWN ARTIST');
