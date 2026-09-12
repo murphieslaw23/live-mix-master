@@ -23,28 +23,27 @@ void main() {
       expect(source, contains('CompactMonitorView('));
       expect(source, contains('currentTrackTitle: liveState.currentTrackTitle'));
       expect(source, contains('masterPeakLevel: liveState.masterPeakLevel'));
-      expect(source, contains('MixerDeskView('));
+      expect(source, contains('WebLiveMixerReference('));
       expect(source, contains('liveState: liveState'));
     });
 
-    test('operator drawer does not allocate a fallback runtime when all audio controllers are injected', () async {
-      final source = await File('lib/app/app_surface_web.dart').readAsString();
+    test('Web runtime factory reuses the same AudioWorklet graph on browser builds', () async {
+      final source = await File('lib/audio/web/browser_capture_runtime_web.dart').readAsString();
 
-      expect(
-        source,
-        isNot(contains('final fallbackRuntime = createBrowserWebRuntime();')),
-        reason: 'an unconditional fallback runtime duplicates the injected WebAudio graph',
-      );
-      expect(source, contains('needsFallbackRuntime'));
-      expect(source, contains('if (needsFallbackRuntime)'));
+      expect(source, contains('BrowserWebRuntime? _sharedBrowserWebRuntime'));
+      expect(source, contains('if (_sharedBrowserWebRuntime case final runtime?)'));
+      expect(source, contains('_sharedBrowserWebRuntime = runtime'));
     });
 
-    test('desktop live mode cannot claim unsupported broadcast or loudness telemetry', () async {
-      final source = await File('lib/features/mixer/mixer_desk_view.dart').readAsString();
+    test('desktop live reference cannot claim unsupported broadcast or loudness telemetry', () async {
+      final source = await File('lib/app/web_live_mixer_reference.dart').readAsString();
 
-      expect(source, contains('WebReferenceLiveState? liveState'));
       expect(source, contains("'N/A'"));
       expect(source, contains("'UNAVAILABLE'"));
+      expect(source, isNot(contains('-14.2 LUFS')));
+      expect(source, isNot(contains('-6.0 dBTP')));
+      expect(source, isNot(contains('PREFLIGHT OK')));
+      expect(source, isNot(contains('320 KBPS')));
     });
   });
 }
