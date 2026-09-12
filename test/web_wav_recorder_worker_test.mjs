@@ -93,6 +93,51 @@ test('Web recording worker produces an independently valid >=10s 48kHz stereo PC
   assert.ok(durationSeconds >= 10, `expected >=10 s WAV, got ${durationSeconds}`);
 });
 
+test('Worker protocol consumes only declared frames from reusable AudioWorklet scratch', () => {
+  const messages = [];
+  let appended = null;
+  const writer = {
+    channels: 2,
+    appendInterleaved(samples) {
+      appended = Float32Array.from(samples);
+    },
+    finalize() {
+      return new Uint8Array(44);
+    },
+    abort() {},
+  };
+  const handle = recorderWorker.createLiveMixMasterRecorderWorkerHandler(
+    (message) => messages.push(message),
+    { writerFactory: () => writer },
+  );
+
+  handle({
+    data: {
+      type: 'start',
+      sampleRate: 48000,
+      channels: 2,
+      sampleFormat: 'pcm24',
+      maxBytes: 1024,
+    },
+  });
+
+  const scratch = new Float32Array(256);
+  scratch[0] = 0.4;
+  scratch[1] = -0.4;
+  scratch.fill(0.9, 2);
+  handle({
+    data: {
+      type: 'pcm',
+      sequence: 11,
+      samples: scratch,
+      frames: 1,
+    },
+  });
+
+  assert.deepEqual(Array.from(appended), Array.from(Float32Array.of(0.4, -0.4)));
+  assert.deepEqual(messages.at(-1), { type: 'pcmAck', sequence: 11, frames: 1 });
+});
+
 test('Worker protocol ACKs accepted PCM and fails closed when storage capacity is exceeded', () => {
   assert.equal(
     typeof recorderWorker.createLiveMixMasterRecorderWorkerHandler,
