@@ -12,7 +12,7 @@ async function source(url) {
   return readFile(url, 'utf8');
 }
 
-test('browser graph wires post-master PCM through a dedicated recorder Worker with ACKs', async () => {
+test('browser graph wires canonical post-master PCM through a dedicated recorder Worker with ACKs', async () => {
   const gateway = await source(gatewayUrl);
   const worklet = await source(workletUrl);
 
@@ -59,8 +59,18 @@ test('browser graph wires post-master PCM through a dedicated recorder Worker wi
 
   assert.match(
     worklet,
-    /type: 'pcm'[\s\S]*samples: interleaved/,
-    'AudioWorklet must emit post-master interleaved PCM, not raw capture PCM',
+    /this\.recordingScratch = new Float32Array\(256\)/,
+    'recording scratch must be allocated once during DSP initialization',
+  );
+  assert.match(
+    worklet,
+    /type: 'pcm'[\s\S]*samples: this\.recordingScratch/,
+    'AudioWorklet must emit reusable canonical post-master Wasm PCM',
+  );
+  assert.doesNotMatch(
+    worklet,
+    /if \(this\.recordingEnabled[\s\S]*const interleaved = new Float32Array/,
+    'recording path must not allocate PCM arrays inside process()',
   );
 });
 
