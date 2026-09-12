@@ -1,8 +1,7 @@
 /// Pure-Dart seam around the native LiveMixMaster C ABI.
 ///
-/// Task 6 deliberately keeps this interface independent of `dart:ffi` so the
-/// host orchestration can be tested with deterministic fake bindings before a
-/// DynamicLibrary-backed implementation is added.
+/// The host orchestration uses this interface for non-real-time control and
+/// compact status polling. Native audio callbacks never cross into Dart.
 class NativeInputDevice {
   const NativeInputDevice({
     required this.objectId,
@@ -93,7 +92,7 @@ abstract interface class NativeAudioBindings {
   bool setSolo(String id, bool value);
 
   bool bindCaptureChannel(String id);
-  bool captureStart(String uid);
+  bool captureStart(String uid, int channelPairIndex);
   void captureStop();
   NativeCaptureStatus captureStatus();
 
