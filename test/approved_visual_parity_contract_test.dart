@@ -31,7 +31,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('web release shell uses the approved rack and master hierarchy', (tester) async {
+    testWidgets('web release shell keeps approved hierarchy without fixture telemetry claims', (tester) async {
       await _pumpAt(
         tester,
         const Size(1440, 1000),
@@ -46,19 +46,33 @@ void main() {
 
       for (final label in <String>[
         'LIVEMIXMASTER',
-        'USB 1-2',
-        'REKORDBOX',
-        'MIC 1',
-        'AUX',
+        'NO ACTIVE SOURCE',
         'MASTER BUS',
         'LOUDNESS',
         'TRUE PEAK',
         'BROADCAST',
+        'UNAVAILABLE',
       ]) {
         expect(
           find.text(label),
           findsWidgets,
-          reason: 'missing approved Vercel reference anchor: $label',
+          reason: 'missing truthful Vercel reference anchor: $label',
+        );
+      }
+
+      for (final fixtureOnlyLabel in <String>[
+        'USB 1-2',
+        'REKORDBOX',
+        'MIC 1',
+        'AUX',
+        '-14.2 LUFS',
+        '-6.0 dBTP',
+        '320 KBPS',
+      ]) {
+        expect(
+          find.text(fixtureOnlyLabel),
+          findsNothing,
+          reason: 'production Web shell must not expose fixture-only state: $fixtureOnlyLabel',
         );
       }
 
