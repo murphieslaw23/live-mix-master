@@ -45,7 +45,9 @@ jobs:
       - name: Verify Dart reference parity vectors
         run: flutter test test/web_dsp_kernel_test.dart
       - name: Build canonical DSP Wasm with pinned Emscripten
-        run: docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_dsp_wasm.sh
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_dsp_wasm.sh
+          sudo chown -R "$(id -u):$(id -g)" build
       - name: Verify shared DSP Wasm contract
         run: |
           test -s build/dsp-wasm/livemixmaster-dsp.wasm.sha256
@@ -63,3 +65,22 @@ jobs:
             test/web_recorder_pipeline_integration_test.mjs \
             test/web_wav_recorder_worker_test.mjs \
             test/web_fingerprint_worker_test.mjs
+      - name: Verify fail-closed Web operator and controller contracts
+        run: |
+          flutter test \
+            test/web_release_compile_boundary_test.dart \
+            test/browser_capture_controller_test.dart \
+            test/browser_media_gateway_test.dart \
+            test/web_dsp_kernel_test.dart \
+            test/browser_audio_processing_controller_test.dart \
+            test/browser_mixer_controller_test.dart \
+            test/browser_recording_controller_test.dart
+          node --test \
+            test/web_audio_worklet_processor_test.mjs \
+            test/web_audio_graph_integration_test.mjs \
+            test/web_wav_recorder_worker_test.mjs \
+            test/web_recorder_failure_cleanup_test.mjs \
+            test/web_recorder_export_test.mjs \
+            test/web_recording_operator_gateway_test.mjs \
+            test/web_recorder_finalize_test.mjs \
+            test/web_recorder_pipeline_integration_test.mjs
