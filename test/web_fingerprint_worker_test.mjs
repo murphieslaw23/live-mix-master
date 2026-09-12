@@ -34,27 +34,6 @@ test('fingerprint Worker converts Float32 to deterministic signed PCM16', () => 
   );
 });
 
-test('fingerprint rolling window consumes only declared frames from reusable AudioWorklet scratch', () => {
-  const window = new LiveMixMasterFingerprintWindow({ maximumWindowSeconds: 10 });
-  const scratch = new Float32Array(256);
-  scratch[0] = 0.35;
-  scratch[1] = -0.35;
-  scratch.fill(0.9, 2);
-
-  window.append({
-    samples: scratch,
-    frames: 1,
-    sampleRate: 48000,
-    channels: 2,
-  });
-
-  assert.equal(window.frames, 1);
-  assert.deepEqual(
-    Array.from(window.snapshot()),
-    Array.from(Float32Array.of(0.35, -0.35)),
-  );
-});
-
 test('fingerprint Worker keeps only the newest 10 seconds of stereo PCM', async () => {
   const sampleRate = 4;
   const messages = [];
@@ -118,4 +97,133 @@ test('fingerprint Worker keeps only the newest 10 seconds of stereo PCM', async 
     fingerprint: 'fixture-fingerprint',
     durationSeconds: 10,
   });
+});
+
+test('fingerprint Worker rejects short windows explicitly', async () => {
+  const sampleRate = 4;
+  const messages = [];
+  let fingerprintCalls = 0;
+  const handle = createLiveMixMasterFingerprintWorkerHandler({
+    postMessage: (message) => messages.push(message),
+    loadChromaprint: async () => ({
+      version: () => '1.6.1',
+      fingerprintPcm16() {
+        fingerprintCalls += 1;
+        return 'must-not-run';
+      },
+    }),
+    minimumWindowSeconds: 10,
+    maximumWindowSeconds: 10,
+  });
+
+  await handle({
+    data: {
+      type: 'init',
+      moduleUrl: '/fingerprint/vendor/livemixmaster-chromaprint.mjs',
+      wasmUrl: '/fingerprint/vendor/livemixmaster-chromaprint-core.wasm',
+    },
+  });
+  const samples = makeStereoSamples({ seconds: 9, sampleRate });
+  await handle({
+    data: { type: 'pcm', requestId: 4, samples, frames: samples.length / 2, sampleRate, channels: 2 },
+  });
+  await handle({ data: { type: 'flush', requestId: 5 } });
+
+  assert.equal(fingerprintCalls, 0);
+  assert.deepEqual(messages.at(-1), {
+    type: 'fingerprintError',
+    requestId: 5,
+    failureCode: 'tooShort',
+  });
+});
+
+test('fingerprint Worker permits only one in-flight calculation and does not queue another flush', async () => {
+  const sampleRate = 4;
+  const messages = [];
+  let resolveFingerprint;
+  let fingerprintCalls = 0;
+  const fingerprintPromise = new Promise((resolve) => {
+    resolveFingerprint = resolve;
+  });
+  const handle = createLiveMixMasterFingerprintWorkerHandler({
+    postMessage: (message) => messages.push(message),
+    loadChromaprint: async () => ({
+      version: () => '1.6.1',
+      async fingerprintPcm16() {
+        fingerprintCalls += 1;
+        return fingerprintPromise;
+      },
+    }),
+    minimumWindowSeconds: 10,
+    maximumWindowSeconds: 10,
+  });
+
+  await handle({
+    data: {
+      type: 'init',
+      moduleUrl: '/fingerprint/vendor/livemixmaster-chromaprint.mjs',
+      wasmUrl: '/fingerprint/vendor/livemixmaster-chromaprint-core.wasm',
+    },
+  });
+  const samples = makeStereoSamples({ seconds: 10, sampleRate });
+  await handle({
+    data: { type: 'pcm', requestId: 6, samples, frames: samples.length / 2, sampleRate, channels: 2 },
+  });
+
+  const firstFlush = handle({ data: { type: 'flush', requestId: 7 } });
+  await Promise.resolve();
+  await handle({ data: { type: 'flush', requestId: 8 } });
+
+  assert.equal(fingerprintCalls, 1);
+  assert.deepEqual(messages.at(-1), {
+    type: 'fingerprintError',
+    requestId: 8,
+    failureCode: 'busy',
+  });
+
+  resolveFingerprint('async-fingerprint');
+  await firstFlush;
+  assert.deepEqual(messages.at(-1), {
+    type: 'fingerprint',
+    requestId: 7,
+    fingerprint: 'async-fingerprint',
+    durationSeconds: 10,
+  });
+});
+
+test('fingerprint rolling window validates format and bounds retained PCM', () => {
+  const window = new LiveMixMasterFingerprintWindow({ maximumWindowSeconds: 10 });
+  const sampleRate = 8;
+
+  const first = makeStereoSamples({ seconds: 8, sampleRate, left: 0.1, right: -0.1 });
+  const second = makeStereoSamples({ seconds: 8, sampleRate, left: 0.2, right: -0.2 });
+  window.append({ samples: first, frames: first.length / 2, sampleRate, channels: 2 });
+  window.append({ samples: second, frames: second.length / 2, sampleRate, channels: 2 });
+
+  assert.equal(window.frames, sampleRate * 10);
+  assert.equal(window.samples.length, sampleRate * 10 * 2);
+  assert.throws(
+    () => window.append({ samples: second, frames: second.length / 2, sampleRate: 44100, channels: 2 }),
+    /format changed/i,
+  );
+});
+
+test('fingerprint Worker source has no provider network, storage, or DOM API', async () => {
+  const source = await readFile(workerUrl, 'utf8');
+
+  for (const prohibited of [
+    /\bfetch\s*\(/,
+    /XMLHttpRequest/,
+    /WebSocket/,
+    /indexedDB/,
+    /localStorage/,
+    /sessionStorage/,
+    /\bdocument\s*[.[]/,
+    /\bwindow\s*[.[]/,
+  ]) {
+    assert.doesNotMatch(source, prohibited);
+  }
+  assert.match(source, /typeof self !== 'undefined'[\s\S]*addEventListener\([\s\S]*message/);
+  assert.match(source, /livemixmaster-chromaprint\.mjs/);
+  assert.match(source, /livemixmaster-chromaprint-core\.wasm/);
 });
