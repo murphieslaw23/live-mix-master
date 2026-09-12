@@ -143,25 +143,51 @@ class NativeAudioEngine implements AudioEngine {
       _setRouteState(AudioRouteState.permissionDenied);
       throw StateError('Audio input permission is not granted.');
     }
-    if (!_inputs.any((input) => input.uid == channel.endpointId)) {
+    if (_channels.isNotEmpty) {
+      throw StateError(
+        'Native capture currently supports exactly one active route.',
+      );
+    }
+
+    AudioInputEndpoint? endpoint;
+    for (final input in _inputs) {
+      if (input.uid == channel.endpointId) {
+        endpoint = input;
+        break;
+      }
+    }
+    if (endpoint == null) {
       _state = EngineState.degraded;
       _setRouteState(AudioRouteState.noDevice);
       throw StateError('Selected audio endpoint is not available.');
+    }
+    if (channel.channelPairIndex < 0 ||
+        channel.channelPairIndex * 2 >= endpoint.inputChannels) {
+      throw StateError('Selected channel pair is not available on the endpoint.');
     }
 
     _state = EngineState.preparing;
     _setRouteState(AudioRouteState.preparing);
 
-    final configured = bindings.addChannel(channel.id) &&
-        bindings.setFader(channel.id, channel.fader) &&
-        bindings.setMuted(channel.id, channel.muted) &&
-        bindings.setSolo(channel.id, channel.solo) &&
-        bindings.bindCaptureChannel(channel.id) &&
-        bindings.captureStart(channel.endpointId);
-    if (!configured) {
+    var nativeChannelAdded = false;
+    try {
+      nativeChannelAdded = bindings.addChannel(channel.id);
+      if (!nativeChannelAdded ||
+          !bindings.setFader(channel.id, channel.fader) ||
+          !bindings.setMuted(channel.id, channel.muted) ||
+          !bindings.setSolo(channel.id, channel.solo) ||
+          !bindings.bindCaptureChannel(channel.id) ||
+          !bindings.captureStart(channel.endpointId, channel.channelPairIndex)) {
+        throw StateError('Native capture route configuration failed.');
+      }
+    } catch (_) {
+      bindings.captureStop();
+      if (nativeChannelAdded) {
+        bindings.removeChannel(channel.id);
+      }
       _state = EngineState.failed;
       _setRouteState(AudioRouteState.failed);
-      throw StateError('Native capture route configuration failed.');
+      rethrow;
     }
 
     _channels[channel.id] = channel;
