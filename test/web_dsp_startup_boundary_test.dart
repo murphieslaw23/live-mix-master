@@ -14,7 +14,7 @@ void main() {
     );
     expect(gateway, contains('const int _dspAbiVersion = 1;'));
     expect(gateway, contains('final dspModule = await _compileDspModule();'));
-    expect(gateway, contains("'type': 'dspInit'"));
+    expect(gateway, contains("initMessage['type'] = 'dspInit'.toJS;"));
     expect(gateway, contains("case 'dspReady':"));
     expect(gateway, contains('_dspHandshakeTimeout'));
 
