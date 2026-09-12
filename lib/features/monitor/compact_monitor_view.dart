@@ -18,6 +18,8 @@ class CompactMonitorView extends StatelessWidget {
     this.loudnessLufs,
     this.truePeakDbtp,
     this.limiterActive,
+    this.liveSourceLabel,
+    this.liveSourceActive,
   });
 
   final bool isStreaming;
@@ -31,6 +33,8 @@ class CompactMonitorView extends StatelessWidget {
   final double? loudnessLufs;
   final double? truePeakDbtp;
   final bool? limiterActive;
+  final String? liveSourceLabel;
+  final bool? liveSourceActive;
 
   @override
   Widget build(BuildContext context) {
@@ -381,6 +385,22 @@ class CompactMonitorView extends StatelessWidget {
   }
 
   Widget _buildSourceStatusCard() {
+    if (liveSourceActive != null) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: const BoxDecoration(
+          color: LiveMixTokens.surfaceRack,
+          borderRadius: BorderRadius.all(Radius.circular(8)),
+        ),
+        child: LmmDeviceStatus(
+          label: liveSourceLabel ?? 'NO ACTIVE SOURCE',
+          state: liveSourceActive!
+              ? LmmDeviceState.active
+              : LmmDeviceState.disconnected,
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: const BoxDecoration(
