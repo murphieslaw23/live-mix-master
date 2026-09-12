@@ -45,13 +45,14 @@ test('web runtime wires the W2 active MediaStream into the W3 AudioWorklet graph
 
 test('canonical DSP module is compiled and acknowledged before the live graph starts', async () => {
   const gateway = await fs.readFile(gatewayUrl, 'utf8');
+  const initToken = "initMessage['type'] = 'dspInit'.toJS;";
 
   for (const token of [
     "const String _dspAssetPath = 'audio/livemixmaster-dsp.wasm';",
     'const int _dspAbiVersion = 1;',
     'final dspModule = await _compileDspModule();',
     "await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;",
-    "'type': 'dspInit'",
+    initToken,
     "case 'dspReady':",
     'await dspReady.future.timeout(_dspHandshakeTimeout)',
     'sourceNode.connect(workletNode);',
@@ -64,7 +65,7 @@ test('canonical DSP module is compiled and acknowledged before the live graph st
   const compileIndex = gateway.indexOf('final dspModule = await _compileDspModule();');
   const addModuleIndex = gateway.indexOf("await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;");
   const nodeIndex = gateway.indexOf("web.AudioWorkletNode(context, 'livemixmaster-dsp')");
-  const initIndex = gateway.indexOf("'type': 'dspInit'");
+  const initIndex = gateway.indexOf(initToken);
   const readyIndex = gateway.indexOf('await dspReady.future.timeout(_dspHandshakeTimeout)');
   const connectIndex = gateway.indexOf('sourceNode.connect(workletNode);');
   const resumeIndex = gateway.indexOf('await context.resume().toDart;');
