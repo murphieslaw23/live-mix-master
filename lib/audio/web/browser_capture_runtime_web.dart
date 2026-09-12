@@ -23,7 +23,33 @@ class BrowserWebRuntime {
   final BrowserFingerprintLookupController fingerprintController;
 }
 
+BrowserWebRuntime? _sharedBrowserWebRuntime;
+
+/// Returns the application-scoped browser audio runtime.
+///
+/// The Web reference surface and the W5 operator drawer both call this factory.
+/// Reusing the runtime prevents a second MediaStream/AudioWorklet graph from
+/// being allocated merely because the same controls are presented twice.
 BrowserWebRuntime createBrowserWebRuntime({
+  BrowserFingerprintLookupController? fingerprintController,
+}) {
+  if (_sharedBrowserWebRuntime case final runtime?) {
+    if (fingerprintController == null ||
+        identical(fingerprintController, runtime.fingerprintController)) {
+      return runtime;
+    }
+  }
+
+  final runtime = _createBrowserWebRuntime(
+    fingerprintController: fingerprintController,
+  );
+  if (fingerprintController == null && _sharedBrowserWebRuntime == null) {
+    _sharedBrowserWebRuntime = runtime;
+  }
+  return runtime;
+}
+
+BrowserWebRuntime _createBrowserWebRuntime({
   BrowserFingerprintLookupController? fingerprintController,
 }) {
   final resolvedFingerprintController =
