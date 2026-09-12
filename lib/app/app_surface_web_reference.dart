@@ -1,29 +1,95 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../audio/web/browser_capture_controller.dart';
+import '../audio/web/browser_capture_runtime.dart';
+import '../audio/web/browser_mixer_controller.dart';
+import '../audio/web/browser_recording_controller.dart';
 import '../design/live_mix_tokens.dart';
 import '../design/web_reference_tokens.dart';
-import '../features/mixer/mixer_desk_view.dart';
 import '../features/monitor/compact_monitor_view.dart';
+import '../services/web/browser_fingerprint_lookup_controller.dart';
 import 'app_surface_web.dart' show WebReleaseShell;
+import 'web_live_mixer_reference.dart';
+import 'web_reference_live_state.dart';
 
 Widget buildPrimaryOperatorSurface() => const WebReferenceSurface();
 
-/// Responsive web composition that makes the approved Issue #1/Picsart
-/// mixer and field-monitor baselines the primary Vercel presentation.
+/// Responsive Web composition backed by one shared W5 browser runtime.
 ///
-/// The existing W5 [WebReleaseShell] remains intact inside an operator drawer
-/// so capture, DSP, recording, fingerprint and durable-session behavior are
-/// not rewritten as part of this visual-parity change.
-class WebReferenceSurface extends StatelessWidget {
+/// Desktop and compact reference views are projections of verified browser
+/// controller state. The operator drawer receives the same controller
+/// instances, so opening it never creates a second MediaStream/AudioWorklet
+/// graph merely to expose the lower-level W5 controls.
+class WebReferenceSurface extends StatefulWidget {
   const WebReferenceSurface({super.key});
 
   @override
+  State<WebReferenceSurface> createState() => _WebReferenceSurfaceState();
+}
+
+class _WebReferenceSurfaceState extends State<WebReferenceSurface> {
+  late final BrowserWebRuntime _runtime;
+
+  @override
+  void initState() {
+    super.initState();
+    _runtime = createBrowserWebRuntime();
+    _runtime.captureController.addListener(_handleCaptureState);
+    _runtime.recordingController.addListener(_handleRecordingState);
+    _runtime.fingerprintController.addListener(_handleFingerprintState);
+    _runtime.mixerController.addListener(_handleMixerState);
+    unawaited(_runtime.captureController.probe());
+  }
+
+  @override
+  void dispose() {
+    _runtime.captureController.removeListener(_handleCaptureState);
+    _runtime.recordingController.removeListener(_handleRecordingState);
+    _runtime.fingerprintController.removeListener(_handleFingerprintState);
+    _runtime.mixerController.removeListener(_handleMixerState);
+    // BrowserWebRuntime is application-scoped on Web; do not dispose its
+    // controllers when this presentation widget is rebuilt.
+    super.dispose();
+  }
+
+  void _handleCaptureState(BrowserCaptureState _) => _refresh();
+  void _handleRecordingState(BrowserRecordingState _) => _refresh();
+  void _handleFingerprintState(BrowserFingerprintLookupState _) => _refresh();
+  void _handleMixerState(BrowserMixerState _) => _refresh();
+
+  void _refresh() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  WebReferenceLiveState get _liveState =>
+      WebReferenceLiveState.fromBrowserStates(
+        capture: _runtime.captureController.state,
+        mixer: _runtime.mixerController.state,
+        recording: _runtime.recordingController.state,
+        fingerprint: _runtime.fingerprintController.state,
+      );
+
+  Future<void> _toggleRecording() async {
+    if (_liveState.recordingActive) {
+      await _runtime.recordingController.stopRecording();
+    } else {
+      await _runtime.recordingController.startRecording();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final liveState = _liveState;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < WebReferenceTokens.compactBreakpoint;
+        final compact =
+            constraints.maxWidth < WebReferenceTokens.compactBreakpoint;
         final drawerWidth = math.min(
           WebReferenceTokens.operatorDrawerMaxWidth,
           math.max(320.0, constraints.maxWidth * .78),
@@ -35,17 +101,37 @@ class WebReferenceSurface extends StatelessWidget {
           endDrawerEnableOpenDragGesture: false,
           endDrawer: SizedBox(
             width: drawerWidth,
-            child: const Drawer(
+            child: Drawer(
               backgroundColor: LiveMixTokens.surfaceBase,
-              child: WebReleaseShell(),
+              child: WebReleaseShell(
+                controller: _runtime.captureController,
+                recordingController: _runtime.recordingController,
+                fingerprintController: _runtime.fingerprintController,
+                mixerController: _runtime.mixerController,
+              ),
             ),
           ),
           body: Builder(
             builder: (scaffoldContext) {
-              void openOperator() => Scaffold.of(scaffoldContext).openEndDrawer();
+              void openOperator() =>
+                  Scaffold.of(scaffoldContext).openEndDrawer();
+
               return compact
-                  ? _CompactReferenceBody(onOpenOperator: openOperator)
-                  : _DesktopReferenceBody(onOpenOperator: openOperator);
+                  ? _CompactReferenceBody(
+                      liveState: liveState,
+                      onOpenOperator: openOperator,
+                    )
+                  : _DesktopReferenceBody(
+                      liveState: liveState,
+                      onOpenOperator: openOperator,
+                      onFaderChanged: (value) =>
+                          unawaited(_runtime.mixerController.setFader(value)),
+                      onMutedChanged: (value) =>
+                          unawaited(_runtime.mixerController.setMuted(value)),
+                      onSoloChanged: (value) =>
+                          unawaited(_runtime.mixerController.setSolo(value)),
+                      onToggleRecording: () => unawaited(_toggleRecording()),
+                    );
             },
           ),
         );
@@ -55,16 +141,37 @@ class WebReferenceSurface extends StatelessWidget {
 }
 
 class _DesktopReferenceBody extends StatelessWidget {
-  const _DesktopReferenceBody({required this.onOpenOperator});
+  const _DesktopReferenceBody({
+    required this.liveState,
+    required this.onOpenOperator,
+    required this.onFaderChanged,
+    required this.onMutedChanged,
+    required this.onSoloChanged,
+    required this.onToggleRecording,
+  });
 
+  final WebReferenceLiveState liveState;
   final VoidCallback onOpenOperator;
+  final ValueChanged<double> onFaderChanged;
+  final ValueChanged<bool> onMutedChanged;
+  final ValueChanged<bool> onSoloChanged;
+  final VoidCallback onToggleRecording;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         _DesktopRail(onOpenOperator: onOpenOperator),
-        const Expanded(child: MixerDeskView()),
+        Expanded(
+          child: WebLiveMixerReference(
+            liveState: liveState,
+            onFaderChanged: onFaderChanged,
+            onMutedChanged: onMutedChanged,
+            onSoloChanged: onSoloChanged,
+            onToggleRecording: onToggleRecording,
+            onOpenOperator: onOpenOperator,
+          ),
+        ),
       ],
     );
   }
@@ -151,7 +258,9 @@ class _RailItem extends StatelessWidget {
         label,
         textAlign: TextAlign.center,
         style: LiveMixTextStyles.uiLabel.copyWith(
-          color: active ? LiveMixTokens.textPrimary : LiveMixTokens.textSecondary,
+          color: active
+              ? LiveMixTokens.textPrimary
+              : LiveMixTokens.textSecondary,
         ),
       ),
     );
@@ -159,15 +268,34 @@ class _RailItem extends StatelessWidget {
 }
 
 class _CompactReferenceBody extends StatelessWidget {
-  const _CompactReferenceBody({required this.onOpenOperator});
+  const _CompactReferenceBody({
+    required this.liveState,
+    required this.onOpenOperator,
+  });
 
+  final WebReferenceLiveState liveState;
   final VoidCallback onOpenOperator;
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        const Positioned.fill(child: CompactMonitorView()),
+        Positioned.fill(
+          child: CompactMonitorView(
+            isStreaming: liveState.isStreaming,
+            broadcastConfigured: liveState.broadcastConfigured,
+            isRecording: liveState.recordingActive,
+            currentTrackTitle: liveState.currentTrackTitle,
+            currentArtist: liveState.currentArtist,
+            streamBitrateKbps: liveState.streamBitrateKbps,
+            masterPeakLevel: liveState.masterPeakLevel,
+            matchConfidence: liveState.matchConfidence,
+            loudnessLufs: liveState.loudnessLufs,
+            truePeakDbtp: liveState.truePeakDbtp,
+            limiterActive:
+                liveState.mixerEnabled ? liveState.limiterActive : null,
+          ),
+        ),
         Positioned(
           top: 8,
           right: 8,
@@ -181,7 +309,8 @@ class _CompactReferenceBody extends StatelessWidget {
               ),
               style: IconButton.styleFrom(
                 foregroundColor: LiveMixTokens.textPrimary,
-                backgroundColor: LiveMixTokens.surfaceRack.withValues(alpha: .94),
+                backgroundColor:
+                    LiveMixTokens.surfaceRack.withValues(alpha: .94),
                 side: const BorderSide(color: LiveMixTokens.accentCopper),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
