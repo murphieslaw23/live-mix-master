@@ -4,13 +4,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/design/live_mix_tokens.dart';
+import 'package:live_mix_master/design/web_reference_tokens.dart';
 
 void main() {
   group('LiveMixMaster hybrid design token contract', () {
     late Map<String, dynamic> source;
+    late Map<String, dynamic> webReference;
 
     setUpAll(() async {
       source = jsonDecode(await File('design/tokens.json').readAsString()) as Map<String, dynamic>;
+      webReference = jsonDecode(await File('design/web-reference.json').readAsString()) as Map<String, dynamic>;
     });
 
     test('Dart colors exactly match design/tokens.json', () {
@@ -39,6 +42,33 @@ void main() {
       expect(LiveMixTokens.meterScaleDbfs, (source['meterScaleDbfs'] as List<dynamic>).cast<num>());
       expect(LiveMixTokens.spacing, (source['spacingPx'] as List<dynamic>).cast<num>());
       expect(LiveMixTokens.radii, (source['radiusPx'] as List<dynamic>).cast<num>());
+    });
+
+    test('web composition tokens and brand assets match the reference manifest', () {
+      final layout = webReference['layout'] as Map<String, dynamic>;
+      final assets = webReference['assets'] as Map<String, dynamic>;
+
+      expect(WebReferenceTokens.compactBreakpoint, layout['compactBreakpointPx']);
+      expect(WebReferenceTokens.desktopRailWidth, layout['desktopRailWidthPx']);
+      expect(WebReferenceTokens.operatorDrawerMaxWidth, layout['operatorDrawerMaxWidthPx']);
+      expect(WebReferenceTokens.panelGap, layout['panelGapPx']);
+      expect(WebReferenceTokens.panelBorder, layout['panelBorderPx']);
+      expect(WebReferenceTokens.meterSegmentCount, layout['meterSegmentCount']);
+      expect(WebReferenceTokens.meterSegmentGap, layout['meterSegmentGapPx']);
+
+      expect(WebReferenceTokens.totemAsset, assets['totem']);
+      expect(WebReferenceTokens.compactTotemAsset, assets['totemCompact']);
+      expect(WebReferenceTokens.inverseTotemAsset, assets['totemInverse']);
+      expect(WebReferenceTokens.pwaMaskableAsset, assets['pwaMaskable']);
+
+      for (final path in <String>[
+        WebReferenceTokens.totemAsset,
+        WebReferenceTokens.compactTotemAsset,
+        WebReferenceTokens.inverseTotemAsset,
+        WebReferenceTokens.pwaMaskableAsset,
+      ]) {
+        expect(File(path).existsSync(), isTrue, reason: 'missing bundled/reference asset: $path');
+      }
     });
 
     test('theme exposes approved dark surfaces and semantic colors', () {
