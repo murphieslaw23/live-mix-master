@@ -41,9 +41,12 @@ void main() {
       );
 
       for (final label in <String>[
-        'LIVE MIX',
-        'SOURCE CHANNEL',
-        'MASTER STEREO',
+        'LIVEMIXMASTER',
+        'USB 1-2',
+        'REKORDBOX',
+        'MIC 1',
+        'AUX',
+        'MASTER BUS',
         'LOUDNESS',
         'TRUE PEAK',
         'BROADCAST',
