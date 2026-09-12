@@ -18,7 +18,7 @@ jobs:
   shared-dsp-wasm-contract:
     name: Shared DSP Wasm Contract
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,5 +43,9 @@ jobs:
           build/native-parity/dsp-parity test/fixtures/dsp_parity_vectors.tsv
       - name: Verify Dart reference parity vectors
         run: flutter test test/web_dsp_kernel_test.dart
+      - name: Build canonical DSP Wasm with pinned Emscripten
+        run: docker run --rm -v "$PWD:/src" -w /src emscripten/emsdk:6.0.9 bash tool/build_dsp_wasm.sh
       - name: Verify shared DSP Wasm contract
-        run: node --test test/web_dsp_wasm_build_contract_test.mjs test/web_dsp_wasm_parity_test.mjs
+        run: |
+          test -s build/dsp-wasm/livemixmaster-dsp.wasm.sha256
+          node --test test/web_dsp_wasm_build_contract_test.mjs test/web_dsp_wasm_parity_test.mjs
