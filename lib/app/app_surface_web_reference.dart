@@ -167,19 +167,7 @@ class _CompactReferenceBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        const Positioned.fill(
-          child: CompactMonitorView(
-            isStreaming: false,
-            isRecording: true,
-            currentTrackTitle: 'FORWARD THE REVOLUTION',
-            currentArtist: 'SPIRAL TRIBE',
-            streamBitrateKbps: 320,
-            masterPeakLevel: .84,
-            matchConfidence: .94,
-            loudnessLufs: -14.2,
-            truePeakDbtp: -6.0,
-          ),
-        ),
+        const Positioned.fill(child: CompactMonitorView()),
         Positioned(
           top: 8,
           right: 8,
