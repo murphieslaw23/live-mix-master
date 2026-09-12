@@ -139,6 +139,8 @@ typedef _SetFaderNative = Bool Function(Pointer<Utf8>, Float);
 typedef _SetFaderDart = bool Function(Pointer<Utf8>, double);
 typedef _SetFlagNative = Bool Function(Pointer<Utf8>, Bool);
 typedef _SetFlagDart = bool Function(Pointer<Utf8>, bool);
+typedef _CaptureStartNative = Bool Function(Pointer<Utf8>, Uint32);
+typedef _CaptureStartDart = bool Function(Pointer<Utf8>, int);
 typedef _CaptureStopNative = Void Function();
 typedef _CaptureStopDart = void Function();
 typedef _CaptureStatusNative = Bool Function(Pointer<_LmmCaptureStatus>);
@@ -184,8 +186,8 @@ class FfiNativeAudioBindings
         ),
         _bindCaptureChannel = library.lookupFunction<_ChannelIdBoolNative,
             _ChannelIdBoolDart>('lmm_bind_capture_channel'),
-        _captureStart = library.lookupFunction<_ChannelIdBoolNative,
-            _ChannelIdBoolDart>('lmm_capture_start'),
+        _captureStart = library.lookupFunction<_CaptureStartNative,
+            _CaptureStartDart>('lmm_capture_start'),
         _captureStop = library.lookupFunction<_CaptureStopNative,
             _CaptureStopDart>('lmm_capture_stop'),
         _captureGetStatus = library.lookupFunction<_CaptureStatusNative,
@@ -211,7 +213,7 @@ class FfiNativeAudioBindings
   final _SetFlagDart _setMuted;
   final _SetFlagDart _setSolo;
   final _ChannelIdBoolDart _bindCaptureChannel;
-  final _ChannelIdBoolDart _captureStart;
+  final _CaptureStartDart _captureStart;
   final _CaptureStopDart _captureStop;
   final _CaptureStatusDart _captureGetStatus;
   final _ChannelMeterDart _getChannelMeter;
@@ -290,7 +292,14 @@ class FfiNativeAudioBindings
   bool bindCaptureChannel(String id) => _withUtf8(id, _bindCaptureChannel);
 
   @override
-  bool captureStart(String uid) => _withUtf8(uid, _captureStart);
+  bool captureStart(String uid, int channelPairIndex) {
+    final nativeUid = uid.toNativeUtf8();
+    try {
+      return _captureStart(nativeUid, channelPairIndex);
+    } finally {
+      calloc.free(nativeUid);
+    }
+  }
 
   @override
   void captureStop() => _captureStop();
