@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:live_mix_master/app/app_surface_web.dart';
+import 'package:live_mix_master/app/app_surface.dart';
 import 'package:live_mix_master/design/live_mix_tokens.dart';
 import 'package:live_mix_master/features/mixer/mixer_desk_view.dart';
 import 'package:live_mix_master/features/monitor/compact_monitor_view.dart';
@@ -32,7 +32,7 @@ void main() {
     });
 
     testWidgets('web release shell uses the approved rack and master hierarchy', (tester) async {
-      await _pumpAt(tester, const Size(1440, 1000), const WebReleaseShell());
+      await _pumpAt(tester, const Size(1440, 1000), buildPrimaryOperatorSurface());
 
       expect(
         find.byKey(const ValueKey('web-reference-shell')),
