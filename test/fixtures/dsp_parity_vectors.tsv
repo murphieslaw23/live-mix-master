@@ -1,6 +1,12 @@
 # LiveMixMaster deterministic DSP parity vectors v1
-# name<TAB>masterGain<TAB>channels(id;linearTrim;fader;muted;solo;interleavedStereo separated by |)<TAB>expectedInterleaved<TAB>limiterActive<TAB>masterPeakLeft<TAB>masterPeakRight
-gain_meter	1	deck-a;1;0.5;0;0;1,-1,0.5,-0.5	0.25,-0.25,0.125,-0.125	0	0.25	0.25
-sum_two	1	a;1;1;0;0;0.5,0.25|b;1;0.5;0;0;0.8,-0.8	0.7,0.05	0	0.7	0.05
-solo_gate	1	solo;1;1;0;1;0.25,0.25|not-solo;1;1;0;0;0.5,0.5|muted-solo;1;1;1;1;0.75,0.75	0.25,0.25	0	0.25	0.25
-limiter	1	hot;1;1;0;0;2,-2	0.98,-0.98	1	0.98	0.98
+# name<TAB>masterGain<TAB>channels(id;linearTrim;fader;muted;solo;interleavedStereo separated by |)<TAB>expectedInterleaved<TAB>limiterActive<TAB>masterPeakLeft<TAB>masterPeakRight<TAB>channelMeters(id;processed;peakLeft;peakRight;rmsLeft;rmsRight;clipping separated by |)
+gain_meter	1	deck-a;1;0.5;0;0;1,-1,0.5,-0.5	0.25,-0.25,0.125,-0.125	0	0.25	0.25	deck-a;1;0.25;0.25;0.197642354;0.197642354;0
+sum_two	1	a;1;1;0;0;0.5,0.25|b;1;0.5;0;0;0.8,-0.8	0.7,0.05	0	0.7	0.05	a;1;0.5;0.25;0.5;0.25;0|b;1;0.2;0.2;0.2;0.2;0
+solo_gate	1	solo;1;1;0;1;0.25,0.25|not-solo;1;1;0;0;0.5,0.5|muted-solo;1;1;1;1;0.75,0.75	0.25,0.25	0	0.25	0.25	solo;1;0.25;0.25;0.25;0.25;0|not-solo;0;0;0;0;0;0|muted-solo;0;0;0;0;0;0
+limiter	1	hot;1;1;0;0;2,-2	0.98,-0.98	1	0.98	0.98	hot;1;2;2;2;2;1
+mute_removal	1	muted;1;1;1;0;0.9,-0.9|live;1;1;0;0;0.2,-0.3	0.2,-0.3	0	0.2	0.3	muted;0;0;0;0;0;0|live;1;0.2;0.3;0.2;0.3;0
+negative_clamp	1	hot;1;1;0;0;-2,2	-0.98,0.98	1	0.98	0.98	hot;1;2;2;2;2;1
+asymmetric_trim_fader	1	a;0.5;0.5;0;0;0.8,-0.4,0.2,-0.1	0.1,-0.05,0.025,-0.0125	0	0.1	0.05	a;1;0.1;0.05;0.072886899;0.036443449;0
+clipping_before_master	0.5	clip;1;1;0;0;1.2,-1.1	0.6,-0.55	0	0.6	0.55	clip;1;1.2;1.1;1.2;1.1;1
+stereo_sum	1	a;0.8;0.5;0;0;0.7,-0.2,-0.3,0.9|b;1.2;0.75;0;0;-0.2,0.5,0.4,-0.1	0.005,0.2975,0.21,0.1125	0	0.21	0.2975	a;1;0.14;0.18;0.107703296;0.130384048;0|b;1;0.27;0.3375;0.213453742;0.243374711;0
+master_gain	1.5	a;1;1;0;0;0.5,-0.25	0.75,-0.375	0	0.75	0.375	a;1;0.5;0.25;0.5;0.25;0

@@ -1,8 +1,111 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/audio/web/web_dsp_kernel.dart';
+
+class _ExpectedMeter {
+  const _ExpectedMeter({
+    required this.id,
+    required this.processed,
+    required this.peakLeft,
+    required this.peakRight,
+    required this.rmsLeft,
+    required this.rmsRight,
+    required this.clipping,
+  });
+
+  final String id;
+  final bool processed;
+  final double peakLeft;
+  final double peakRight;
+  final double rmsLeft;
+  final double rmsRight;
+  final bool clipping;
+}
+
+class _FixtureVector {
+  const _FixtureVector({
+    required this.name,
+    required this.masterGain,
+    required this.channels,
+    required this.expectedOutput,
+    required this.limiterActive,
+    required this.masterPeakLeft,
+    required this.masterPeakRight,
+    required this.meters,
+  });
+
+  final String name;
+  final double masterGain;
+  final List<WebDspChannelBlock> channels;
+  final List<double> expectedOutput;
+  final bool limiterActive;
+  final double masterPeakLeft;
+  final double masterPeakRight;
+  final List<_ExpectedMeter> meters;
+}
+
+List<double> _parseFloatList(String value) =>
+    value.split(',').map(double.parse).toList(growable: false);
+
+_ExpectedMeter _parseMeter(String value) {
+  final parts = value.split(';');
+  if (parts.length != 7) {
+    throw FormatException('meter spec must contain 7 fields: $value');
+  }
+  return _ExpectedMeter(
+    id: parts[0],
+    processed: parts[1] == '1',
+    peakLeft: double.parse(parts[2]),
+    peakRight: double.parse(parts[3]),
+    rmsLeft: double.parse(parts[4]),
+    rmsRight: double.parse(parts[5]),
+    clipping: parts[6] == '1',
+  );
+}
+
+_FixtureVector _parseVector(String line) {
+  final fields = line.split('\t');
+  if (fields.length != 8) {
+    throw FormatException('fixture row must contain 8 fields: $line');
+  }
+
+  final channels = fields[2].split('|').map((spec) {
+    final parts = spec.split(';');
+    if (parts.length != 6) {
+      throw FormatException('channel spec must contain 6 fields: $spec');
+    }
+    return WebDspChannelBlock(
+      id: parts[0],
+      linearTrim: double.parse(parts[1]),
+      fader: double.parse(parts[2]),
+      muted: parts[3] == '1',
+      solo: parts[4] == '1',
+      interleavedStereo: Float32List.fromList(_parseFloatList(parts[5])),
+    );
+  }).toList(growable: false);
+
+  return _FixtureVector(
+    name: fields[0],
+    masterGain: double.parse(fields[1]),
+    channels: channels,
+    expectedOutput: _parseFloatList(fields[3]),
+    limiterActive: fields[4] == '1',
+    masterPeakLeft: double.parse(fields[5]),
+    masterPeakRight: double.parse(fields[6]),
+    meters: fields[7].split('|').map(_parseMeter).toList(growable: false),
+  );
+}
+
+List<_FixtureVector> _loadVectors() {
+  return File('test/fixtures/dsp_parity_vectors.tsv')
+      .readAsLinesSync()
+      .where((line) => line.isNotEmpty && !line.startsWith('#'))
+      .map(_parseVector)
+      .toList(growable: false);
+}
 
 void main() {
   group('WebDspKernel native-parity contract', () {
@@ -86,6 +189,41 @@ void main() {
       expect(result.masterPeakRight, closeTo(0.98, 1e-9));
       expect(result.limiterActive, isTrue);
       expect(result.channelMeters.single.clipping, isTrue);
+    });
+
+    test('matches every shared DSP parity vector', () {
+      final vectors = _loadVectors();
+      expect(vectors.length, greaterThanOrEqualTo(10));
+
+      for (final vector in vectors) {
+        final result = WebDspKernel.processStereoBlock(
+          channels: vector.channels,
+          masterGainLinear: vector.masterGain,
+        );
+
+        expect(result.output.length, vector.expectedOutput.length, reason: vector.name);
+        for (var index = 0; index < vector.expectedOutput.length; index++) {
+          expect(result.output[index], closeTo(vector.expectedOutput[index], 1e-6), reason: '${vector.name} output[$index]');
+        }
+        expect(result.limiterActive, vector.limiterActive, reason: vector.name);
+        expect(result.masterPeakLeft, closeTo(vector.masterPeakLeft, 1e-6), reason: vector.name);
+        expect(result.masterPeakRight, closeTo(vector.masterPeakRight, 1e-6), reason: vector.name);
+
+        final metersById = {for (final meter in result.channelMeters) meter.channelId: meter};
+        for (final expected in vector.meters) {
+          if (!expected.processed) {
+            expect(metersById.containsKey(expected.id), isFalse, reason: '${vector.name} ${expected.id} should be skipped');
+            continue;
+          }
+          final actual = metersById[expected.id];
+          expect(actual, isNotNull, reason: '${vector.name} missing ${expected.id} meter');
+          expect(actual!.peakLeft, closeTo(expected.peakLeft, 1e-6), reason: '${vector.name} ${expected.id} peakLeft');
+          expect(actual.peakRight, closeTo(expected.peakRight, 1e-6), reason: '${vector.name} ${expected.id} peakRight');
+          expect(actual.rmsLeft, closeTo(expected.rmsLeft, 1e-6), reason: '${vector.name} ${expected.id} rmsLeft');
+          expect(actual.rmsRight, closeTo(expected.rmsRight, 1e-6), reason: '${vector.name} ${expected.id} rmsRight');
+          expect(actual.clipping, expected.clipping, reason: '${vector.name} ${expected.id} clipping');
+        }
+      }
     });
   });
 }
