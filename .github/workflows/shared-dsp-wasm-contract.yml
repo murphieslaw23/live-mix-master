@@ -8,6 +8,7 @@ on:
       - 'test/**'
       - 'tool/**'
       - 'web/audio/**'
+      - 'web/fingerprint/**'
       - '.github/workflows/shared-dsp-wasm-contract.yml'
   workflow_dispatch:
 
@@ -55,4 +56,9 @@ jobs:
           flutter test test/web_dsp_startup_boundary_test.dart
       - name: Verify DSP Wasm render cutover contract
         run: |
-          node --test test/web_dsp_worklet_allocation_contract_test.mjs test/web_audio_worklet_processor_test.mjs test/web_recorder_pipeline_integration_test.mjs
+          node --test \
+            test/web_dsp_worklet_allocation_contract_test.mjs \
+            test/web_audio_worklet_processor_test.mjs \
+            test/web_recorder_pipeline_integration_test.mjs \
+            test/web_wav_recorder_worker_test.mjs \
+            test/web_fingerprint_worker_test.mjs
