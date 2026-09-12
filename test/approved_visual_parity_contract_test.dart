@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:live_mix_master/app/app_surface_web.dart';
 import 'package:live_mix_master/design/live_mix_tokens.dart';
 import 'package:live_mix_master/features/mixer/mixer_desk_view.dart';
 import 'package:live_mix_master/features/monitor/compact_monitor_view.dart';
@@ -25,6 +26,33 @@ void main() {
         'VIEW SESSION',
       ]) {
         expect(find.text(label), findsWidgets, reason: 'missing approved desktop anchor: $label');
+      }
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('web release shell uses the approved rack and master hierarchy', (tester) async {
+      await _pumpAt(tester, const Size(1440, 1000), const WebReleaseShell());
+
+      expect(
+        find.byKey(const ValueKey('web-reference-shell')),
+        findsOneWidget,
+        reason: 'Vercel web release must expose the approved reference composition root',
+      );
+
+      for (final label in <String>[
+        'LIVE MIX',
+        'SOURCE CHANNEL',
+        'MASTER STEREO',
+        'LOUDNESS',
+        'TRUE PEAK',
+        'BROADCAST',
+      ]) {
+        expect(
+          find.text(label),
+          findsWidgets,
+          reason: 'missing approved Vercel reference anchor: $label',
+        );
       }
 
       expect(tester.takeException(), isNull);
