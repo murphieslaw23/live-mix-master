@@ -1,6 +1,23 @@
 name: Promote tested Web artifact
 
 on:
+  workflow_call:
+    inputs:
+      artifact_id:
+        required: true
+        type: string
+      artifact_digest:
+        required: true
+        type: string
+      commit_sha:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
+    secrets:
+      VERCEL_TOKEN:
+        required: true
   workflow_dispatch:
     inputs:
       artifact_id:
