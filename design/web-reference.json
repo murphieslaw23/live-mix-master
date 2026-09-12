@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "LiveMixMaster Web Reference Composition",
+  "version": "1.0.0",
+  "status": "approved-implementation",
+  "sourceIssue": "https://github.com/murphieslaw23/live-mix-master/issues/1",
+  "semanticTokens": "design/tokens.json",
+  "referenceScreens": {
+    "desktop": "LiveMixMaster-desktop-hybrid-approved.png",
+    "mobile": "LiveMixMaster-mobile-hybrid-approved.png",
+    "desktopCorrection": "LiveMixMaster-desktop-corrected.png",
+    "mobileCorrection": "LiveMixMaster-field-monitor-corrected.png"
+  },
+  "layout": {
+    "compactBreakpointPx": 680,
+    "desktopRailWidthPx": 88,
+    "operatorDrawerMaxWidthPx": 720,
+    "panelGapPx": 12,
+    "panelBorderPx": 1,
+    "meterSegmentCount": 24,
+    "meterSegmentGapPx": 3
+  },
+  "assets": {
+    "totem": "assets/brand/livemixmaster-totem.svg",
+    "totemCompact": "assets/brand/livemixmaster-totem-compact.svg",
+    "totemInverse": "assets/brand/livemixmaster-totem-inverse.svg",
+    "pwaMaskable": "web/icons/livemixmaster-maskable.svg"
+  },
+  "rules": [
+    "Repository semantic tokens remain authoritative over generated artwork.",
+    "Desktop presents the mixer rack first; browser-specific operator controls remain available without changing audio/session controller behavior.",
+    "Compact web presents the approved read-only field-monitor composition first.",
+    "Amber is reserved for warning/action emphasis; healthy broadcast state uses copper plus explicit text/icon semantics.",
+    "Meters use the canonical monotonic dBFS scale and separate LUFS/dBTP readouts."
+  ]
+}

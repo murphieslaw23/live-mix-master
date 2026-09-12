@@ -18,6 +18,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/brand/livemixmaster-totem.svg
+    - assets/brand/livemixmaster-totem-compact.svg
+    - assets/brand/livemixmaster-totem-inverse.svg
   licenses:
     - assets/fonts/LICENSES.md
   fonts:

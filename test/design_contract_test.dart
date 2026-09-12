@@ -4,13 +4,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/design/live_mix_tokens.dart';
+import 'package:live_mix_master/design/web_reference_tokens.dart';
 
 void main() {
   group('LiveMixMaster hybrid design token contract', () {
     late Map<String, dynamic> source;
+    late Map<String, dynamic> webReference;
 
     setUpAll(() async {
       source = jsonDecode(await File('design/tokens.json').readAsString()) as Map<String, dynamic>;
+      webReference = jsonDecode(await File('design/web-reference.json').readAsString()) as Map<String, dynamic>;
     });
 
     test('Dart colors exactly match design/tokens.json', () {
@@ -39,6 +42,58 @@ void main() {
       expect(LiveMixTokens.meterScaleDbfs, (source['meterScaleDbfs'] as List<dynamic>).cast<num>());
       expect(LiveMixTokens.spacing, (source['spacingPx'] as List<dynamic>).cast<num>());
       expect(LiveMixTokens.radii, (source['radiusPx'] as List<dynamic>).cast<num>());
+    });
+
+    test('web composition tokens and brand assets match the reference manifest', () {
+      final layout = webReference['layout'] as Map<String, dynamic>;
+      final assets = webReference['assets'] as Map<String, dynamic>;
+
+      expect(WebReferenceTokens.compactBreakpoint, layout['compactBreakpointPx']);
+      expect(WebReferenceTokens.desktopRailWidth, layout['desktopRailWidthPx']);
+      expect(WebReferenceTokens.operatorDrawerMaxWidth, layout['operatorDrawerMaxWidthPx']);
+      expect(WebReferenceTokens.panelGap, layout['panelGapPx']);
+      expect(WebReferenceTokens.panelBorder, layout['panelBorderPx']);
+      expect(WebReferenceTokens.meterSegmentCount, layout['meterSegmentCount']);
+      expect(WebReferenceTokens.meterSegmentGap, layout['meterSegmentGapPx']);
+
+      expect(WebReferenceTokens.totemAsset, assets['totem']);
+      expect(WebReferenceTokens.compactTotemAsset, assets['totemCompact']);
+      expect(WebReferenceTokens.inverseTotemAsset, assets['totemInverse']);
+      expect(WebReferenceTokens.pwaMaskableAsset, assets['pwaMaskable']);
+
+      for (final path in <String>[
+        WebReferenceTokens.totemAsset,
+        WebReferenceTokens.compactTotemAsset,
+        WebReferenceTokens.inverseTotemAsset,
+        WebReferenceTokens.pwaMaskableAsset,
+      ]) {
+        expect(File(path).existsSync(), isTrue, reason: 'missing bundled/reference asset: $path');
+      }
+    });
+
+    test('web reference path does not ship synthetic telemetry as live evidence', () async {
+      final surface = await File('lib/app/app_surface_web_reference.dart').readAsString();
+      final monitor = await File('lib/features/monitor/compact_monitor_view.dart').readAsString();
+
+      for (final fixture in <String>[
+        'FORWARD THE REVOLUTION',
+        'SPIRAL TRIBE',
+        'loudnessLufs: -14.2',
+        'truePeakDbtp: -6.0',
+      ]) {
+        expect(surface, isNot(contains(fixture)), reason: 'web shell must not hardcode fixture telemetry: $fixture');
+      }
+
+      expect(
+        monitor,
+        isNot(contains('this.loudnessLufs = -14.2')),
+        reason: 'unverified LUFS must be unavailable by default',
+      );
+      expect(
+        monitor,
+        isNot(contains('this.truePeakDbtp = -6.0')),
+        reason: 'unverified dBTP must be unavailable by default',
+      );
     });
 
     test('theme exposes approved dark surfaces and semantic colors', () {

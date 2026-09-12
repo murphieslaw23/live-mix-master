@@ -38,6 +38,14 @@ async function activateButton(page, name) {
   return button;
 }
 
+async function openOperatorControls(page) {
+  const operator = page.getByRole('button', { name: 'WEB OPERATOR' });
+  await activateControl(operator);
+  await expect(
+    page.getByText('W5 WEB OPERATOR BRIDGE — CAPTURE / MIX / RECORD / SESSION RECOVERY ACTIVE.'),
+  ).toBeVisible();
+}
+
 async function replaceFlutterText(page, field, value) {
   await field.focus();
   await expect(field).toBeFocused();
@@ -62,6 +70,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
 
   await page.goto('/');
   await enableFlutterAccessibility(page);
+  await openOperatorControls(page);
 
   const connect = page.getByRole('button', { name: 'CONNECT MIC / USB' });
   await activateControl(connect);
@@ -137,6 +146,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   }, sessionSeed);
   await page.reload();
   await enableFlutterAccessibility(page);
+  await openOperatorControls(page);
 
   await expect(page.getByText('Session tracklist')).toBeVisible();
   await expect(page.getByText('SESSION e2e-session — 1 ENTRIES')).toBeVisible();
@@ -162,6 +172,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
 
   await page.reload();
   await enableFlutterAccessibility(page);
+  await openOperatorControls(page);
   await expect(page.getByText('SESSION e2e-session — 1 ENTRIES')).toBeVisible();
   const correctedSession = await downloadSessionJson(
     page,
@@ -181,6 +192,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
     sessionRecovery: true,
     sessionCorrectionPersistedAcrossReload: true,
     jsonExportValidated: true,
+    referenceSurface: true,
   });
   await testInfo.attach('chromium-operator-evidence', {
     path: evidencePath,

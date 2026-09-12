@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title desc">
+  <title id="title">LiveMixMaster compact totem</title>
+  <desc id="desc">Small-size industrial audio totem for compact UI use.</desc>
+  <rect x="7" y="5" width="34" height="38" fill="none" stroke="#E6EDF3" stroke-width="3"/>
+  <path d="M12 15h24M12 33h24" stroke="#D96528" stroke-width="2.5"/>
+  <circle cx="17" cy="24" r="5.5" fill="none" stroke="#E6EDF3" stroke-width="2.5"/>
+  <circle cx="31" cy="24" r="5.5" fill="none" stroke="#E6EDF3" stroke-width="2.5"/>
+  <circle cx="17" cy="24" r="1.75" fill="#D96528"/>
+  <circle cx="31" cy="24" r="1.75" fill="#D96528"/>
+</svg>

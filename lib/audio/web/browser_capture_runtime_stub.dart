@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../services/web/browser_fingerprint_lookup_controller.dart';
 import 'browser_audio_processing_controller.dart';
 import 'browser_capture_controller.dart';
 import 'browser_mixer_controller.dart';
@@ -12,15 +13,19 @@ class BrowserWebRuntime {
     required this.processingController,
     required this.mixerController,
     required this.recordingController,
+    required this.fingerprintController,
   });
 
   final BrowserCaptureController captureController;
   final BrowserAudioProcessingController processingController;
   final BrowserMixerController mixerController;
   final BrowserRecordingController recordingController;
+  final BrowserFingerprintLookupController fingerprintController;
 }
 
-BrowserWebRuntime createBrowserWebRuntime() {
+BrowserWebRuntime createBrowserWebRuntime({
+  BrowserFingerprintLookupController? fingerprintController,
+}) {
   final mixerController = BrowserMixerController(
     gateway: const _UnsupportedBrowserMixerGateway(),
   );
@@ -35,6 +40,8 @@ BrowserWebRuntime createBrowserWebRuntime() {
     recordingController: BrowserRecordingController(
       gateway: const _UnsupportedBrowserRecordingGateway(),
     ),
+    fingerprintController:
+        fingerprintController ?? BrowserFingerprintLookupController(),
   );
 }
 
