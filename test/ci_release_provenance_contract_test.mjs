@@ -30,6 +30,11 @@ test('production promotion requires merged PR provenance for the exact commit', 
   assert.match(workflow, /pr\.merged_at/);
   assert.match(
     workflow,
+    /pr\.merge_commit_sha\s*===\s*commitSha/,
+    'production must require the exact pushed commit to be the merged PR commit',
+  );
+  assert.match(
+    workflow,
     /No merged pull request targeting main is associated with production commit/,
     'production must fail closed when merged-PR provenance is missing',
   );
