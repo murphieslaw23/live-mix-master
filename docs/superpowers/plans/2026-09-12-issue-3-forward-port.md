@@ -4,7 +4,7 @@
 
 **Goal:** Forward-port the macOS Core Audio/device-capture work from stale PR #15 onto current `main`, close all seven review findings, preserve the current Web/shared-DSP architecture, and merge only after exact-head CI plus real-device acceptance are green.
 
-**Architecture:** Keep `lib/main.dart` platform-neutral. The current conditional audio factory continues to choose desktop vs Web; the desktop implementation gains a `NativeDesktopRuntime` that owns the FFI-backed native engine, bounded PCM handoff, negotiated-format service coordinator, and telemetry. `MixerDeskView` receives an optional native `AudioEngine`/service facade on desktop while Web keeps its current browser surface. Native capture and lifecycle code are forward-ported, but DSP arithmetic remains centralized in `native/dsp_kernel.hpp` and is consumed by both desktop and Web paths.
+**Architecture:** Keep `lib/main.dart` platform-neutral. The current conditional audio factory continues to choose desktop vs Web; the desktop implementation gains a `NativeDesktopRuntime` that owns the FFI-backed native engine, bounded PCM handoff, negotiated-format service coordinator, and telemetry. `MixerDeskView` receives optional native control/service ports on desktop while Web keeps its current browser surface. Native capture/lifecycle code is forward-ported, but DSP arithmetic remains centralized in `native/dsp_kernel.hpp` and is consumed by both desktop and Web paths.
 
 **Tech Stack:** Flutter/Dart 3.5+, C++20/CMake, Core Audio Objective-C++, Dart FFI, lock-free SPSC queues, GitHub Actions, Vercel exact-artifact release flow.
 
@@ -17,8 +17,8 @@
 - `native/dsp_kernel.hpp` remains the canonical DSP kernel for desktop and Web.
 - Preserve ABI-v1 Web DSP constraints: maximum 8 Web channels, 128-frame render quantum ceiling, `0.98` sample ceiling, `1.0e-6` parity tolerance, Emscripten 6.0.9, no production JavaScript DSP fallback, and no committed generated Wasm.
 - The native callback performs no heap allocation, locks, disk/network I/O, logging, JSON serialization, or Dart calls.
-- The current macOS capture backend supports exactly one active Core Audio capture route. A second route is rejected explicitly until independent capture routes exist.
-- No resampling is introduced in this forward-port. Recording and fingerprint consumers must use the negotiated capture sample rate.
+- The macOS backend supports exactly one active Core Audio capture route in this forward-port. A second route is rejected explicitly.
+- No resampling is introduced. Recording and fingerprint consumers use the negotiated capture sample rate.
 - Hosted CI is not physical-input/BlackHole E2E evidence.
 - Do not claim standards-based True Peak/dBTP or LUFS from the current sample-peak ABI.
 
@@ -44,58 +44,55 @@
 - Create test: `test/native_desktop_runtime_factory_test.dart`
 
 **Interfaces:**
-- `AudioEngine` keeps the historical asynchronous control surface used by PR #15: `initialize`, `refreshInputDevices`, `addChannel`, `removeChannel`, `setTrim`, `setFader`, `setMute`, `setSolo`, `setMasterGain`, meter streams, route-state stream, and `dispose`.
+- Port the historical `AudioEngine` asynchronous control contract from PR #15.
 - Extend `InputChannelConfig` with `int channelPairIndex = 0`.
-- `NativeDesktopRuntime` owns `NativeAudioEngine audioEngine` plus later tasks' service coordinator, PCM pump, and telemetry.
-- `DesktopNativeAudioEngine.prepareRuntime()` returns `Future<NativeDesktopRuntime>` after the library has been loaded successfully.
-- Change the conditional app surface signature to `Widget buildPrimaryOperatorSurface(AudioEnginePort audioEngine)`; the Web implementation may ignore the argument, while desktop type-checks `DesktopNativeAudioEngine` and builds a `FutureBuilder<NativeDesktopRuntime>`.
+- `NativeDesktopRuntime` owns `NativeAudioEngine audioEngine`; later tasks add services, pump, and telemetry.
+- `DesktopNativeAudioEngine.prepareRuntime()` returns `Future<NativeDesktopRuntime>` after `initialize()` loaded a library.
+- Conditional surface signature becomes `Widget buildPrimaryOperatorSurface(AudioEnginePort audioEngine)`.
 
-- [ ] **Step 1: Create the replacement implementation branch from the accepted production `main` SHA**
+- [ ] **Step 1: Create the replacement branch from the accepted production main SHA**
 
-Run conceptually through the GitHub API:
+Create `feat/issue-3-forward-port` at `b2dcd03c13230cf7a832b51d75b0caf79f29cc4d` with `force=false`.
 
-```text
-branch: feat/issue-3-forward-port
-base: b2dcd03c13230cf7a832b51d75b0caf79f29cc4d
-force: false
-```
-
-Expected: the new branch has no ancestry from `feat/issue-3-macos-audio-path` beyond commits already present on `main`.
-
-- [ ] **Step 2: Write a failing platform-seam test**
-
-Add to `test/native_desktop_runtime_factory_test.dart`:
+- [ ] **Step 2: Write the failing desktop-factory test**
 
 ```dart
-test('desktop factory exposes native runtime preparation without changing main bootstrap contract', () {
-  final engine = DesktopNativeAudioEngine(
-    loadNativeLibrary: () => NativeLibraryLoadResult.loaded(
-      library: fakeDynamicLibrary,
-      loadedPath: '/tmp/liblive_mixer_engine.dylib',
-    ),
-    runtimeBuilder: (_) async => fakeRuntime,
-  );
+import 'dart:ffi';
 
-  expect(engine.initialize().isAvailable, isTrue);
-  expect(engine.prepareRuntime(), completion(same(fakeRuntime)));
-});
+import 'package:flutter_test/flutter_test.dart';
+import 'package:live_mix_master/audio/audio_engine_factory_desktop.dart';
+import 'package:live_mix_master/audio/native_desktop_runtime.dart';
+import 'package:live_mix_master/audio/native_library_loader.dart';
+
+void main() {
+  test('desktop factory exposes runtime preparation after bootstrap', () async {
+    final fakeRuntime = NativeDesktopRuntime.testing();
+    final engine = DesktopNativeAudioEngine(
+      loadNativeLibrary: () => NativeLibraryLoadResult.loaded(
+        library: DynamicLibrary.process(),
+        path: '/tmp/liblive_mixer_engine.dylib',
+        searchedPaths: const ['/tmp/liblive_mixer_engine.dylib'],
+      ),
+      runtimeBuilder: (_) async => fakeRuntime,
+    );
+
+    expect(engine.initialize().isAvailable, isTrue);
+    expect(await engine.prepareRuntime(), same(fakeRuntime));
+  });
+}
 ```
 
-The production change that makes this pass is the new `prepareRuntime()` seam; the test must fail first because current `DesktopNativeAudioEngine` exposes only `initialize()`.
+`NativeDesktopRuntime.testing()` is a test-only constructor containing a fake `AudioEngine`; it is defined in the new runtime file and never opens FFI symbols.
 
-- [ ] **Step 3: Run the focused test and verify RED**
-
-Run:
+- [ ] **Step 3: Verify RED**
 
 ```bash
 flutter test test/native_desktop_runtime_factory_test.dart test/native_startup_gate_test.dart
 ```
 
-Expected: FAIL because `prepareRuntime`, `runtimeBuilder`, and `NativeDesktopRuntime` do not yet exist.
+Expected: compile failure because `NativeDesktopRuntime`, `runtimeBuilder`, and `prepareRuntime()` do not exist.
 
-- [ ] **Step 4: Port the pure-Dart native contracts without changing Web behavior**
-
-Create/port the historical `AudioEngine` and binding models, with the channel-pair addition:
+- [ ] **Step 4: Port the pure-Dart contracts and add `channelPairIndex`**
 
 ```dart
 class InputChannelConfig {
@@ -123,11 +120,7 @@ class InputChannelConfig {
 }
 ```
 
-Keep the rest of the PR #15 bridge semantics, but do not copy its old `main.dart` bootstrap.
-
-- [ ] **Step 5: Add the desktop runtime seam**
-
-Implement the concrete factory shape:
+- [ ] **Step 5: Implement the desktop factory without changing current bootstrap semantics**
 
 ```dart
 class DesktopNativeAudioEngine implements AudioEnginePort {
@@ -142,7 +135,25 @@ class DesktopNativeAudioEngine implements AudioEnginePort {
   NativeLibraryLoadResult? _nativeLibraryResult;
 
   @override
-  AudioEngineBootstrapResult initialize() { /* preserve current behavior */ }
+  AudioEngineKind get kind => AudioEngineKind.desktopNative;
+
+  @override
+  AudioEngineBootstrapResult initialize() {
+    final result = _loadNativeLibrary();
+    _nativeLibraryResult = result;
+    if (result.isLoaded) {
+      return AudioEngineBootstrapResult.available(
+        kind: kind,
+        message: result.message,
+        diagnostics: result.loadedPath == null ? const [] : [result.loadedPath!],
+      );
+    }
+    return AudioEngineBootstrapResult.unavailable(
+      kind: kind,
+      message: result.message,
+      diagnostics: result.searchedPaths,
+    );
+  }
 
   Future<NativeDesktopRuntime> prepareRuntime() {
     final library = _nativeLibraryResult?.library;
@@ -154,9 +165,9 @@ class DesktopNativeAudioEngine implements AudioEnginePort {
 }
 ```
 
-- [ ] **Step 6: Route the available desktop surface through `prepareRuntime()` while keeping `main.dart` platform-neutral**
+- [ ] **Step 6: Route only the available desktop surface through runtime preparation**
 
-Change only the available branch in `LiveMixMasterApp`:
+Change current `main.dart` to:
 
 ```dart
 home: result == null || result.isAvailable
@@ -164,29 +175,15 @@ home: result == null || result.isAvailable
     : _AudioEngineUnavailable(result: result),
 ```
 
-Desktop `buildPrimaryOperatorSurface` uses a `FutureBuilder<NativeDesktopRuntime>` and ultimately constructs:
+Desktop `app_surface_desktop.dart` uses a `FutureBuilder<NativeDesktopRuntime>` and builds `MixerDeskView(audioEngine: runtime.audioEngine)`. Web ignores the port argument and returns its existing browser reference surface.
 
-```dart
-MixerDeskView(
-  audioEngine: runtime.audioEngine,
-  recordingWriter: runtime.services.recordingWriter,
-  fingerprintService: runtime.services.fingerprintService,
-)
-```
-
-For Task 1, `runtime.services` may be a stable facade with unavailable/no-op service state until Task 4 implements negotiated-format activation. Web continues returning the existing Web reference surface and must not import `dart:io`/FFI code.
-
-- [ ] **Step 7: Run platform/bootstrap tests and verify GREEN**
-
-Run:
+- [ ] **Step 7: Verify GREEN**
 
 ```bash
 flutter test test/native_desktop_runtime_factory_test.dart test/native_startup_gate_test.dart test/web_release_compile_boundary_test.dart
 ```
 
-Expected: PASS and no Web import boundary regression.
-
-- [ ] **Step 8: Commit Task 1**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add lib/audio lib/app lib/main.dart lib/features/mixer/mixer_desk_view.dart test/native_desktop_runtime_factory_test.dart test/native_startup_gate_test.dart
@@ -195,25 +192,17 @@ git commit -m "feat(audio): forward-port desktop native runtime seam"
 
 ---
 
-### Task 2: Forward-port the native capture engine and keep shared DSP canonical
+### Task 2: Forward-port native capture while keeping shared DSP canonical
 
 **Files:**
-- Port/create: `native/include/lmm_engine.h`
-- Port/create: `native/include/lmm_capture.h`
-- Port/create: `native/include/lmm_device_catalog.h`
-- Port/create: `native/include/lmm_permissions.h`
-- Port/create: `native/include/lmm_pcm_handoff.h`
-- Port/create: `native/include/spsc_ring_buffer.h`
+- Port/create: `native/include/lmm_engine.h`, `lmm_capture.h`, `lmm_device_catalog.h`, `lmm_permissions.h`, `lmm_pcm_handoff.h`, `spsc_ring_buffer.h`
 - Modify: `native/live_mixer_engine.cpp`
-- Port/create: `native/macos/coreaudio_capture.mm`
-- Port/create: `native/macos/coreaudio_device_catalog.mm`
-- Port/create: `native/macos/audio_input_permissions.mm`
+- Port/create: `native/macos/coreaudio_capture.mm`, `coreaudio_device_catalog.mm`, `audio_input_permissions.mm`
 - Modify: `native/CMakeLists.txt`
 - Port/create tests: `native/tests/engine_signal_tests.cpp`, `capture_state_tests.cpp`, `capture_handoff_integration_tests.cpp`, `pcm_handoff_tests.cpp`, `realtime_atomic_contract_tests.cpp`, `spsc_ring_buffer_tests.cpp`, `device_catalog_contract_tests.cpp`, `audio_permission_contract_tests.cpp`
-- Preserve: `native/dsp_kernel.hpp`
+- Preserve unchanged: `native/dsp_kernel.hpp`
 
 **Interfaces:**
-- Native engine control setters:
 
 ```cpp
 bool lmm_set_channel_fader(const char* id, float normalized_fader);
@@ -223,19 +212,13 @@ bool lmm_set_channel_trim_db(const char* id, float trim_db);
 bool lmm_set_master_gain_db(float gain_db);
 ```
 
-- The callback reads precomputed atomic linear gains; `std::pow`/dB conversion happens only in the control setter.
-- Bound Core Audio PCM is still handed to the native engine through a fixed-capacity callback-safe path and then to recorder/fingerprint SPSC queues.
-
-- [ ] **Step 1: Write RED tests for trim and master gain affecting the shared DSP output**
-
-Add deterministic assertions to `native/tests/engine_signal_tests.cpp`:
+- [ ] **Step 1: Add RED native assertions for trim/master behavior**
 
 ```cpp
 REQUIRE(lmm_add_channel("ch1"));
 REQUIRE(lmm_set_channel_fader("ch1", 1.0F));
 REQUIRE(lmm_set_channel_trim_db("ch1", -6.0206F));
 REQUIRE(lmm_set_master_gain_db(-6.0206F));
-
 const float input[] = {1.0F, 1.0F};
 const float* channels[] = {input};
 float output[] = {0.0F, 0.0F};
@@ -244,9 +227,7 @@ REQUIRE(output[0] == Approx(0.25F).margin(1.0e-4F));
 REQUIRE(output[1] == Approx(0.25F).margin(1.0e-4F));
 ```
 
-- [ ] **Step 2: Run native test and verify RED**
-
-Run:
+- [ ] **Step 2: Verify RED**
 
 ```bash
 cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
@@ -254,36 +235,26 @@ cmake --build build/native --parallel
 ctest --test-dir build/native --output-on-failure
 ```
 
-Expected: compile/test failure because trim/master setters are absent.
+- [ ] **Step 3: Integrate lifecycle/SPSC logic around the canonical kernel**
 
-- [ ] **Step 3: Integrate PR #15 lifecycle/SPSC code around `dsp_kernel.hpp`, not instead of it**
-
-In `live_mixer_engine.cpp`, build `DspChannelConfig` arrays from native channel atomics and call the canonical helper:
+`live_mixer_engine.cpp` builds `DspChannelConfig`/`DspChannelMeter` arrays and calls:
 
 ```cpp
 const auto master_meter = processStereoBlock(
-    configs.data(),
-    channel_input,
-    configs.size(),
-    master_output,
-    frames,
-    master_.gain.load(std::memory_order_relaxed),
-    meters.data());
+    configs.data(), channel_input, configs.size(), master_output, frames,
+    master_.gain.load(std::memory_order_relaxed), meters.data());
 ```
 
-Do not duplicate limiter/fader/solo arithmetic from stale PR #15.
+Do not duplicate limiter/fader/solo arithmetic from PR #15.
 
 - [ ] **Step 4: Implement control-thread trim/master setters**
-
-Use bounded validation and store linear values atomically:
 
 ```cpp
 bool setTrimDb(const char* id, float trim_db) {
   if (!std::isfinite(trim_db) || trim_db < -18.0F || trim_db > 12.0F) return false;
   Channel* channel = findChannel(id);
   if (!channel) return false;
-  const float linear = std::pow(10.0F, trim_db / 20.0F);
-  channel->linearTrim.store(linear, std::memory_order_relaxed);
+  channel->linearTrim.store(std::pow(10.0F, trim_db / 20.0F), std::memory_order_relaxed);
   return true;
 }
 
@@ -294,11 +265,11 @@ bool setMasterGainDb(float gain_db) {
 }
 ```
 
-- [ ] **Step 5: Run all native deterministic/callback-safety tests and verify GREEN**
+- [ ] **Step 5: Verify GREEN**
 
-Run the same CMake/CTest commands. Expected: all tests pass, including lock-free atomic and SPSC tests.
+Run the CMake/CTest commands again; require all deterministic DSP, SPSC, atomic-safety, device-catalog, and permission tests to pass.
 
-- [ ] **Step 6: Commit Task 2**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add native
@@ -310,58 +281,44 @@ git commit -m "feat(audio): forward-port Core Audio engine on shared DSP kernel"
 ### Task 3: Fix single-route semantics, channel-pair capture, and FFI parity
 
 **Files:**
-- Modify: `native/include/lmm_capture.h`
-- Modify: `native/macos/coreaudio_capture.mm`
-- Modify: `native/live_mixer_engine.cpp`
-- Modify/create: `lib/audio/native_audio_bindings.dart`
-- Port/modify: `lib/audio/native_audio_ffi_bindings.dart`
-- Modify: `lib/audio/native_audio_engine.dart`
-- Modify: `lib/audio/audio_engine_bridge.dart`
-- Test: `native/tests/capture_conversion_tests.cpp`
-- Test: `test/native_audio_engine_contract_test.dart`
-- Test: `test/native_audio_ffi_bindings_test.dart`
+- Modify: `native/include/lmm_capture.h`, `native/macos/coreaudio_capture.mm`, `native/live_mixer_engine.cpp`
+- Modify/create: `lib/audio/native_audio_bindings.dart`, `lib/audio/native_audio_ffi_bindings.dart`, `lib/audio/native_audio_engine.dart`, `lib/audio/audio_engine_bridge.dart`
+- Test: `native/tests/capture_conversion_tests.cpp`, `test/native_audio_engine_contract_test.dart`, `test/native_audio_ffi_bindings_test.dart`
 
 **Interfaces:**
-- Change capture start to carry the selected pair:
 
 ```cpp
 bool lmm_capture_start(const char* device_uid, std::uint32_t channel_pair_index);
 ```
 
-and Dart:
-
 ```dart
 bool captureStart(String uid, int channelPairIndex);
 ```
 
-- Exactly one live native route is supported. `NativeAudioEngine.addChannel` rejects a second configured channel before mutating native state.
+- [ ] **Step 1: Add RED native CH 3-4 conversion coverage**
 
-- [ ] **Step 1: Add RED native conversion test for CH 3-4**
-
-Add a four-channel interleaved fixture to `capture_conversion_tests.cpp`:
+Update the testing hook to accept `channel_pair_index` and call it directly:
 
 ```cpp
 const float interleaved[] = {
-  0.1F, 0.2F, 0.3F, 0.4F,
-  0.5F, 0.6F, 0.7F, 0.8F,
+    0.1F, 0.2F, 0.3F, 0.4F,
+    0.5F, 0.6F, 0.7F, 0.8F,
 };
-// pair index 1 means channels 3-4
-REQUIRE(convert_test_pcm(interleaved, 4, 2, /*pair=*/1, out));
+LmmPcmBufferView view{interleaved, 4, sizeof(float) * 4};
+LmmPcmFormat format{LMM_PCM_FLOAT32, 0, 4, sizeof(float)};
+float out[4]{};
+REQUIRE(lmm_capture_test_convert_pcm(&view, 1, &format, 2, 1, out, 4));
 REQUIRE(out[0] == Approx(0.3F));
 REQUIRE(out[1] == Approx(0.4F));
 REQUIRE(out[2] == Approx(0.7F));
 REQUIRE(out[3] == Approx(0.8F));
 ```
 
-Update the testing hook signature to accept the pair index as well, so hosted CI exercises the same conversion selector used by Core Audio.
-
-- [ ] **Step 2: Add RED Dart test for second-route rejection**
-
-In `test/native_audio_engine_contract_test.dart`:
+- [ ] **Step 2: Add RED Dart second-route test**
 
 ```dart
-test('second native live route is rejected before capture is rebound', () async {
-  final bindings = FakeNativeAudioBindings();
+test('second native route is rejected before rebinding capture', () async {
+  final bindings = FakeNativeAudioBindings.withOneInput();
   final engine = NativeAudioEngine(
     bindings: bindings,
     permissionState: AudioPermissionState.granted,
@@ -369,31 +326,26 @@ test('second native live route is rejected before capture is rebound', () async 
   );
   await engine.initialize();
   await engine.refreshInputDevices();
-  await engine.addChannel(channel('a', pair: 0));
-
+  await engine.addChannel(testChannel(id: 'a', pair: 0));
   await expectLater(
-    engine.addChannel(channel('b', pair: 1)),
+    engine.addChannel(testChannel(id: 'b', pair: 1)),
     throwsA(isA<StateError>()),
   );
-  expect(bindings.captureStartCalls, hasLength(1));
+  expect(bindings.captureStartCalls, [(bindings.inputUid, 0)]);
   expect(bindings.boundChannelIds, ['a']);
 });
 ```
 
-- [ ] **Step 3: Run focused tests and verify RED**
+Define `FakeNativeAudioBindings.withOneInput()` and `testChannel({required String id, required int pair})` in `test/native_audio_engine_contract_test.dart`; both are test-only helpers in that file.
 
-Run:
+- [ ] **Step 3: Verify RED**
 
 ```bash
 flutter test test/native_audio_engine_contract_test.dart test/native_audio_ffi_bindings_test.dart
 ctest --test-dir build/native --output-on-failure -R capture_conversion
 ```
 
-Expected: failures because pair routing and deterministic second-route rejection are absent.
-
-- [ ] **Step 4: Implement pair-aware Core Audio conversion**
-
-Resolve left/right source channels as:
+- [ ] **Step 4: Implement pair-aware callback conversion**
 
 ```cpp
 const std::uint32_t left_channel = channel_pair_index * 2;
@@ -403,114 +355,107 @@ const std::uint32_t effective_right =
     right_channel < total_channels ? right_channel : left_channel;
 ```
 
-Use those indices for interleaved and non-interleaved conversion paths. No dynamic allocation may be added in the callback.
+Use these indices in both interleaved and non-interleaved branches; add no callback allocation.
 
-- [ ] **Step 5: Implement explicit single-route behavior in Dart host adapter**
+- [ ] **Step 5: Reject a second live route before native mutation**
 
-Before any native mutation:
+At the beginning of `NativeAudioEngine.addChannel` after permission/device validation:
 
 ```dart
 if (_channels.isNotEmpty) {
-  throw StateError(
-    'The macOS native backend currently supports one active capture route.',
-  );
+  throw StateError('The macOS native backend currently supports one active capture route.');
 }
 ```
 
-Then configure trim, fader, mute, solo, bind channel, and call `captureStart(channel.endpointId, channel.channelPairIndex)`.
+Then apply trim/fader/mute/solo, bind the channel, and call `captureStart(channel.endpointId, channel.channelPairIndex)`.
 
-- [ ] **Step 6: Run native + Dart FFI tests and verify GREEN**
-
-Run:
+- [ ] **Step 6: Verify GREEN and commit**
 
 ```bash
 flutter test test/native_audio_engine_contract_test.dart test/native_audio_ffi_bindings_test.dart
 ctest --test-dir build/native --output-on-failure
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit Task 3**
-
-```bash
 git add native lib/audio test/native_audio_engine_contract_test.dart test/native_audio_ffi_bindings_test.dart
 git commit -m "fix(audio): preserve native route and selected channel pair"
 ```
 
 ---
 
-### Task 4: Bind recorder and fingerprinting to the negotiated sample rate
+### Task 4: Bind recorder/fingerprinting to negotiated capture rate with stable UI ports
 
 **Files:**
+- Create: `lib/services/mixer_service_ports.dart`
 - Create: `lib/audio/native_pcm_service_coordinator.dart`
+- Modify: `lib/services/lossless_recording_writer.dart`, `lib/services/fingerprint_service.dart`
 - Modify: `lib/audio/native_desktop_runtime.dart`
-- Port/create: `lib/audio/native_pcm_handoff_bindings.dart`
-- Port/create: `lib/audio/native_recording_drain.dart`
-- Port/create: `lib/audio/native_pcm_runtime_pump.dart`
-- Test: `test/native_runtime_acceptance_wiring_contract_test.dart`
+- Port/create: `lib/audio/native_pcm_handoff_bindings.dart`, `lib/audio/native_recording_drain.dart`, `lib/audio/native_pcm_runtime_pump.dart`
+- Modify: `lib/features/mixer/mixer_desk_view.dart`
+- Test: `test/native_recording_drain_test.dart`, `test/native_runtime_acceptance_wiring_contract_test.dart`
 - Create test: `test/native_pcm_service_coordinator_test.dart`
-- Test: `test/native_recording_drain_test.dart`
 
 **Interfaces:**
-- `NativePcmServiceCoordinator` is a stable facade used by the desktop mixer. It creates the concrete `LosslessRecordingWriter` and `FingerprintService` only after native capture reports a valid negotiated sample rate.
-- Public members:
 
 ```dart
-abstract interface class NativePcmServices {
-  LosslessRecordingWriter? get recordingWriter;
-  FingerprintService? get fingerprintService;
-  int? get sampleRate;
-  Future<void> activateForCapture(NativeCaptureStatus status);
-  Future<void> dispose();
+abstract interface class MixerRecordingPort {
+  Stream<RecordingStats> get onStatsUpdated;
+  Future<String> startRecording();
+  Future<RecordingStats> stopRecording();
+}
+
+abstract interface class MixerFingerprintPort {
+  Stream<IdentifiedTrack> get onTrackIdentified;
+  Stream<bool> get onAnalyzingStatusChanged;
 }
 ```
 
-- Reconfiguration while recording is active fails closed; it does not silently change WAV format mid-file.
+`LosslessRecordingWriter` implements `MixerRecordingPort`; `FingerprintService` implements `MixerFingerprintPort`.
 
-- [ ] **Step 1: Write RED negotiated-rate service test**
+`NativePcmServiceCoordinator` implements both UI ports, exposes stable streams for the lifetime of `MixerDeskView`, owns replaceable concrete recorder/fingerprint consumers, and adds:
 
 ```dart
-test('creates recorder and fingerprint services at negotiated capture rate', () async {
+int? get sampleRate;
+Future<void> activateForCapture(NativeCaptureStatus status);
+void pushRecordingPcm(Float32List samples);
+void pushFingerprintPcm(Float32List samples);
+Future<void> dispose();
+```
+
+- [ ] **Step 1: Write RED 44.1 kHz activation test**
+
+Use injected consumer factories returning test fakes that record the received config:
+
+```dart
+test('PCM consumers use negotiated 44100 Hz rate', () async {
+  int? recordingRate;
+  int? fingerprintRate;
   final coordinator = NativePcmServiceCoordinator(
     destinationDirectory: '/tmp/lmm-test',
     acoustIdApiKey: '',
-    fingerprintFactory: (config) => FakeFingerprintService(config),
-    recordingFactory: (config) => LosslessRecordingWriter(config: config),
+    createRecordingConsumer: (config) {
+      recordingRate = config.sampleRate;
+      return FakeRecordingConsumer();
+    },
+    createFingerprintConsumer: (config) async {
+      fingerprintRate = config.sampleRate;
+      return FakeFingerprintConsumer();
+    },
   );
 
-  await coordinator.activateForCapture(
-    const NativeCaptureStatus(
-      state: NativeCaptureState.running,
-      sampleRate: 44100,
-      bufferFrames: 512,
-      inputChannels: 2,
-      formatFlags: 0,
-      callbackCount: 1,
-      xrunCount: 0,
-      averageCallbackUs: 100,
-      maxCallbackUs: 120,
-    ),
-  );
-
+  await coordinator.activateForCapture(testRunningStatus(sampleRate: 44100));
   expect(coordinator.sampleRate, 44100);
-  expect(coordinator.recordingWriter!.config.sampleRate, 44100);
-  expect(coordinator.fingerprintService!.config.sampleRate, 44100);
+  expect(recordingRate, 44100);
+  expect(fingerprintRate, 44100);
 });
 ```
 
-- [ ] **Step 2: Run test and verify RED**
+Define `FakeRecordingConsumer`, `FakeFingerprintConsumer`, and `testRunningStatus` in the same test file against the coordinator's internal consumer interfaces.
 
-Run:
+- [ ] **Step 2: Verify RED**
 
 ```bash
 flutter test test/native_pcm_service_coordinator_test.dart
 ```
 
-Expected: FAIL because coordinator does not exist.
-
-- [ ] **Step 3: Implement the coordinator with no resampler**
-
-Validate negotiated rate strictly:
+- [ ] **Step 3: Implement fail-closed negotiated-rate activation**
 
 ```dart
 final rate = status.sampleRate.round();
@@ -519,114 +464,97 @@ if (status.state != NativeCaptureState.running || rate <= 0) {
 }
 ```
 
-Construct both consumers with `sampleRate: rate`, `channels: 2`, and the existing recording bit-depth policy. Start fingerprinting only after this configuration exists.
+Construct both consumers with `sampleRate: rate`, `channels: 2`. If recording is already active, reject reconfiguration rather than changing the WAV format mid-file.
 
-- [ ] **Step 4: Activate services immediately after successful `captureStart` and before the PCM pump is allowed to deliver blocks**
+- [ ] **Step 4: Enforce startup ordering in `NativeDesktopRuntime`**
 
-`NativeDesktopRuntime` coordinates the ordering:
+The only allowed order is:
 
 ```text
 captureStart -> captureStatus(running + negotiated rate)
 -> services.activateForCapture(status)
--> start/enable NativePcmRuntimePump
+-> enable NativePcmRuntimePump delivery
 ```
 
-If service activation fails, stop capture and surface a failed route state; do not continue with a guessed 48 kHz consumer.
+If service activation fails, stop capture and publish a failed route state; do not continue at a default 48 kHz.
 
-- [ ] **Step 5: Run focused service/handoff tests and verify GREEN**
+- [ ] **Step 5: Pass the coordinator's stable UI ports to `MixerDeskView`**
 
-```bash
-flutter test \
-  test/native_pcm_service_coordinator_test.dart \
-  test/native_recording_drain_test.dart \
-  test/native_runtime_acceptance_wiring_contract_test.dart
+```dart
+MixerDeskView(
+  audioEngine: runtime.audioEngine,
+  recordingService: runtime.services,
+  fingerprintService: runtime.services,
+)
 ```
 
-Expected: PASS, including 44.1 kHz and 96 kHz fixtures.
+The widget subscribes to stable coordinator streams once; concrete service replacement does not replace the widget-facing stream objects.
 
-- [ ] **Step 6: Commit Task 4**
+- [ ] **Step 6: Verify GREEN and commit**
 
 ```bash
-git add lib/audio test/native_pcm_service_coordinator_test.dart test/native_recording_drain_test.dart test/native_runtime_acceptance_wiring_contract_test.dart
+flutter test test/native_pcm_service_coordinator_test.dart test/native_recording_drain_test.dart test/native_runtime_acceptance_wiring_contract_test.dart
+git add lib/audio lib/services lib/features/mixer/mixer_desk_view.dart test/native_pcm_service_coordinator_test.dart test/native_recording_drain_test.dart test/native_runtime_acceptance_wiring_contract_test.dart
 git commit -m "fix(audio): bind PCM services to negotiated capture rate"
 ```
 
 ---
 
-### Task 5: Make macOS permission recovery live and functional
+### Task 5: Make permission recovery live and open the real macOS Settings pane
 
 **Files:**
-- Modify: `lib/audio/native_audio_engine.dart`
-- Modify: `lib/audio/native_desktop_runtime.dart`
+- Modify: `lib/audio/native_audio_engine.dart`, `lib/audio/native_desktop_runtime.dart`
 - Create: `lib/audio/macos_audio_settings_launcher.dart`
 - Port/modify: `lib/features/patchbay/audio_route_recovery_banner.dart`
 - Modify: `lib/features/mixer/mixer_desk_view.dart`
-- Test: `test/native_audio_permission_refresh_test.dart`
-- Test: `test/audio_route_recovery_ui_test.dart`
+- Test: `test/native_audio_permission_refresh_test.dart`, `test/audio_route_recovery_ui_test.dart`
 - Create test: `test/macos_audio_settings_launcher_test.dart`
 
-**Interfaces:**
-- `NativeAudioEngine.permissionStateProvider` is always supplied in production and calls `FfiAudioInputPermissionBindings.currentState()` on refresh/poll.
-- `MacosAudioSettingsLauncher.openMicrophonePrivacy()` runs the macOS Settings deep-link from non-real-time Dart code.
-
-- [ ] **Step 1: Write RED test for permission re-read after external Settings change**
+- [ ] **Step 1: Write RED live-permission test**
 
 ```dart
-test('refresh re-reads permission after it changes without restarting', () async {
+test('refresh re-reads permission after System Settings changes it', () async {
   var permission = AudioPermissionState.denied;
   final engine = NativeAudioEngine(
-    bindings: fakeBindings,
+    bindings: FakeNativeAudioBindings.withOneInput(),
     permissionState: permission,
     permissionStateProvider: () => permission,
     pollInterval: null,
   );
-
   await engine.initialize();
   expect(await engine.refreshInputDevices(), isEmpty);
-
   permission = AudioPermissionState.granted;
   expect(await engine.refreshInputDevices(), isNotEmpty);
-  expect(engine.routeState, AudioRouteState.idle);
 });
 ```
 
-- [ ] **Step 2: Write RED launcher test**
-
-Inject a process runner and assert the exact macOS deep link:
+- [ ] **Step 2: Write RED Settings launcher test**
 
 ```dart
-test('opens microphone privacy settings', () async {
-  final calls = <List<String>>[];
+test('opens macOS microphone privacy settings', () async {
+  final calls = <(String, List<String>)>[];
   final launcher = MacosAudioSettingsLauncher(
-    runProcess: (executable, arguments) async {
-      calls.add([executable, ...arguments]);
+    runProcess: (executable, args) async {
+      calls.add((executable, args));
       return 0;
     },
   );
-
   await launcher.openMicrophonePrivacy();
-  expect(calls.single.first, 'open');
+  expect(calls.single.$1, 'open');
   expect(
-    calls.single[1],
-    'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+    calls.single.$2,
+    ['x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'],
   );
 });
 ```
 
-- [ ] **Step 3: Run tests and verify RED**
+- [ ] **Step 3: Verify RED**
 
 ```bash
-flutter test \
-  test/native_audio_permission_refresh_test.dart \
-  test/macos_audio_settings_launcher_test.dart \
-  test/audio_route_recovery_ui_test.dart
+flutter test test/native_audio_permission_refresh_test.dart test/macos_audio_settings_launcher_test.dart test/audio_route_recovery_ui_test.dart
 ```
 
-Expected: launcher test fails because the launcher is absent; production wiring test fails because current PR #15 constructor used a permission snapshot.
-
-- [ ] **Step 4: Wire the live permission provider and real Settings action**
-
-Production desktop runtime must construct:
+- [ ] **Step 4: Wire production live permission provider**
 
 ```dart
 final permissions = FfiAudioInputPermissionBindings(library);
@@ -638,38 +566,97 @@ final engine = NativeAudioEngine(
 );
 ```
 
-`OPEN AUDIO SETTINGS` calls `await settingsLauncher.openMicrophonePrivacy()` and then leaves refresh as an explicit follow-up action when the user returns.
+- [ ] **Step 5: Implement the launcher outside the audio callback**
 
-- [ ] **Step 5: Run permission/UI tests and verify GREEN**
+```dart
+class MacosAudioSettingsLauncher {
+  MacosAudioSettingsLauncher({this.runProcess = _run});
+  final Future<int> Function(String, List<String>) runProcess;
 
-Run the same Flutter test command. Expected: PASS.
+  static Future<int> _run(String executable, List<String> args) async {
+    final result = await Process.run(executable, args);
+    return result.exitCode;
+  }
 
-- [ ] **Step 6: Commit Task 5**
+  Future<void> openMicrophonePrivacy() async {
+    final exitCode = await runProcess(
+      'open',
+      const ['x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'],
+    );
+    if (exitCode != 0) throw StateError('Unable to open macOS microphone settings.');
+  }
+}
+```
+
+`OPEN AUDIO SETTINGS` invokes this method; refresh remains explicit after the user returns.
+
+- [ ] **Step 6: Verify GREEN and commit**
 
 ```bash
+flutter test test/native_audio_permission_refresh_test.dart test/macos_audio_settings_launcher_test.dart test/audio_route_recovery_ui_test.dart
 git add lib/audio lib/features test/native_audio_permission_refresh_test.dart test/macos_audio_settings_launcher_test.dart test/audio_route_recovery_ui_test.dart
 git commit -m "fix(audio): make macOS permission recovery live"
 ```
 
 ---
 
-### Task 6: Wire patchbay, channel controls, trim, and master fader into native PCM
+### Task 6: Wire patchbay/channel/master controls into native PCM
 
 **Files:**
-- Modify: `lib/features/mixer/mixer_desk_view.dart`
-- Modify: `lib/features/patchbay/patchbay_routing_modal.dart`
-- Modify: `lib/audio/native_audio_engine.dart`
-- Modify: `lib/audio/native_audio_bindings.dart`
-- Modify: `lib/audio/native_audio_ffi_bindings.dart`
-- Test: `test/mixer_audio_route_lifecycle_test.dart`
-- Test: `test/mixer_native_meter_stream_test.dart`
-- Test: `test/native_audio_engine_contract_test.dart`
-- Create test: `test/mixer_native_control_wiring_test.dart`
+- Create: `lib/features/patchbay/native_channel_config_mapper.dart`
+- Modify: `lib/features/mixer/mixer_desk_view.dart`, `lib/features/patchbay/patchbay_routing_modal.dart`
+- Modify: `lib/audio/native_audio_engine.dart`, `lib/audio/native_audio_bindings.dart`, `lib/audio/native_audio_ffi_bindings.dart`
+- Create test: `test/native_channel_config_mapper_test.dart`, `test/mixer_native_control_wiring_test.dart`
+- Test: `test/mixer_audio_route_lifecycle_test.dart`, `test/mixer_native_meter_stream_test.dart`, `test/native_audio_engine_contract_test.dart`
 
 **Interfaces:**
-- `MixerDeskView` gains optional `AudioEngine? audioEngine` while retaining the existing no-engine behavior used by Web/reference tests.
-- A configured patchbay result becomes an `InputChannelConfig` including `endpoint.id`, `channelPairIndex`, `initialTrimDb`, and current fader/mute/solo state.
-- Normalized master fader maps to dB before `AudioEngine.setMasterGain` using one helper shared by UI tests:
+
+```dart
+InputChannelConfig mapPatchbayResultToNativeConfig({
+  required PatchbayChannelResult result,
+  required String channelId,
+});
+
+double masterFaderToDb(double normalized);
+```
+
+The mixer adds testable keys: `ValueKey('channel-fader-$id')`, `ValueKey('channel-mute-$id')`, `ValueKey('channel-solo-$id')`, and `ValueKey('master-fader')`.
+
+- [ ] **Step 1: Write RED mapping test**
+
+```dart
+test('patchbay mapping preserves endpoint, pair and trim', () {
+  final result = PatchbayChannelResult(
+    channelName: 'DECK',
+    endpoint: const AudioEndpoint(
+      id: 'device-uid',
+      name: 'Four Channel Device',
+      type: AudioSourceType.hardwareInput,
+      channelCount: 4,
+      deviceDriver: 'CoreAudio',
+    ),
+    channelPairIndex: 1,
+    initialTrimDb: -3,
+    channelColor: const Color(0xFFFFFFFF),
+  );
+  final config = mapPatchbayResultToNativeConfig(result: result, channelId: 'ch1');
+  expect(config.endpointId, 'device-uid');
+  expect(config.channelPairIndex, 1);
+  expect(config.trimDb, -3);
+});
+```
+
+- [ ] **Step 2: Write RED engine-control assertions**
+
+Extend `test/native_audio_engine_contract_test.dart` so `addChannel` records exactly one trim call before capture start, and direct `setTrim`/`setMasterGain` calls reach FFI bindings.
+
+- [ ] **Step 3: Verify RED**
+
+```bash
+flutter test test/native_channel_config_mapper_test.dart test/native_audio_engine_contract_test.dart test/mixer_native_control_wiring_test.dart
+```
+
+- [ ] **Step 4: Implement mapping and normalized-master conversion**
 
 ```dart
 double masterFaderToDb(double normalized) {
@@ -679,116 +666,35 @@ double masterFaderToDb(double normalized) {
 }
 ```
 
-- [ ] **Step 1: Write RED native-control widget test**
+- [ ] **Step 5: Wire native mode optimistically only after successful Futures**
 
-```dart
-testWidgets('desktop mixer forwards patchbay pair, trim, fader, mute, solo and master controls', (tester) async {
-  final engine = FakeAudioEngine();
-  await tester.pumpWidget(MaterialApp(home: MixerDeskView(audioEngine: engine)));
+For fader/mute/solo/trim/master changes, call the engine first. Update local widget state only after success. On error, retain the old value and show the existing error UI.
 
-  await configureEndpoint(tester, endpointId: 'device-uid', pair: 1, trimDb: -3);
-  expect(engine.added.single.endpointId, 'device-uid');
-  expect(engine.added.single.channelPairIndex, 1);
-  expect(engine.added.single.trimDb, -3);
+- [ ] **Step 6: Replace synthetic desktop meters when a native engine is present**
 
-  await moveFirstChannelFader(tester, 0.5);
-  expect(engine.lastFaderValue, 0.5);
+Subscribe to `audioEngine.channelMeters` and `audioEngine.masterMeters`. Static reference values remain only when `audioEngine == null`. Label native master values as sample peak, not dBTP/LUFS.
 
-  await toggleFirstChannelMute(tester);
-  expect(engine.lastMuteValue, isTrue);
-
-  await toggleFirstChannelSolo(tester);
-  expect(engine.lastSoloValue, isTrue);
-
-  await moveMasterFader(tester, 0.5);
-  expect(engine.lastMasterGainDb, closeTo(-6.0206, 1.0e-3));
-});
-```
-
-- [ ] **Step 2: Run widget/native control tests and verify RED**
+- [ ] **Step 7: Verify GREEN and commit**
 
 ```bash
-flutter test \
-  test/mixer_native_control_wiring_test.dart \
-  test/native_audio_engine_contract_test.dart \
-  test/mixer_audio_route_lifecycle_test.dart
-```
-
-Expected: FAIL because current-main `MixerDeskView` mutates only local widget state.
-
-- [ ] **Step 3: Wire patchbay add/remove and strip controls**
-
-For desktop/native mode, call the engine first and update local UI state only after the Future succeeds. On failure, retain the prior visible state and show the existing error surface/snackbar.
-
-Initial attach must call native trim during channel setup:
-
-```dart
-await audioEngine.addChannel(config);
-await audioEngine.setTrim(config.id, config.trimDb);
-```
-
-or equivalently perform trim inside `NativeAudioEngine.addChannel` before capture starts; use exactly one path to avoid duplicate setters.
-
-- [ ] **Step 4: Wire master fader**
-
-```dart
-onChanged: (value) async {
-  final engine = widget.audioEngine;
-  if (engine != null) {
-    await engine.setMasterGain(masterFaderToDb(value));
-  }
-  if (mounted) setState(() => _masterFader = value);
-}
-```
-
-The native setter stores a precomputed atomic linear gain, so no dB conversion happens in the callback.
-
-- [ ] **Step 5: Replace synthetic desktop meter values with native meter streams when an engine is supplied**
-
-Subscribe to `audioEngine.channelMeters` and `audioEngine.masterMeters`; preserve static reference values only when `audioEngine == null`. Do not display sample-peak values as standards-based dBTP/LUFS.
-
-- [ ] **Step 6: Run control/lifecycle/meter tests and verify GREEN**
-
-```bash
-flutter test \
-  test/mixer_native_control_wiring_test.dart \
-  test/mixer_audio_route_lifecycle_test.dart \
-  test/mixer_native_meter_stream_test.dart \
-  test/native_audio_engine_contract_test.dart
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit Task 6**
-
-```bash
-git add lib/features lib/audio test/mixer_native_control_wiring_test.dart test/mixer_audio_route_lifecycle_test.dart test/mixer_native_meter_stream_test.dart test/native_audio_engine_contract_test.dart
+flutter test test/native_channel_config_mapper_test.dart test/mixer_native_control_wiring_test.dart test/mixer_audio_route_lifecycle_test.dart test/mixer_native_meter_stream_test.dart test/native_audio_engine_contract_test.dart
+git add lib/features lib/audio test/native_channel_config_mapper_test.dart test/mixer_native_control_wiring_test.dart test/mixer_audio_route_lifecycle_test.dart test/mixer_native_meter_stream_test.dart test/native_audio_engine_contract_test.dart
 git commit -m "fix(audio): wire desktop mixer controls to native PCM"
 ```
 
 ---
 
-### Task 7: Restore acceptance telemetry, docs, and current-main CI coverage
+### Task 7: Restore acceptance telemetry/docs and prove current-main CI
 
 **Files:**
-- Port/create: `lib/audio/native_acceptance_telemetry.dart`
-- Port/create: `lib/features/mixer/native_acceptance_telemetry_panel.dart`
-- Port docs: `docs/audio/macos-device-e2e.md`
-- Port docs: `docs/audio/issue3-device-acceptance-record.md`
-- Port/update: `docs/audio/dsp-safety-evidence.md`
+- Port/create: `lib/audio/native_acceptance_telemetry.dart`, `lib/features/mixer/native_acceptance_telemetry_panel.dart`
+- Port/update: `docs/audio/macos-device-e2e.md`, `docs/audio/issue3-device-acceptance-record.md`, `docs/audio/dsp-safety-evidence.md`
 - Modify: `.github/workflows/macos-ci.yml`
-- Test: `test/native_acceptance_evidence_copy_test.dart`
-- Test: `test/macos_device_acceptance_contract_test.dart`
-- Test: `test/native_runtime_acceptance_wiring_contract_test.dart`
-- Preserve/execute: all current Web/PWA/shared-DSP workflows and tests.
+- Test: `test/native_acceptance_evidence_copy_test.dart`, `test/macos_device_acceptance_contract_test.dart`, `test/native_runtime_acceptance_wiring_contract_test.dart`
 
-**Interfaces:**
-- Same-process telemetry reports callback count, average/max callback duration, xrun count, negotiated sample rate/buffer/channels, recorder/fingerprint queue depths, and rejected-block counters.
-- `COPY EVIDENCE` output remains non-secret: no endpoint UID, filesystem path, credentials, account data, hardware serial, or unrelated device identifiers.
+- [ ] **Step 1: Port the acceptance contract first and verify RED**
 
-- [ ] **Step 1: Write/port the acceptance contract first and verify the forward-port is incomplete**
-
-The contract must require these literal evidence fields:
+The contract requires these literal fields in copied evidence:
 
 ```text
 average callback duration (us)
@@ -807,20 +713,18 @@ Run:
 flutter test test/macos_device_acceptance_contract_test.dart test/native_acceptance_evidence_copy_test.dart
 ```
 
-Expected: RED until the files/UI are forward-ported.
+- [ ] **Step 2: Port non-real-time telemetry and copy-evidence UI**
 
-- [ ] **Step 2: Port telemetry and copy-evidence behavior**
+Poll `NativeAudioEngine.captureStatus` and `NativePcmRuntimePump.status` from Dart. Do not add callback-side logging or string formatting.
 
-Use non-real-time polling of `NativeAudioEngine.captureStatus` and `NativePcmRuntimePump.status`. Do not add callback-side logging or string formatting.
+- [ ] **Step 3: Update macOS CI**
 
-- [ ] **Step 3: Update macOS CI to exercise native and shared-main boundaries**
-
-The macOS workflow must run at minimum:
+Require, in order where dependencies demand it:
 
 ```text
 flutter analyze --no-fatal-warnings --no-fatal-infos
-flutter test (non-golden suite)
-cmake configure/build native with BUILD_TESTING=ON
+Flutter non-golden tests
+CMake native configure/build with BUILD_TESTING=ON
 ctest --output-on-failure
 Core Audio discovery probe
 built-dylib Dart FFI smoke
@@ -828,11 +732,9 @@ flutter build macos --debug
 packaged app launch smoke
 ```
 
-It must not claim the hosted Core Audio virtual/null endpoints satisfy physical/BlackHole acceptance.
+Hosted virtual/null endpoints remain explicitly non-acceptance evidence.
 
-- [ ] **Step 4: Run the full candidate test matrix on exact head**
-
-Run locally where available and require GitHub checks for the same SHA:
+- [ ] **Step 4: Run/require the full exact-head matrix**
 
 ```bash
 flutter analyze --no-fatal-warnings --no-fatal-infos
@@ -843,37 +745,19 @@ ctest --test-dir build/native --output-on-failure
 npm test
 ```
 
-Then require the current-main repository workflows to pass, including:
+Then require GitHub workflows on the same SHA: `CI`, `macOS Desktop CI`, `Web PWA Contract`, `Web Session Contract`, `Web Fingerprint Analysis Contract`, `Web Operator Contract`, `Web Chromaprint Package Contract`, `Web Mixer Contract`, and `Shared DSP Wasm Contract`.
 
-```text
-CI
-macOS Desktop CI
-Web PWA Contract
-Web Session Contract
-Web Fingerprint Analysis Contract
-Web Operator Contract
-Web Chromaprint Package Contract
-Web Mixer Contract
-Shared DSP Wasm Contract
-```
+- [ ] **Step 5: Open the replacement PR**
 
-Do not repeat separately-green compile/E2E checks outside the workflow unless a changed boundary requires debugging.
+Title: `feat(audio): forward-port verified macOS capture path`.
 
-- [ ] **Step 5: Open the replacement PR and map the seven PR #15 findings to exact tests/commits**
+The PR body maps each of the seven PR #15 review findings to its replacement test/commit and states that real-device evidence is still required before merge.
 
-PR title:
+- [ ] **Step 6: Reply to PR #15 review threads**
 
-```text
-feat(audio): forward-port verified macOS capture path
-```
+Each reply names the replacement PR, exact fixing commit, and regression test. Resolve a PR #15 thread only after the replacement behavior is green; do not resolve merely because a replacement PR exists.
 
-PR body must state that PR #15 is superseded only after the replacement merges and that real-device evidence is still required.
-
-- [ ] **Step 6: Reply to PR #15 review threads with replacement evidence, but do not resolve them merely because a new PR exists**
-
-Each reply names the replacement PR, test, and commit that fixes the finding. Resolve a thread only after the corresponding replacement behavior is green and review has no remaining objection.
-
-- [ ] **Step 7: Commit Task 7**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add lib/audio lib/features/mixer docs/audio .github/workflows/macos-ci.yml test
@@ -882,36 +766,29 @@ git commit -m "test(audio): restore macOS acceptance and CI evidence"
 
 ---
 
-### Task 8: Execute the physical/BlackHole acceptance gate and merge with provenance
+### Task 8: Run physical/BlackHole acceptance and merge with provenance
 
 **Files:**
-- Update only after a real run: `docs/audio/issue3-device-acceptance-record.md`
-- Possibly update after findings: `docs/audio/dsp-safety-evidence.md`
-- No secret-bearing logs or raw device dumps are committed.
+- Update after a real run: `docs/audio/issue3-device-acceptance-record.md`
+- Update only if evidence changes: `docs/audio/dsp-safety-evidence.md`
 
-**Interfaces / required evidence:**
-- Source: physical macOS input or user-installed BlackHole-compatible endpoint.
-- Duration: at least 10 seconds of actual capture/recording.
-- Clean run: recorder and fingerprint rejected-block counters both remain zero.
-- WAV sample rate equals negotiated capture sample rate.
-- Device removal prevents stale audio; stable UID rediscovery and reconnect recover meters.
-- Post-limiter sample peak is `<= 0.98`; no standards-based dBTP/LUFS claim.
+**Required evidence:** real physical macOS input or user-installed BlackHole-compatible endpoint; at least 10 seconds; WAV rate equals negotiated rate; zero recorder/fingerprint rejected blocks in the clean run; device removal prevents stale PCM; stable-UID reconnect recovers; post-limiter sample peak `<= 0.98`.
 
-- [ ] **Step 1: Run `docs/audio/macos-device-e2e.md` on a real macOS host**
+- [ ] **Step 1: Execute `docs/audio/macos-device-e2e.md` on a real Mac**
 
-Record only the non-secret values generated by the app's `COPY EVIDENCE` action plus the required visible observations.
+Use the app's `COPY EVIDENCE` output plus required visible observations. Do not commit credentials, endpoint UIDs, private paths, serial numbers, or raw secret-bearing logs.
 
-- [ ] **Step 2: Independently validate the produced WAV**
+- [ ] **Step 2: Independently validate WAV output**
 
-Confirm it opens, contains non-silent program audio, lasts at least 10 seconds, and its WAV header sample rate exactly matches the negotiated rate shown in same-process telemetry.
+Confirm the WAV opens, contains non-silent program audio, lasts at least 10 seconds, and its header sample rate equals the negotiated same-process telemetry rate.
 
-- [ ] **Step 3: Exercise device loss and recovery**
+- [ ] **Step 3: Exercise removal/reconnect**
 
-Remove/unroute the source, verify `deviceLost`/recovery state without stale PCM, restore the same stable UID route, and verify meters/capture resume.
+Remove/unroute the source, observe device-loss state and no stale audio, restore the stable-UID source, then verify capture/meters recover.
 
-- [ ] **Step 4: Update the acceptance record from PENDING to PASS only if every required field passed**
+- [ ] **Step 4: Mark PASS only when every field passes**
 
-The final section must read:
+The record may contain:
 
 ```text
 - Final result: PASS
@@ -919,31 +796,20 @@ The final section must read:
 - fingerprint rejected blocks: 0
 ```
 
-If either rejected-block count is non-zero, leave the record failed/pending and investigate; never rewrite the value to zero.
+only when those values were actually observed. Otherwise keep the result failed/pending and investigate.
 
-- [ ] **Step 5: Push the acceptance-record commit and require fresh exact-head CI**
+- [ ] **Step 5: Push the acceptance commit and require fresh exact-head checks**
 
-All replacement-PR checks must complete successfully on the acceptance-record head SHA. Verify no unresolved blocking review threads remain.
+Re-read the replacement PR immediately before merge. Require: open, non-draft, base `main`, mergeable, exact expected head SHA, all required workflows green, real-device record PASS, and no unresolved blocking review threads.
 
-- [ ] **Step 6: Merge with an expected-head SHA guard**
+- [ ] **Step 6: Squash-merge with expected-head guard**
 
-Use squash merge only after exact-head verification:
+Use the fresh replacement head SHA as `expected_head_sha`. Title: `feat(audio): forward-port verified macOS capture path (#<replacement PR number>)`.
 
-```text
-merge method: squash
-expected_head_sha: <exact replacement PR head>
-commit title: feat(audio): forward-port verified macOS capture path (#<replacement PR>)
-```
+- [ ] **Step 7: Verify post-merge main**
 
-The expected SHA is taken from the fresh PR readback immediately before merge; never hard-code a stale candidate.
+Require `main` to point to the returned merge SHA and relevant `main` CI/macOS workflows to succeed. Preserve the Web exact-tested-artifact/Vercel provenance path; do not manually rebuild or bypass it.
 
-- [ ] **Step 7: Verify `main` and post-merge workflows**
+- [ ] **Step 8: Close superseded work and sync records**
 
-Require `main` to point to the returned merge SHA and require the relevant `main` CI/macOS jobs to succeed. Web production promotion must continue to use its exact tested artifact/provenance path; do not manually rebuild or bypass it.
-
-- [ ] **Step 8: Close the superseded work only after the replacement is merged and verified**
-
-- Close Issue #3 with the non-secret acceptance evidence and replacement merge SHA.
-- Close PR #15 as superseded by the merged replacement; do not merge PR #15 itself.
-- Update the Notion `LiveMixMaster — Implementation Plan & Delivery Tracker` with the replacement PR, exact head, real-device acceptance summary, merge SHA, CI runs, and any relevant production deployment evidence.
-- Leave repository-admin Issue #34 separate; do not weaken or conflate its branch-protection gate with the audio acceptance gate.
+Close Issue #3 with non-secret acceptance evidence and merge SHA; close PR #15 as superseded rather than merging it; update the Notion `LiveMixMaster — Implementation Plan & Delivery Tracker` with replacement PR, exact head, physical acceptance summary, merge SHA, CI run IDs, and relevant production deployment evidence. Keep repository-admin Issue #34 separate.
