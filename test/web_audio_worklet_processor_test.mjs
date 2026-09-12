@@ -52,6 +52,9 @@ function channel(left, right = left) {
 }
 
 function parseFloatList(value) {
+  if (value === '~') {
+    return [];
+  }
   return value.split(',').map((token) => Number.parseFloat(token));
 }
 
@@ -77,7 +80,7 @@ async function loadParityVectors() {
       return {
         name,
         masterGainLinear: Number.parseFloat(masterGain),
-        channels: channels.split('|').map(parseParityChannel),
+        channels: channels === '~' ? [] : channels.split('|').map(parseParityChannel),
         expected: parseFloatList(expected),
         limiterActive: limiterActive === '1',
         peakLeft: Number.parseFloat(peakLeft),
@@ -202,11 +205,47 @@ test('executes native-parity fader, summing and limiter semantics in the worklet
   assert.ok(Math.abs(hotOutput[0][1][0] + 0.98) < 1e-6);
 });
 
+test('unattached solo channel is inactive and does not suppress an attached non-solo channel', () => {
+  const processor = new Processor();
+  initializeDsp(processor);
+  processor.port.dispatch({
+    type: 'configure',
+    masterGainLinear: 1,
+    telemetryEvery: 1,
+    channels: [
+      { id: 'missing-solo', linearTrim: 1, fader: 1, muted: false, solo: true },
+      { id: 'live', linearTrim: 1, fader: 1, muted: false, solo: false },
+    ],
+  });
+
+  const output = stereoOutput(2);
+  const keepAlive = processor.process(
+    [[], channel([0.5, -0.25], [0.25, -0.5])],
+    output,
+    {},
+  );
+
+  assert.equal(keepAlive, true);
+  assert.deepEqual(Array.from(output[0][0]), [0.5, -0.25]);
+  assert.deepEqual(Array.from(output[0][1]), [0.25, -0.5]);
+
+  const telemetry = processor.port.messages.find((message) => message.type === 'telemetry');
+  assert.ok(telemetry, 'telemetry must be emitted for the attached live channel');
+  assert.equal(telemetry.channelMeters[0].channelId, 'missing-solo');
+  assert.equal(telemetry.channelMeters[0].peakLeft, 0);
+  assert.equal(telemetry.channelMeters[0].peakRight, 0);
+  assert.equal(telemetry.channelMeters[1].channelId, 'live');
+  assertClose(telemetry.channelMeters[1].peakLeft, 0.5, 'live peakLeft');
+  assertClose(telemetry.channelMeters[1].peakRight, 0.5, 'live peakRight');
+});
+
 test('AudioWorklet executes the shared native DSP parity vectors after dspReady', async () => {
   const vectors = await loadParityVectors();
-  assert.ok(vectors.length >= 10, 'shared DSP parity fixture must include at least ten cases');
+  assert.ok(vectors.some((vector) => vector.name === 'empty_frame'), 'shared parity fixture must include empty-frame coverage');
+  const renderVectors = vectors.filter((vector) => vector.expected.length > 0);
+  assert.ok(renderVectors.length >= 10, 'shared DSP parity fixture must include at least ten renderable worklet cases');
 
-  for (const vector of vectors) {
+  for (const vector of renderVectors) {
     const processor = new Processor();
     initializeDsp(processor);
     processor.port.dispatch({
