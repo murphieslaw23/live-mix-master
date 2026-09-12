@@ -84,7 +84,7 @@ class WebReferenceLiveState {
       recordingActive:
           recording.status == BrowserRecordingStatus.recording,
       mixerEnabled: mixer.enabled,
-      fader: mixer.fader.clamp(0.0, 1.0).toDouble(),
+      fader: mixer.enabled ? mixer.fader.clamp(0.0, 1.0).toDouble() : 0,
       muted: mixer.muted,
       solo: mixer.solo,
       channelPeak: channelPeak.clamp(0.0, 1.0).toDouble(),
