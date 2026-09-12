@@ -27,6 +27,18 @@ globalThis.registerProcessor = (_name, ctor) => {
 
 await import(new URL('../web/audio/livemixmaster-worklet.js', import.meta.url));
 
+const validDspModule = new WebAssembly.Module(Uint8Array.from([
+  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+  0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
+  0x03, 0x03, 0x02, 0x00, 0x00,
+  0x07, 0x2e, 0x02,
+  0x13, ...new TextEncoder().encode('lmm_dsp_abi_version'), 0x00, 0x00,
+  0x14, ...new TextEncoder().encode('lmm_dsp_max_channels'), 0x00, 0x01,
+  0x0a, 0x0b, 0x02,
+  0x04, 0x00, 0x41, 0x01, 0x0b,
+  0x04, 0x00, 0x41, 0x08, 0x0b,
+]));
+
 function stereoOutput(frames) {
   return [[new Float32Array(frames), new Float32Array(frames)]];
 }
@@ -37,6 +49,11 @@ function channel(left, right = left) {
 
 test('configure emits the stereo telemetry schema consumed by Dart', () => {
   const processor = new Processor();
+  processor.port.dispatch({ type: 'dspInit', abiVersion: 1, module: validDspModule });
+  assert.ok(
+    processor.port.messages.find((message) => message.type === 'dspReady'),
+    'mixer protocol test requires an initialized DSP worklet',
+  );
   processor.port.dispatch({
     type: 'configure',
     masterGainLinear: 0.5,
