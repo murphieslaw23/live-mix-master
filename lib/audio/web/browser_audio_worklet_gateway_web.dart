@@ -11,8 +11,21 @@ import 'browser_mixer_controller.dart';
 import 'browser_mixer_protocol.dart';
 import 'browser_recording_controller.dart';
 
+@JS('WebAssembly.compile')
+external JSPromise<JSObject> _compileWebAssembly(JSArrayBuffer bytes);
+
 typedef BrowserActiveStreamProvider = web.MediaStream? Function();
 typedef BrowserFingerprintPreparationUnavailableHandler = void Function();
+
+const String _dspAssetPath = 'audio/livemixmaster-dsp.wasm';
+const int _dspAbiVersion = 1;
+const Duration _dspHandshakeTimeout = Duration(seconds: 2);
+const String _dspUnavailableMessage =
+    'DSP MODULE UNAVAILABLE — AUDIO ENGINE NOT READY';
+const String _dspVersionMismatchMessage =
+    'DSP MODULE VERSION MISMATCH — AUDIO ENGINE NOT READY';
+const String _dspInitializationFailedMessage =
+    'DSP MODULE INITIALIZATION FAILED — AUDIO ENGINE NOT READY';
 
 const int _recorderMaxBytes = 64 * 1024 * 1024;
 const int _recorderRenderQuantumFrames = 128;
@@ -20,6 +33,12 @@ const int _recorderBackpressureBudgetMilliseconds = 500;
 const Duration _recorderHandshakeTimeout = Duration(seconds: 2);
 const Duration _recorderStopTimeout = Duration(seconds: 2);
 const Duration _recorderExportTimeout = Duration(seconds: 2);
+
+class _DspStartupException implements Exception {
+  const _DspStartupException(this.message);
+
+  final String message;
+}
 
 class WebAudioWorkletGateway
     implements
@@ -99,7 +118,21 @@ class WebAudioWorkletGateway
     final context = web.AudioContext();
     web.Worker? startedRecorderWorker;
     WebBrowserFingerprintAnalysisBridge? fingerprintBridge;
+
+    Future<void> cleanupStartup() async {
+      startedRecorderWorker?.terminate();
+      if (fingerprintBridge != null) {
+        await fingerprintBridge!.dispose();
+      }
+      try {
+        await context.close().toDart;
+      } on Object {
+        // Preserve the original startup failure.
+      }
+    }
+
     try {
+      final dspModule = await _compileDspModule();
       await context.audioWorklet.addModule('audio/livemixmaster-worklet.js').toDart;
 
       final sourceNode = context.createMediaStreamSource(stream);
@@ -110,6 +143,7 @@ class WebAudioWorkletGateway
         web.WorkerOptions(type: 'module'),
       );
       startedRecorderWorker = recorderWorker;
+      final dspReady = Completer<void>();
 
       final preparedFingerprintHandler = _preparedFingerprintHandler;
       if (preparedFingerprintHandler != null) {
@@ -139,6 +173,18 @@ class WebAudioWorkletGateway
         ((web.Event event) {
           final message = (event as JSObject)['data'];
           switch (_messageType(message)) {
+            case 'dspReady':
+              if (!dspReady.isCompleted) {
+                dspReady.complete();
+              }
+              break;
+            case 'dspError':
+              if (!dspReady.isCompleted) {
+                dspReady.completeError(
+                  _DspStartupException(_dspFailureMessage(message)),
+                );
+              }
+              break;
             case 'pcm':
               recorderWorker.postMessage(message);
               break;
@@ -174,6 +220,17 @@ class WebAudioWorkletGateway
         }).toJS,
       );
       workletNode.port.start();
+
+      final initMessage = JSObject();
+      initMessage['type'] = 'dspInit'.toJS;
+      initMessage['abiVersion'] = _dspAbiVersion.toJS;
+      initMessage['module'] = dspModule;
+      workletNode.port.postMessage(initMessage);
+      try {
+        await dspReady.future.timeout(_dspHandshakeTimeout);
+      } on TimeoutException {
+        throw const _DspStartupException(_dspInitializationFailedMessage);
+      }
 
       recorderWorker.addEventListener(
         'message',
@@ -247,19 +304,39 @@ class WebAudioWorkletGateway
       _recordingActive = false;
 
       return const BrowserAudioProcessingAttempt.started();
+    } on _DspStartupException catch (error) {
+      await cleanupStartup();
+      return BrowserAudioProcessingAttempt.failed(error.message);
     } on Object catch (error) {
-      startedRecorderWorker?.terminate();
-      if (fingerprintBridge != null) {
-        await fingerprintBridge.dispose();
-      }
-      try {
-        await context.close().toDart;
-      } on Object {
-        // Preserve the original startup failure.
-      }
+      await cleanupStartup();
       return BrowserAudioProcessingAttempt.failed(
         'AUDIOWORKLET START FAILED — ${_sanitize(error)}',
       );
+    }
+  }
+
+  Future<JSObject> _compileDspModule() async {
+    try {
+      final response = await web.window.fetch(_dspAssetPath.toJS).toDart;
+      if (!response.ok) {
+        throw const _DspStartupException(_dspUnavailableMessage);
+      }
+      final bytes = await response.arrayBuffer().toDart;
+      return await _compileWebAssembly(bytes).toDart;
+    } on _DspStartupException {
+      rethrow;
+    } on Object {
+      throw const _DspStartupException(_dspUnavailableMessage);
+    }
+  }
+
+  String _dspFailureMessage(JSAny? message) {
+    switch (_messageString(message, 'code')) {
+      case 'VERSION_MISMATCH':
+        return _dspVersionMismatchMessage;
+      case 'INITIALIZATION_FAILED':
+      default:
+        return _dspInitializationFailedMessage;
     }
   }
 
