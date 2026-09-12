@@ -16,6 +16,13 @@ class WebReferenceLiveState {
     required this.sourceId,
     required this.sourceLabel,
     required this.recordingActive,
+    required this.mixerEnabled,
+    required this.fader,
+    required this.muted,
+    required this.solo,
+    required this.channelPeak,
+    required this.masterPeakLeft,
+    required this.masterPeakRight,
     required this.masterPeakLevel,
     required this.limiterActive,
     required this.currentArtist,
@@ -32,6 +39,13 @@ class WebReferenceLiveState {
   final String? sourceId;
   final String sourceLabel;
   final bool recordingActive;
+  final bool mixerEnabled;
+  final double fader;
+  final bool muted;
+  final bool solo;
+  final double channelPeak;
+  final double masterPeakLeft;
+  final double masterPeakRight;
   final double masterPeakLevel;
   final bool limiterActive;
   final String currentArtist;
@@ -65,6 +79,13 @@ class WebReferenceLiveState {
           : 'NO ACTIVE SOURCE',
       recordingActive:
           recording.status == BrowserRecordingStatus.recording,
+      mixerEnabled: mixer.enabled,
+      fader: mixer.fader.clamp(0.0, 1.0).toDouble(),
+      muted: mixer.muted,
+      solo: mixer.solo,
+      channelPeak: mixer.channelPeak.clamp(0.0, 1.0).toDouble(),
+      masterPeakLeft: mixer.masterPeakLeft.clamp(0.0, 1.0).toDouble(),
+      masterPeakRight: mixer.masterPeakRight.clamp(0.0, 1.0).toDouble(),
       masterPeakLevel: masterPeak.clamp(0.0, 1.0).toDouble(),
       limiterActive: mixer.limiterActive,
       currentArtist: matched?.artist.trim().isNotEmpty == true
