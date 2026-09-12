@@ -71,6 +71,31 @@ void main() {
       }
     });
 
+    test('web reference path does not ship synthetic telemetry as live evidence', () async {
+      final surface = await File('lib/app/app_surface_web_reference.dart').readAsString();
+      final monitor = await File('lib/features/monitor/compact_monitor_view.dart').readAsString();
+
+      for (final fixture in <String>[
+        'FORWARD THE REVOLUTION',
+        'SPIRAL TRIBE',
+        'loudnessLufs: -14.2',
+        'truePeakDbtp: -6.0',
+      ]) {
+        expect(surface, isNot(contains(fixture)), reason: 'web shell must not hardcode fixture telemetry: $fixture');
+      }
+
+      expect(
+        monitor,
+        isNot(contains('this.loudnessLufs = -14.2')),
+        reason: 'unverified LUFS must be unavailable by default',
+      );
+      expect(
+        monitor,
+        isNot(contains('this.truePeakDbtp = -6.0')),
+        reason: 'unverified dBTP must be unavailable by default',
+      );
+    });
+
     test('theme exposes approved dark surfaces and semantic colors', () {
       final theme = LiveMixTheme.dark();
 
