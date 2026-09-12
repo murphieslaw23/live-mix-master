@@ -264,7 +264,7 @@ jobs:
     uses: ./.github/workflows/promote-tested-web-artifact.yml
     with:
       artifact_id: ${{ needs.web-release-compile.outputs.artifact_id }}
-      artifact_digest: ${{ needs.web-release-compile.outputs.artifact_digest }}
+      artifact_digest: sha256:${{ needs.web-release-compile.outputs.artifact_digest }}
       commit_sha: ${{ github.sha }}
       target: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
     secrets: inherit
