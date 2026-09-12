@@ -2,6 +2,8 @@ const LIMITER_CEILING = 0.98;
 const DEFAULT_TELEMETRY_EVERY = 20;
 const DEFAULT_MAX_OUTSTANDING_PCM = 4;
 const DEFAULT_MAX_OUTSTANDING_ANALYSIS_PCM = 1;
+const DSP_ABI_VERSION = 1;
+const DSP_MAX_CHANNELS = 8;
 
 function finiteNumber(value, fallback) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -38,6 +40,8 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     this.analysisEnabled = false;
     this.analysisMaxOutstandingPcm = DEFAULT_MAX_OUTSTANDING_ANALYSIS_PCM;
     this.analysisOutstandingPcm = 0;
+    this.dspReady = false;
+    this.dspInstance = null;
 
     this.port.onmessage = (event) => this.handleMessage(event?.data);
   }
@@ -48,6 +52,9 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     }
 
     switch (message.type) {
+      case 'dspInit':
+        this.initializeDsp(message);
+        break;
       case 'configure':
         this.masterGainLinear = finiteNumber(message.masterGainLinear, this.masterGainLinear);
         this.telemetryEvery = positiveInteger(message.telemetryEvery, this.telemetryEvery);
@@ -90,6 +97,36 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     }
   }
 
+  initializeDsp(message) {
+    this.dspReady = false;
+    this.dspInstance = null;
+
+    if (message.abiVersion !== DSP_ABI_VERSION) {
+      this.port.postMessage({ type: 'dspError', code: 'VERSION_MISMATCH' });
+      return;
+    }
+
+    try {
+      const instance = new WebAssembly.Instance(message.module, {});
+      const abiVersion = instance.exports?.lmm_dsp_abi_version;
+      const maxChannels = instance.exports?.lmm_dsp_max_channels;
+      if (
+        typeof abiVersion !== 'function' ||
+        typeof maxChannels !== 'function' ||
+        abiVersion() !== DSP_ABI_VERSION ||
+        maxChannels() !== DSP_MAX_CHANNELS
+      ) {
+        this.port.postMessage({ type: 'dspError', code: 'VERSION_MISMATCH' });
+        return;
+      }
+      this.dspInstance = instance;
+      this.dspReady = true;
+      this.port.postMessage({ type: 'dspReady' });
+    } catch (_) {
+      this.port.postMessage({ type: 'dspError', code: 'INITIALIZATION_FAILED' });
+    }
+  }
+
   process(inputs, outputs) {
     const outputBus = outputs?.[0];
     if (!outputBus || outputBus.length === 0) {
@@ -105,6 +142,10 @@ class LiveMixMasterProcessor extends AudioWorkletProcessor {
     leftOutput.fill(0);
     if (rightOutput !== leftOutput) {
       rightOutput.fill(0);
+    }
+
+    if (!this.dspReady) {
+      return true;
     }
 
     const frameCount = Math.min(leftOutput.length, rightOutput.length);
