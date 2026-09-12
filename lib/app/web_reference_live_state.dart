@@ -69,6 +69,10 @@ class WebReferenceLiveState {
         fingerprint.status == BrowserFingerprintLookupStatus.matched
             ? fingerprint.track
             : null;
+    final channelMeter = mixer.channelMeter;
+    final channelPeak = channelMeter == null
+        ? 0.0
+        : math.max(channelMeter.peakLeft, channelMeter.peakRight);
     final masterPeak = math.max(mixer.masterPeakLeft, mixer.masterPeakRight);
 
     return WebReferenceLiveState(
@@ -83,7 +87,7 @@ class WebReferenceLiveState {
       fader: mixer.fader.clamp(0.0, 1.0).toDouble(),
       muted: mixer.muted,
       solo: mixer.solo,
-      channelPeak: mixer.channelPeak.clamp(0.0, 1.0).toDouble(),
+      channelPeak: channelPeak.clamp(0.0, 1.0).toDouble(),
       masterPeakLeft: mixer.masterPeakLeft.clamp(0.0, 1.0).toDouble(),
       masterPeakRight: mixer.masterPeakRight.clamp(0.0, 1.0).toDouble(),
       masterPeakLevel: masterPeak.clamp(0.0, 1.0).toDouble(),
