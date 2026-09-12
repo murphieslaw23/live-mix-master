@@ -16,8 +16,11 @@ void main() {
       contains("const String _dspAssetPath = 'audio/livemixmaster-dsp.wasm';"),
     );
     expect(gateway, contains('const int _dspAbiVersion = 1;'));
-    expect(gateway, contains('final dspModule = await _compileDspModule();'));
+    expect(gateway, contains('final dspBytes = await _loadDspBytes();'));
     expect(gateway, contains("initMessage['type'] = 'dspInit'.toJS;"));
+    expect(gateway, contains("initMessage['wasmBytes'] = dspBytes;"));
+    expect(gateway, isNot(contains('WebAssembly.compile')));
+    expect(gateway, isNot(contains("initMessage['module']")));
     expect(gateway, contains("case 'dspReady':"));
     expect(gateway, contains('_dspHandshakeTimeout'));
     expect(gateway, contains('BrowserAudioProcessingLifecycleGateway'));
@@ -50,6 +53,11 @@ void main() {
       gateway,
       isNot(contains("_dspAssetPath = '\${")),
       reason: 'canonical DSP asset path must not be derived from session/user data',
+    );
+    expect(
+      worklet,
+      contains('new WebAssembly.Module(message.wasmBytes)'),
+      reason: 'AudioWorklet must compile clone-safe Wasm bytes locally',
     );
     expect(
       worklet,
