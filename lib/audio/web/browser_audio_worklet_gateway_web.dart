@@ -26,6 +26,14 @@ const String _dspVersionMismatchMessage =
     'DSP MODULE VERSION MISMATCH — AUDIO ENGINE NOT READY';
 const String _dspInitializationFailedMessage =
     'DSP MODULE INITIALIZATION FAILED — AUDIO ENGINE NOT READY';
+const String _dspRenderQuantumExceededMessage =
+    'DSP RENDER QUANTUM EXCEEDED — AUDIO ENGINE NOT READY';
+const String _dspMemoryChangedMessage =
+    'DSP MEMORY CHANGED — AUDIO ENGINE NOT READY';
+const String _dspProcessFailedMessage =
+    'DSP PROCESS FAILED — AUDIO ENGINE NOT READY';
+const String _dspChannelLimitExceededMessage =
+    'DSP CHANNEL LIMIT EXCEEDED — AUDIO ENGINE NOT READY';
 
 const int _recorderMaxBytes = 64 * 1024 * 1024;
 const int _recorderRenderQuantumFrames = 128;
@@ -43,6 +51,7 @@ class _DspStartupException implements Exception {
 class WebAudioWorkletGateway
     implements
         BrowserAudioProcessingGateway,
+        BrowserAudioProcessingLifecycleGateway,
         BrowserMixerGateway,
         BrowserRecordingGateway,
         BrowserRecordingLifecycleGateway {
@@ -75,7 +84,9 @@ class WebAudioWorkletGateway
   Completer<web.Blob>? _recorderExportCompleter;
   BrowserRecordingArtifact? _lastRecordingArtifact;
   void Function(BrowserRecordingException failure)? _recordingFailureHandler;
+  void Function(String message)? _processingFailureHandler;
   bool _recordingActive = false;
+  bool _dspRuntimeReady = false;
 
   @override
   Stream<BrowserMixerTelemetry> get telemetry => _mixerTelemetry.stream;
@@ -83,12 +94,17 @@ class WebAudioWorkletGateway
   @override
   Future<void> configure(BrowserMixerConfiguration configuration) async {
     final workletNode = _workletNode;
-    if (workletNode == null) {
+    if (workletNode == null || !_dspRuntimeReady) {
       throw StateError(
-        'MIXER CONFIGURATION UNAVAILABLE — AUDIOWORKLET NOT ACTIVE',
+        'MIXER CONFIGURATION UNAVAILABLE — AUDIO ENGINE NOT READY',
       );
     }
     workletNode.port.postMessage(configuration.toMessage().jsify());
+  }
+
+  @override
+  void setProcessingFailureHandler(void Function(String message) handler) {
+    _processingFailureHandler = handler;
   }
 
   @override
@@ -101,6 +117,7 @@ class WebAudioWorkletGateway
   @override
   Future<BrowserAudioProcessingAttempt> start(BrowserCaptureSource source) async {
     await stop();
+    _dspRuntimeReady = false;
 
     if (!web.window.isSecureContext) {
       return const BrowserAudioProcessingAttempt.unsupported(
@@ -118,8 +135,10 @@ class WebAudioWorkletGateway
     final context = web.AudioContext();
     web.Worker? startedRecorderWorker;
     WebBrowserFingerprintAnalysisBridge? fingerprintBridge;
+    String? runtimeDspFailure;
 
     Future<void> cleanupStartup() async {
+      _dspRuntimeReady = false;
       startedRecorderWorker?.terminate();
       if (fingerprintBridge != null) {
         await fingerprintBridge!.dispose();
@@ -150,6 +169,9 @@ class WebAudioWorkletGateway
         fingerprintBridge = WebBrowserFingerprintAnalysisBridge(
           preparedFingerprintHandler: preparedFingerprintHandler,
           onReady: (maximumOutstandingPcm) {
+            if (!_dspRuntimeReady) {
+              return;
+            }
             _setWorkletAnalysis(
               workletNode,
               enabled: true,
@@ -157,6 +179,9 @@ class WebAudioWorkletGateway
             );
           },
           onAnalysisAck: () {
+            if (!_dspRuntimeReady) {
+              return;
+            }
             workletNode.port.postMessage(
               <String, Object?>{'type': 'analysisAck'}.jsify(),
             );
@@ -179,19 +204,33 @@ class WebAudioWorkletGateway
               }
               break;
             case 'dspError':
+              final failureMessage = _dspFailureMessage(message);
               if (!dspReady.isCompleted) {
-                dspReady.completeError(
-                  _DspStartupException(_dspFailureMessage(message)),
+                dspReady.completeError(_DspStartupException(failureMessage));
+              } else {
+                runtimeDspFailure = failureMessage;
+                _handleRuntimeDspFailure(
+                  workletNode: workletNode,
+                  recorderWorker: recorderWorker,
+                  fingerprintBridge: fingerprintBridge,
+                  message: failureMessage,
                 );
               }
               break;
             case 'pcm':
-              recorderWorker.postMessage(message);
+              if (_dspRuntimeReady) {
+                recorderWorker.postMessage(message);
+              }
               break;
             case 'analysisPcm':
-              fingerprintBridge?.forwardAnalysisPcm(message);
+              if (_dspRuntimeReady) {
+                fingerprintBridge?.forwardAnalysisPcm(message);
+              }
               break;
             case 'telemetry':
+              if (!_dspRuntimeReady) {
+                break;
+              }
               final telemetry =
                   BrowserMixerTelemetry.tryParse(message?.dartify());
               if (telemetry != null && !_mixerTelemetry.isClosed) {
@@ -238,7 +277,9 @@ class WebAudioWorkletGateway
           final message = (event as JSObject)['data'];
           switch (_messageType(message)) {
             case 'pcmAck':
-              workletNode.port.postMessage(message);
+              if (_dspRuntimeReady) {
+                workletNode.port.postMessage(message);
+              }
               break;
             case 'recordingStarted':
               final completer = _recorderStartCompleter;
@@ -286,6 +327,7 @@ class WebAudioWorkletGateway
         }).toJS,
       );
 
+      _dspRuntimeReady = true;
       if (fingerprintBridge != null) {
         unawaited(fingerprintBridge.start());
       }
@@ -293,6 +335,9 @@ class WebAudioWorkletGateway
       sourceNode.connect(workletNode);
       workletNode.connect(destinationNode);
       await context.resume().toDart;
+      if (runtimeDspFailure != null) {
+        throw _DspStartupException(runtimeDspFailure!);
+      }
 
       _context = context;
       _sourceNode = sourceNode;
@@ -335,9 +380,50 @@ class WebAudioWorkletGateway
       case 'VERSION_MISMATCH':
         return _dspVersionMismatchMessage;
       case 'INITIALIZATION_FAILED':
+        return _dspInitializationFailedMessage;
+      case 'RENDER_QUANTUM_EXCEEDED':
+        return _dspRenderQuantumExceededMessage;
+      case 'MEMORY_CHANGED':
+        return _dspMemoryChangedMessage;
+      case 'PROCESS_FAILED':
+        return _dspProcessFailedMessage;
+      case 'CHANNEL_LIMIT_EXCEEDED':
+        return _dspChannelLimitExceededMessage;
       default:
         return _dspInitializationFailedMessage;
     }
+  }
+
+  void _handleRuntimeDspFailure({
+    required web.AudioWorkletNode workletNode,
+    required web.Worker recorderWorker,
+    required WebBrowserFingerprintAnalysisBridge? fingerprintBridge,
+    required String message,
+  }) {
+    _dspRuntimeReady = false;
+    _setWorkletRecording(workletNode, enabled: false);
+    _setWorkletAnalysis(workletNode, enabled: false);
+    recorderWorker.postMessage(<String, Object?>{'type': 'stop'}.jsify());
+    if (fingerprintBridge != null) {
+      unawaited(fingerprintBridge.dispose());
+    }
+    _fingerprintPreparationUnavailableHandler?.call();
+
+    final recordingWasActive =
+        _recordingActive ||
+        _recorderStartCompleter != null ||
+        _recorderStopCompleter != null ||
+        _recorderExportCompleter != null;
+    _recordingActive = false;
+    if (recordingWasActive) {
+      const failure = BrowserRecordingException(
+        BrowserRecordingFailure.notReady,
+        'RECORDING FAILED — DSP MODULE NOT READY',
+      );
+      _failPendingRecordingOperations(failure);
+      _notifyRecordingFailure(failure);
+    }
+    _processingFailureHandler?.call(message);
   }
 
   @override
@@ -345,10 +431,14 @@ class WebAudioWorkletGateway
     final context = _context;
     final workletNode = _workletNode;
     final recorderWorker = _recorderWorker;
-    if (context == null || workletNode == null || recorderWorker == null) {
+    if (
+        !_dspRuntimeReady ||
+        context == null ||
+        workletNode == null ||
+        recorderWorker == null) {
       throw const BrowserRecordingException(
         BrowserRecordingFailure.notReady,
-        'RECORDING UNAVAILABLE — AUDIOWORKLET NOT ACTIVE',
+        'RECORDING UNAVAILABLE — AUDIO ENGINE NOT READY',
       );
     }
     if (_recordingActive || _recorderStartCompleter != null) {
@@ -387,6 +477,12 @@ class WebAudioWorkletGateway
       }
     }
 
+    if (!_dspRuntimeReady) {
+      throw const BrowserRecordingException(
+        BrowserRecordingFailure.notReady,
+        'RECORDING UNAVAILABLE — AUDIO ENGINE NOT READY',
+      );
+    }
     _setWorkletRecording(
       workletNode,
       enabled: true,
@@ -488,6 +584,7 @@ class WebAudioWorkletGateway
     _recorderWorker = null;
     _fingerprintBridge = null;
     _context = null;
+    _dspRuntimeReady = false;
     _recordingActive = false;
 
     sourceNode?.disconnect();
