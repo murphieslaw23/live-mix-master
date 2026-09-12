@@ -31,6 +31,11 @@ jobs:
           cache: true
       - run: bash tool/bootstrap_fonts.sh
       - run: flutter pub get
+      - name: Verify native DSP ABI v1
+        run: |
+          mkdir -p build/native-abi
+          c++ -std=c++17 -O2 -DLMM_DSP_ABI_TESTING -I native native/tests/dsp_wasm_abi_test.cpp native/dsp_wasm_abi.cpp -o build/native-abi/dsp-wasm-abi
+          build/native-abi/dsp-wasm-abi
       - name: Verify expanded native DSP parity vectors
         run: |
           mkdir -p build/native-parity
