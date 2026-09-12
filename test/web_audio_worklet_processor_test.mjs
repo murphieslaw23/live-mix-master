@@ -32,23 +32,10 @@ globalThis.registerProcessor = (name, ctor) => {
 };
 
 const moduleUrl = new URL('../web/audio/livemixmaster-worklet.js', import.meta.url);
+const dspModuleUrl = new URL('../web/audio/livemixmaster-dsp.wasm', import.meta.url);
 const parityFixtureUrl = new URL('./fixtures/dsp_parity_vectors.tsv', import.meta.url);
 await import(moduleUrl);
-
-// Minimal valid module for the Task 4 handshake tests. It exports only the
-// ABI version/max-channel probes; production render exports are exercised by
-// the dedicated generated-Wasm parity contract.
-const validDspModule = new WebAssembly.Module(Uint8Array.from([
-  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-  0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
-  0x03, 0x03, 0x02, 0x00, 0x00,
-  0x07, 0x2e, 0x02,
-  0x13, ...new TextEncoder().encode('lmm_dsp_abi_version'), 0x00, 0x00,
-  0x14, ...new TextEncoder().encode('lmm_dsp_max_channels'), 0x00, 0x01,
-  0x0a, 0x0b, 0x02,
-  0x04, 0x00, 0x41, 0x01, 0x0b,
-  0x04, 0x00, 0x41, 0x08, 0x0b,
-]));
+const validDspModule = await WebAssembly.compile(await fs.readFile(dspModuleUrl));
 
 function initializeDsp(processor, { module = validDspModule, abiVersion = 1 } = {}) {
   processor.port.dispatch({ type: 'dspInit', abiVersion, module });
@@ -200,6 +187,7 @@ test('executes native-parity fader, summing and limiter semantics in the worklet
   assert.deepEqual(Array.from(output[0][0]), [0.25, 0.125]);
   assert.deepEqual(Array.from(output[0][1]), [-0.25, -0.125]);
 
+  processor.port.dispatch({ type: 'telemetryAck' });
   processor.port.dispatch({
     type: 'configure',
     masterGainLinear: 1,
