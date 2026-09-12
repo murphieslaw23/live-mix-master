@@ -294,6 +294,8 @@ class _CompactReferenceBody extends StatelessWidget {
             truePeakDbtp: liveState.truePeakDbtp,
             limiterActive:
                 liveState.mixerEnabled ? liveState.limiterActive : null,
+            liveSourceLabel: liveState.sourceLabel,
+            liveSourceActive: liveState.captureActive,
           ),
         ),
         Positioned(
