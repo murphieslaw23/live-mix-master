@@ -66,7 +66,17 @@ async function downloadSessionJson(page, testInfo, fileName) {
 test('capture, meter, mix, record, recover, persist, and export from the tested artifact', async ({ page }, testInfo) => {
   test.setTimeout(70_000);
   const failures = [];
+  const dspResponses = [];
   collectPageFailures(page, failures);
+  page.on('response', (response) => {
+    try {
+      if (new URL(response.url()).pathname.endsWith('/audio/livemixmaster-dsp.wasm')) {
+        dspResponses.push({ status: response.status(), url: response.url() });
+      }
+    } catch (_) {
+      // Ignore malformed non-HTTP response URLs from unrelated browser internals.
+    }
+  });
 
   await page.goto('/');
   await enableFlutterAccessibility(page);
@@ -75,6 +85,10 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   const connect = page.getByRole('button', { name: 'CONNECT MIC / USB' });
   await activateControl(connect);
   await expect(page.getByText(/CAPTURE ACTIVE —/)).toBeVisible();
+  await expect.poll(
+    () => dspResponses.some(({ status }) => status === 200),
+    { timeout: 10_000 },
+  ).toBe(true);
 
   const slider = page
     .getByRole('group', { name: /^Channel fader/ })
@@ -187,6 +201,7 @@ test('capture, meter, mix, record, recover, persist, and export from the tested 
   const evidencePath = writeEvidence('chromium-operator.json', {
     capture: 'fake microphone via Chromium media switches',
     initialChannelPeak: initialPeak,
+    dspWasmResponses: dspResponses,
     wav,
     reconnect: true,
     sessionRecovery: true,
