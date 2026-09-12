@@ -4,7 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('operator surfaces use the shared design system', () {
-    final mixer = File('lib/features/mixer/mixer_desk_view.dart').readAsStringSync();
+    final mixer = [
+      File('lib/features/mixer/mixer_desk_view.dart').readAsStringSync(),
+      File('lib/features/mixer/mixer_desk_view_impl.dart').readAsStringSync(),
+    ].join('\n');
     final monitor = File('lib/features/monitor/compact_monitor_view.dart').readAsStringSync();
     final patchbay = File('lib/features/patchbay/patchbay_routing_modal.dart').readAsStringSync();
 
