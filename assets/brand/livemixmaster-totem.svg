@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">LiveMixMaster totem</title>
+  <desc id="desc">Deterministic compact industrial audio totem derived from the approved Picsart reference direction.</desc>
+  <g fill="none" stroke="#E6EDF3" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M22 8h52v80H22z" stroke-width="4"/>
+    <path d="M30 18h36M30 48h36M30 78h36" stroke="#D96528" stroke-width="3"/>
+    <path d="M48 12v72M38 12v72M58 12v72" stroke-width="2"/>
+    <circle cx="38" cy="32" r="10" stroke-width="3"/>
+    <circle cx="58" cy="32" r="10" stroke-width="3"/>
+    <circle cx="38" cy="64" r="10" stroke-width="3"/>
+    <circle cx="58" cy="64" r="10" stroke-width="3"/>
+  </g>
+  <g fill="#D96528">
+    <circle cx="38" cy="32" r="2.5"/>
+    <circle cx="58" cy="32" r="2.5"/>
+    <circle cx="38" cy="64" r="2.5"/>
+    <circle cx="58" cy="64" r="2.5"/>
+  </g>
+</svg>
