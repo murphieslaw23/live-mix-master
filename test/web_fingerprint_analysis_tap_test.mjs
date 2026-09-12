@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import test from 'node:test';
 
 class MockPort {
@@ -8,7 +9,7 @@ class MockPort {
   }
 
   postMessage(message) {
-    this.messages.push(message);
+    this.messages.push(structuredClone(message));
   }
 
   dispatch(message) {
@@ -28,18 +29,9 @@ globalThis.registerProcessor = (_name, ctor) => {
 };
 
 await import(new URL('../web/audio/livemixmaster-worklet.js', import.meta.url));
-
-const validDspModule = new WebAssembly.Module(Uint8Array.from([
-  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-  0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7f,
-  0x03, 0x03, 0x02, 0x00, 0x00,
-  0x07, 0x2e, 0x02,
-  0x13, ...new TextEncoder().encode('lmm_dsp_abi_version'), 0x00, 0x00,
-  0x14, ...new TextEncoder().encode('lmm_dsp_max_channels'), 0x00, 0x01,
-  0x0a, 0x0b, 0x02,
-  0x04, 0x00, 0x41, 0x01, 0x0b,
-  0x04, 0x00, 0x41, 0x08, 0x0b,
-]));
+const validDspModule = await WebAssembly.compile(
+  await fs.readFile(new URL('../web/audio/livemixmaster-dsp.wasm', import.meta.url)),
+);
 
 function initializeDsp(processor) {
   processor.port.dispatch({ type: 'dspInit', abiVersion: 1, module: validDspModule });
@@ -73,10 +65,11 @@ test('fingerprint analysis tap is bounded independently from recording handoff',
   assert.equal(analysis.length, 1, 'analysis must run while recording is disabled');
   assert.equal(processor.port.messages.filter((message) => message.type === 'pcm').length, 0);
   assert.deepEqual(
-    Array.from(analysis[0].samples),
+    Array.from(analysis[0].samples).slice(0, 2),
     Array.from(Float32Array.of(0.98, -0.98)),
-    'analysis must receive post-master PCM',
+    'analysis must receive canonical post-master PCM',
   );
+  assert.equal(analysis[0].frames, 1);
   assert.equal(analysis[0].sampleRate, 48000);
   assert.equal(analysis[0].channels, 2);
 
