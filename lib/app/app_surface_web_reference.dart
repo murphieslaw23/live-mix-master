@@ -40,16 +40,17 @@ class WebReferenceSurface extends StatelessWidget {
               child: WebReleaseShell(),
             ),
           ),
-          body: compact
-              ? _CompactReferenceBody(onOpenOperator: () => _openOperator(context))
-              : _DesktopReferenceBody(onOpenOperator: () => _openOperator(context)),
+          body: Builder(
+            builder: (scaffoldContext) {
+              void openOperator() => Scaffold.of(scaffoldContext).openEndDrawer();
+              return compact
+                  ? _CompactReferenceBody(onOpenOperator: openOperator)
+                  : _DesktopReferenceBody(onOpenOperator: openOperator);
+            },
+          ),
         );
       },
     );
-  }
-
-  static void _openOperator(BuildContext context) {
-    Scaffold.maybeOf(context)?.openEndDrawer();
   }
 }
 
