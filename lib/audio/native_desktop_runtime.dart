@@ -1,20 +1,49 @@
 import 'dart:ffi';
 
-/// Application-scoped handle for the desktop native runtime.
+import 'audio_engine_bridge.dart';
+import 'native_audio_engine.dart';
+import 'native_audio_ffi_bindings.dart';
+import 'native_audio_permission_bindings.dart';
+import 'native_audio_runtime.dart';
+
+/// Application-scoped owner for the desktop native audio runtime.
 ///
-/// Task 1 establishes the lifecycle seam without changing the visible desktop
-/// surface. Task 2 attaches the Core Audio engine and capture services once the
-/// required native symbols have been forward-ported onto current main.
+/// Native callbacks stay entirely in C/C++. This object owns only the
+/// non-real-time Dart control adapter and prepares it from the dylib loaded by
+/// the current platform factory.
 class NativeDesktopRuntime {
-  NativeDesktopRuntime._(this.library);
+  NativeDesktopRuntime._({
+    required this.library,
+    required this.audioEngine,
+  });
 
   final DynamicLibrary library;
+  final AudioEngine audioEngine;
 
   static Future<NativeDesktopRuntime> create(DynamicLibrary library) async {
-    return NativeDesktopRuntime._(library);
+    final permissions = FfiAudioInputPermissionBindings(library);
+    final bindings = FfiNativeAudioBindings(library);
+    final runtime = NativeAudioRuntime(
+      permissions: permissions,
+      engineFactory: (permissionState) => NativeAudioEngine(
+        bindings: bindings,
+        permissionState: permissionState,
+        permissionStateProvider: permissions.readStatus,
+        requestPermission: permissions.request,
+      ),
+    );
+
+    final engine = await runtime.prepare();
+    return NativeDesktopRuntime._(
+      library: library,
+      audioEngine: engine,
+    );
   }
 
-  factory NativeDesktopRuntime.testing() {
-    return NativeDesktopRuntime._(DynamicLibrary.process());
+  factory NativeDesktopRuntime.testing({required AudioEngine audioEngine}) {
+    return NativeDesktopRuntime._(
+      library: DynamicLibrary.process(),
+      audioEngine: audioEngine,
+    );
   }
 }
