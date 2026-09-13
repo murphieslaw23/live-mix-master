@@ -7,6 +7,7 @@ import '../../audio/native_acceptance_telemetry.dart';
 import '../../services/mixer_service_ports.dart';
 import '../patchbay/audio_route_recovery_banner.dart';
 import 'mixer_desk_view_impl.dart' as impl;
+import 'native_acceptance_telemetry_panel.dart';
 import 'native_mixer_desk_view.dart';
 
 export 'mixer_desk_view_impl.dart' show ChannelData;
@@ -85,17 +86,30 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   @override
   Widget build(BuildContext context) {
     final engine = widget.audioEngine;
-    final mixer = engine == null
-        ? impl.MixerDeskView(
-            fingerprintService: widget.fingerprintService,
-            recordingWriter: widget.recordingWriter,
-          )
-        : NativeMixerDeskView(
-            audioEngine: engine,
-            fingerprintService: widget.fingerprintService,
-            recordingWriter: widget.recordingWriter,
-            telemetrySource: widget.telemetrySource,
-          );
+    late final Widget mixer;
+    if (engine == null) {
+      mixer = impl.MixerDeskView(
+        fingerprintService: widget.fingerprintService,
+        recordingWriter: widget.recordingWriter,
+      );
+    } else {
+      final nativeMixer = NativeMixerDeskView(
+        audioEngine: engine,
+        fingerprintService: widget.fingerprintService,
+        recordingWriter: widget.recordingWriter,
+      );
+      final telemetrySource = widget.telemetrySource;
+      mixer = telemetrySource == null
+          ? nativeMixer
+          : Column(
+              children: [
+                NativeAcceptanceTelemetryPanel(
+                  telemetrySource: telemetrySource,
+                ),
+                Expanded(child: nativeMixer),
+              ],
+            );
+    }
 
     if (engine == null ||
         (_routeState == AudioRouteState.idle ||
