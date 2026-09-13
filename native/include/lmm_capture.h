@@ -33,8 +33,11 @@ struct LmmCaptureStatus {
 };
 
 // Starts capture from the Core Audio input endpoint identified by stable UID.
+// channel_pair_index is zero-based: 0 selects CH 1-2, 1 selects CH 3-4, etc.
 // Returns only after the device IOProc has been created and started.
-bool lmm_capture_start(const char* device_uid);
+bool lmm_capture_start(
+    const char* device_uid,
+    std::uint32_t channel_pair_index);
 
 // Stops capture if active and returns the lifecycle state to idle.
 void lmm_capture_stop();
@@ -88,6 +91,14 @@ bool lmm_capture_test_convert_pcm(
     const LmmPcmBufferView* buffers,
     std::uint32_t buffer_count,
     const LmmPcmFormat* format,
+    std::uint32_t frames,
+    float* out_stereo,
+    std::uint32_t output_sample_capacity);
+bool lmm_capture_test_convert_pcm_pair(
+    const LmmPcmBufferView* buffers,
+    std::uint32_t buffer_count,
+    const LmmPcmFormat* format,
+    std::uint32_t channel_pair_index,
     std::uint32_t frames,
     float* out_stereo,
     std::uint32_t output_sample_capacity);
