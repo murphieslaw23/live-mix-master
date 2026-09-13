@@ -3,12 +3,14 @@ import 'package:live_mix_master/audio/audio_engine_bridge.dart';
 import 'package:live_mix_master/audio/audio_permission_state.dart';
 import 'package:live_mix_master/audio/native_audio_bindings.dart';
 import 'package:live_mix_master/audio/native_audio_engine.dart';
+import 'package:live_mix_master/audio/native_audio_gain_bindings.dart';
 
 void main() {
   test('initial trim is applied before capture starts and direct controls reach bindings', () async {
     final bindings = _ControlBindings();
     final engine = NativeAudioEngine(
       bindings: bindings,
+      gainBindings: bindings,
       permissionState: AudioPermissionState.granted,
       pollInterval: null,
     );
@@ -41,7 +43,7 @@ void main() {
   });
 }
 
-class _ControlBindings implements NativeAudioBindings {
+class _ControlBindings implements NativeAudioBindings, NativeAudioGainBindings {
   final events = <String>[];
 
   @override
