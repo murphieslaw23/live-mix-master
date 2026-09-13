@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import '../../audio/audio_engine_bridge.dart';
+import '../../audio/native_acceptance_telemetry.dart';
 import '../../services/mixer_service_ports.dart';
 import '../patchbay/audio_route_recovery_banner.dart';
 import 'mixer_desk_view_impl.dart' as impl;
@@ -13,20 +14,22 @@ export 'mixer_desk_view_impl.dart' show ChannelData;
 /// Stable public mixer surface.
 ///
 /// Reference/Web mode keeps the approved fixture-driven implementation.
-/// Desktop native mode selects a separate surface whose controls and meters are
-/// wired only to the injected [AudioEngine].
+/// Desktop native mode selects a separate surface whose controls, meters, and
+/// same-process acceptance telemetry are wired only to the injected engine.
 class MixerDeskView extends StatefulWidget {
   const MixerDeskView({
     super.key,
     this.audioEngine,
     this.fingerprintService,
     this.recordingWriter,
+    this.telemetrySource,
     this.onOpenAudioSettings,
   });
 
   final AudioEngine? audioEngine;
   final MixerFingerprintPort? fingerprintService;
   final MixerRecordingPort? recordingWriter;
+  final AcceptanceTelemetrySource? telemetrySource;
   final Future<void> Function()? onOpenAudioSettings;
 
   @override
@@ -91,6 +94,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
             audioEngine: engine,
             fingerprintService: widget.fingerprintService,
             recordingWriter: widget.recordingWriter,
+            telemetrySource: widget.telemetrySource,
           );
 
     if (engine == null ||
