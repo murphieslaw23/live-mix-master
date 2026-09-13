@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import '../../audio/audio_engine_bridge.dart';
 import '../../services/mixer_service_ports.dart';
+import '../patchbay/audio_route_recovery_banner.dart';
 import 'mixer_desk_view_impl.dart' as impl;
 
 export 'mixer_desk_view_impl.dart' show ChannelData;
@@ -11,7 +14,7 @@ export 'mixer_desk_view_impl.dart' show ChannelData;
 /// The visual implementation remains isolated from platform bootstrap code.
 /// Desktop may inject native audio and stable service ports; Web leaves them
 /// null and continues using the browser-owned operator surface.
-class MixerDeskView extends StatelessWidget {
+class MixerDeskView extends StatefulWidget {
   const MixerDeskView({
     super.key,
     this.audioEngine,
@@ -26,12 +29,78 @@ class MixerDeskView extends StatelessWidget {
   final Future<void> Function()? onOpenAudioSettings;
 
   @override
+  State<MixerDeskView> createState() => _MixerDeskViewState();
+}
+
+class _MixerDeskViewState extends State<MixerDeskView> {
+  StreamSubscription<AudioRouteState>? _routeSubscription;
+  late AudioRouteState _routeState;
+
+  @override
+  void initState() {
+    super.initState();
+    _bindAudioEngine();
+  }
+
+  @override
+  void didUpdateWidget(covariant MixerDeskView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.audioEngine != widget.audioEngine) {
+      _routeSubscription?.cancel();
+      _bindAudioEngine();
+    }
+  }
+
+  void _bindAudioEngine() {
+    final engine = widget.audioEngine;
+    _routeState = engine?.routeState ?? AudioRouteState.idle;
+    _routeSubscription = engine?.routeStates.listen((state) {
+      if (!mounted) return;
+      setState(() => _routeState = state);
+    });
+  }
+
+  Future<void> _handleRecovery() async {
+    if (_routeState == AudioRouteState.permissionDenied) {
+      await widget.onOpenAudioSettings?.call();
+      return;
+    }
+    await widget.audioEngine?.refreshInputDevices();
+  }
+
+  Future<void> _refreshPermission() async {
+    await widget.audioEngine?.refreshInputDevices();
+  }
+
+  @override
+  void dispose() {
+    _routeSubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return impl.MixerDeskView(
-      audioEngine: audioEngine,
-      fingerprintService: fingerprintService,
-      recordingWriter: recordingWriter,
-      onOpenAudioSettings: onOpenAudioSettings,
+    final mixer = impl.MixerDeskView(
+      fingerprintService: widget.fingerprintService,
+      recordingWriter: widget.recordingWriter,
+    );
+    if (widget.audioEngine == null ||
+        (_routeState == AudioRouteState.idle ||
+            _routeState == AudioRouteState.active)) {
+      return mixer;
+    }
+
+    return Column(
+      children: [
+        AudioRouteRecoveryBanner(
+          state: _routeState,
+          onRecoveryRequested: () => unawaited(_handleRecovery()),
+          onRefreshRequested: _routeState == AudioRouteState.permissionDenied
+              ? () => unawaited(_refreshPermission())
+              : null,
+        ),
+        Expanded(child: mixer),
+      ],
     );
   }
 }
