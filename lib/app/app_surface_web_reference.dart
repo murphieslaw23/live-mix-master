@@ -264,7 +264,7 @@ class _DesktopOperatorSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
-              minHeight: 58,
+              constraints: const BoxConstraints(minHeight: 58),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: const BoxDecoration(
                 color: LiveMixTokens.surfaceRack,
@@ -277,7 +277,7 @@ class _DesktopOperatorSection extends StatelessWidget {
                   Expanded(
                     child: Text(
                       _title,
-                      style: LiveMixTextStyles.sectionTitle.copyWith(
+                      style: LiveMixTextStyles.sectionDisplay.copyWith(
                         color: LiveMixTokens.textPrimary,
                       ),
                     ),
