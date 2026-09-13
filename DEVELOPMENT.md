@@ -6,7 +6,7 @@ The first verified desktop host is macOS. Windows and Linux remain planned targe
 
 Flutter Web/PWA is a separate release target tracked by Issue #16. Its compile boundary is intentionally independent from the native FFI loader: Web builds select the browser audio backend through conditional exports and must not require the native C++ engine or `dart:io` / `dart:ffi` at compile time.
 
-Issue #2 validates a local macOS debug-development baseline only. Distribution signing, notarization, App Store packaging, physical audio capture, loopback capture, recording correctness, fingerprint-provider E2E, and broadcast-delivery E2E are separate gates.
+Issue #2 validates the macOS debug-development baseline. Issue #3 owns real Core Audio capture, loopback routing, negotiated-format PCM delivery, native mix-control safety, and the real physical/BlackHole acceptance gate. The canonical device-backed procedure is [`docs/audio/macos-device-e2e.md`](docs/audio/macos-device-e2e.md).
 
 ## Prerequisites
 
@@ -56,17 +56,18 @@ The committed `web/` runner and `web/manifest.json` are repository inputs. Do no
 
 The Web build does not require CMake or `liblive_mixer_engine.dylib`. `lib/audio/audio_engine_factory.dart` selects the browser implementation for Web and keeps `native_library_loader.dart` behind the desktop-only conditional branch. This is the W1 compile boundary that prevents Web compilation from loading native-only libraries while preserving the existing desktop startup path.
 
-The GitHub Actions **Web Release Compile Contract** is the authoritative clean-checkout reproduction of this path and uploads the resulting `build/web` artifact. Browser capture, AudioWorklet DSP, recording, installability, browser E2E, and Vercel promotion are later release gates and are not implied by a successful W1 compile.
+The GitHub Actions **Web Release Compile Contract** is the authoritative clean-checkout reproduction of this path and uploads the resulting `build/web` artifact. Browser capture, AudioWorklet DSP, recording, installability, browser E2E, and Vercel promotion are separate release gates.
 
-### macOS desktop — Issue #2
+### macOS desktop — Issues #2 and #3
 
 From the repository root:
 
 ```sh
 bash tool/bootstrap_fonts.sh
 flutter pub get
-cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
+cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/native --config Debug --parallel
+ctest --test-dir build/native --output-on-failure
 test -f build/native/liblive_mixer_engine.dylib
 flutter analyze --no-fatal-warnings --no-fatal-infos
 TEST_FILES=$(find test -maxdepth 1 -name '*_test.dart' ! -name 'golden_fixture_render_test.dart' -print | sort)
@@ -77,6 +78,8 @@ flutter run -d macos
 The committed `macos/` host was generated with Flutter 3.47.2. A clean checkout must not require uncommitted generated Xcode files before `flutter run -d macos`.
 
 The Issue #5 golden renderer is intentionally excluded from the generic clean-clone test command because its PNGs are generated during the dedicated Golden Fixture Contract workflow and validated against `test/goldens/issue5-approved-sha256.txt`; the PNG files themselves are not repository inputs.
+
+For Issue #3, hosted CI is preflight only. After all automated contracts are green, execute [`docs/audio/macos-device-e2e.md`](docs/audio/macos-device-e2e.md) on a real macOS host and write only non-secret results into [`docs/audio/issue3-device-acceptance-record.md`](docs/audio/issue3-device-acceptance-record.md). Do not substitute the hosted/null device probe for physical or BlackHole acceptance.
 
 ## Native library lookup
 
@@ -100,8 +103,9 @@ If no candidate can be loaded, the Flutter application must show `NATIVE ENGINE 
 ```sh
 bash tool/bootstrap_fonts.sh
 flutter pub get
-cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
+cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/native --config Debug --parallel
+ctest --test-dir build/native --output-on-failure
 flutter build macos --debug
 ```
 
@@ -135,26 +139,35 @@ flutter test --update-goldens test/golden_fixture_render_test.dart
 grep -v '^#' test/goldens/issue5-approved-sha256.txt | sha256sum --check -
 ```
 
-Focused Issue #2 contracts:
+Focused desktop contracts include:
 
 ```sh
 flutter test test/native_library_loader_test.dart
 flutter test test/native_startup_gate_test.dart
+flutter test test/native_audio_route_selection_test.dart
+flutter test test/native_audio_control_contract_test.dart
+flutter test test/native_pcm_service_coordinator_test.dart
+flutter test test/native_acceptance_evidence_copy_test.dart
+flutter test test/macos_device_acceptance_contract_test.dart
 ```
 
 Native build verification:
 
 ```sh
-cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
+cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/native --config Debug --parallel
+ctest --test-dir build/native --output-on-failure
 test -f build/native/liblive_mixer_engine.dylib
 ```
 
+The native callback safety rationale and claim boundary are documented in [`docs/audio/dsp-safety-evidence.md`](docs/audio/dsp-safety-evidence.md).
+
 ## Known limits
 
-- macOS is the only desktop runner verified by Issue #2.
-- Flutter Web/PWA has a verified clean-clone compile path, but browser/device capability parity with native desktop is not implied.
-- The generated macOS debug runner is sandboxed; audio-input and loopback permission/capture work belongs to Issue #3.
-- The native C++ engine is still a prototype; this baseline verifies build/load/host startup, not device-backed PCM correctness.
-- Recording, fingerprinting, and broadcast-metadata modules have source/contract tests, but real service/device E2E remains outside this baseline.
-- Signing/notarization/distribution are not part of Issue #2.
+- macOS is the only desktop runner currently verified.
+- The automated native/Core Audio contracts do not by themselves prove a physical input or BlackHole route; Issue #3 remains pending until the real-device record passes.
+- The macOS host supports exactly one active Core Audio capture route in this forward-port; a second route is rejected explicitly rather than silently rebinding capture.
+- Recording and fingerprint consumers use the negotiated capture sample rate and stereo host representation; no resampling layer is introduced here.
+- Current native master `true_peak_left/right` ABI values are post-limiter sample peaks, not standards-based dBTP/True Peak, and no LUFS claim is made.
+- Flutter Web/PWA has a separate verified release path; browser/device capability parity with native desktop is not implied.
+- Signing/notarization/distribution remain separate from the Issue #3 live-audio acceptance gate.

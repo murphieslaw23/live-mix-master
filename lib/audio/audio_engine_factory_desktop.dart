@@ -1,14 +1,21 @@
+import 'dart:ffi';
+
 import 'audio_engine_port.dart';
+import 'native_desktop_runtime.dart';
 import 'native_library_loader.dart';
 
 class DesktopNativeAudioEngine implements AudioEnginePort {
   DesktopNativeAudioEngine({
     NativeLibraryLoadResult Function()? loadNativeLibrary,
-  }) : _loadNativeLibrary = loadNativeLibrary ?? NativeLibraryLoader.tryLoad;
+    Future<NativeDesktopRuntime> Function(DynamicLibrary)? runtimeBuilder,
+  })  : _loadNativeLibrary = loadNativeLibrary ?? NativeLibraryLoader.tryLoad,
+        _runtimeBuilder = runtimeBuilder ?? NativeDesktopRuntime.create;
 
   final NativeLibraryLoadResult Function() _loadNativeLibrary;
+  final Future<NativeDesktopRuntime> Function(DynamicLibrary) _runtimeBuilder;
 
   NativeLibraryLoadResult? _nativeLibraryResult;
+  Future<NativeDesktopRuntime>? _runtimeFuture;
 
   NativeLibraryLoadResult? get nativeLibraryResult => _nativeLibraryResult;
 
@@ -19,6 +26,7 @@ class DesktopNativeAudioEngine implements AudioEnginePort {
   AudioEngineBootstrapResult initialize() {
     final result = _loadNativeLibrary();
     _nativeLibraryResult = result;
+    _runtimeFuture = null;
 
     if (result.isLoaded) {
       return AudioEngineBootstrapResult.available(
@@ -33,6 +41,22 @@ class DesktopNativeAudioEngine implements AudioEnginePort {
       message: result.message,
       diagnostics: result.searchedPaths,
     );
+  }
+
+  Future<NativeDesktopRuntime> prepareRuntime() {
+    final existing = _runtimeFuture;
+    if (existing != null) return existing;
+
+    final library = _nativeLibraryResult?.library;
+    if (library == null) {
+      return Future<NativeDesktopRuntime>.error(
+        StateError('Native library is not loaded.'),
+      );
+    }
+
+    final future = _runtimeBuilder(library);
+    _runtimeFuture = future;
+    return future;
   }
 }
 

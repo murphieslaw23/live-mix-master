@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import 'fingerprint_tracklist_bridge.dart';
 import 'live_session_tracklist_controller.dart';
+import 'mixer_service_ports.dart';
 import 'reliability_models.dart';
 
 /// Continuous Audio Fingerprint Service for LiveMixMaster
@@ -70,7 +71,7 @@ class IdentifiedTrack {
   );
 }
 
-class FingerprintService {
+class FingerprintService implements MixerFingerprintPort {
   final AudioFingerprintConfig config;
   final LiveSessionTracklistController? tracklistController;
   final StreamController<IdentifiedTrack> _trackController = StreamController<IdentifiedTrack>.broadcast();
@@ -85,7 +86,9 @@ class FingerprintService {
 
   FingerprintService({required this.config, this.tracklistController});
 
+  @override
   Stream<IdentifiedTrack> get onTrackIdentified => _trackController.stream;
+  @override
   Stream<bool> get onAnalyzingStatusChanged => _analyzingStatusController.stream;
   Stream<ServiceStatus> get onStatus => _statusController.stream;
 
@@ -115,6 +118,8 @@ class FingerprintService {
       'apiKey': config.acoustIdApiKey,
       'sampleRate': config.sampleRate,
       'channels': config.channels,
+      'windowMilliseconds': config.windowDuration.inMilliseconds,
+      'analysisIntervalMilliseconds': config.analysisInterval.inMilliseconds,
       'minConfidence': config.minimumConfidence,
     });
   }
@@ -149,7 +154,6 @@ class FingerprintService {
       final String title = msg['title'];
       final String signature = '${artist.toLowerCase()}_${title.toLowerCase()}';
 
-      // Avoid duplicate trigger if song hasn't changed
       if (signature == _lastTrackSignature) return;
       _lastTrackSignature = signature;
 
@@ -186,7 +190,6 @@ class FingerprintService {
   }
 }
 
-/// Standalone Isolate Entrypoint
 void _fingerprintIsolateWorker(SendPort mainSendPort) {
   final commandPort = ReceivePort();
   mainSendPort.send(commandPort.sendPort);
@@ -194,10 +197,12 @@ void _fingerprintIsolateWorker(SendPort mainSendPort) {
   String apiKey = '';
   int sampleRate = 48000;
   int channels = 2;
+  int windowMilliseconds = 10000;
+  int analysisIntervalMilliseconds = 8000;
   double minConfidence = 0.65;
 
   final List<double> rollingBuffer = [];
-  final int maxBufferSamples = 48000 * 2 * 10; // 10 seconds of stereo audio
+  int maxBufferSamples = sampleRate * channels * windowMilliseconds ~/ 1000;
   bool isBusyQuerying = false;
   DateTime lastQueryTime = DateTime.now().subtract(const Duration(seconds: 15));
 
@@ -209,21 +214,33 @@ void _fingerprintIsolateWorker(SendPort mainSendPort) {
       apiKey = message['apiKey'] ?? '';
       sampleRate = message['sampleRate'] ?? 48000;
       channels = message['channels'] ?? 2;
-      minConfidence = message['minConfidence'] ?? 0.65;
+      windowMilliseconds = message['windowMilliseconds'] ?? 10000;
+      analysisIntervalMilliseconds =
+          message['analysisIntervalMilliseconds'] ?? 8000;
+      if (sampleRate <= 0 || channels <= 0 || windowMilliseconds <= 0) {
+        mainSendPort.send({
+          'type': 'ERROR',
+          'code': 'invalidConfiguration',
+          'message': 'Fingerprint PCM format is invalid',
+        });
+        return;
+      }
+      maxBufferSamples =
+          sampleRate * channels * windowMilliseconds ~/ 1000;
+      rollingBuffer.clear();
     } else if (type == 'AUDIO_CHUNK') {
       final Float32List chunk = message['data'] as Float32List;
       rollingBuffer.addAll(chunk);
 
-      // Maintain rolling 10-second window
       if (rollingBuffer.length > maxBufferSamples) {
         rollingBuffer.removeRange(0, rollingBuffer.length - maxBufferSamples);
       }
 
-      // Check if it's time to trigger an analysis query
       final now = DateTime.now();
       if (!isBusyQuerying &&
           rollingBuffer.length >= maxBufferSamples &&
-          now.difference(lastQueryTime) >= const Duration(seconds: 8)) {
+          now.difference(lastQueryTime) >=
+              Duration(milliseconds: analysisIntervalMilliseconds)) {
         isBusyQuerying = true;
         lastQueryTime = now;
         mainSendPort.send({'type': 'STATUS', 'isAnalyzing': true});
@@ -232,12 +249,13 @@ void _fingerprintIsolateWorker(SendPort mainSendPort) {
           await _processAndQueryAcoustId(
             pcmData: Float32List.fromList(rollingBuffer),
             sampleRate: sampleRate,
+            channels: channels,
             apiKey: apiKey,
             minConfidence: minConfidence,
             sendPort: mainSendPort,
           );
         } catch (_) {
-          // Gracefully swallow network/lookup errors to avoid crashing isolate
+          // Gracefully swallow lookup failures so the analysis isolate survives.
         } finally {
           isBusyQuerying = false;
           mainSendPort.send({'type': 'STATUS', 'isAnalyzing': false});
@@ -249,10 +267,10 @@ void _fingerprintIsolateWorker(SendPort mainSendPort) {
   });
 }
 
-/// Generate fingerprint & query AcoustID REST API
 Future<void> _processAndQueryAcoustId({
   required Float32List pcmData,
   required int sampleRate,
+  required int channels,
   required String apiKey,
   required double minConfidence,
   required SendPort sendPort,
@@ -266,7 +284,8 @@ Future<void> _processAndQueryAcoustId({
     return;
   }
 
-  final int durationSeconds = (pcmData.length ~/ (sampleRate * 2)).clamp(5, 12);
+  final int durationSeconds =
+      (pcmData.length ~/ (sampleRate * channels)).clamp(5, 12);
   final uri = Uri.parse('https://api.acoustid.org/v2/lookup');
   final bufferBytes = pcmData.buffer.asUint8List();
   final String base64Fingerprint = base64Encode(bufferBytes.sublist(0, bufferBytes.length.clamp(0, 1024)));
