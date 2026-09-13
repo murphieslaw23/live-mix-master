@@ -358,7 +358,6 @@ class _DesktopRail extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(8),
               child: IconButton(
-                tooltip: 'WEB OPERATOR',
                 onPressed: onOpenOperator,
                 constraints: const BoxConstraints(
                   minWidth: LiveMixTokens.minimumTarget,
@@ -372,7 +371,10 @@ class _DesktopRail extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                icon: const Icon(Icons.tune_rounded),
+                icon: const Icon(
+                  Icons.tune_rounded,
+                  semanticLabel: 'WEB OPERATOR',
+                ),
               ),
             ),
           ],
@@ -464,7 +466,6 @@ class _CompactReferenceBody extends StatelessWidget {
           right: 8,
           child: SafeArea(
             child: IconButton(
-              tooltip: 'WEB OPERATOR',
               onPressed: onOpenOperator,
               constraints: const BoxConstraints(
                 minWidth: LiveMixTokens.minimumTarget,
@@ -479,7 +480,10 @@ class _CompactReferenceBody extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
-              icon: const Icon(Icons.tune_rounded),
+              icon: const Icon(
+                Icons.tune_rounded,
+                semanticLabel: 'WEB OPERATOR',
+              ),
             ),
           ),
         ),
