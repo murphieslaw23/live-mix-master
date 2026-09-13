@@ -41,6 +41,27 @@ void main() {
       expect(controller.state.source?.label, 'USB AUDIO');
     });
 
+    test('re-probe preserves an active capture source and status', () async {
+      final gateway = _FakeGateway(
+        microphoneAttempt: const BrowserCaptureAttempt.connected(
+          BrowserCaptureSource(
+            kind: BrowserCaptureKind.microphone,
+            id: 'origin-scoped-device',
+            label: 'USB AUDIO',
+          ),
+        ),
+      );
+      final controller = BrowserCaptureController(gateway: gateway);
+
+      await controller.requestMicrophone();
+      await controller.probe();
+
+      expect(controller.state.status, BrowserCaptureStatus.active);
+      expect(controller.state.source?.id, 'origin-scoped-device');
+      expect(controller.state.source?.label, 'USB AUDIO');
+      expect(controller.state.capabilities?.microphoneCaptureAvailable, isTrue);
+    });
+
     test('permission denial is an actionable state', () async {
       final gateway = _FakeGateway(
         microphoneAttempt: const BrowserCaptureAttempt.permissionDenied(),
