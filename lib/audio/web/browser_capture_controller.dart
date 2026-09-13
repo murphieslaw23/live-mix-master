@@ -171,8 +171,16 @@ class BrowserCaptureController {
   }
 
   Future<void> probe() async {
+    final preserveActiveCapture = _state.status == BrowserCaptureStatus.active;
     try {
       final capabilities = await _gateway.probeCapabilities();
+      if (preserveActiveCapture) {
+        if (_state.status == BrowserCaptureStatus.active) {
+          _setState(_state.copyWith(capabilities: capabilities));
+        }
+        return;
+      }
+
       if (!capabilities.hasCapturePath) {
         _setState(
           BrowserCaptureState(
@@ -192,6 +200,9 @@ class BrowserCaptureController {
         ),
       );
     } on Object catch (error) {
+      if (preserveActiveCapture) {
+        return;
+      }
       _setState(
         BrowserCaptureState(
           status: BrowserCaptureStatus.error,
