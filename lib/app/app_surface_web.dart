@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoSlider;
 import 'package:flutter/material.dart';
 
 import '../audio/web/browser_capture_controller.dart';
@@ -115,6 +116,7 @@ class _WebReleaseShellState extends State<WebReleaseShell> {
       // A session persistence error is represented by its non-fatal status panel.
     }
   }
+
   void _handleMixerState(BrowserMixerState _) => _refresh();
   void _handleSessionState(BrowserSessionState _) => _refresh();
 
@@ -540,13 +542,14 @@ class _MixerControlPanel extends StatelessWidget {
             value: state.fader.toStringAsFixed(2),
             slider: true,
             enabled: enabled,
-            child: Slider(
+            child: CupertinoSlider(
               key: const ValueKey('channel-fader'),
               value: state.fader,
               min: 0,
               max: 1,
               onChanged: enabled ? onFader : null,
-              semanticFormatterCallback: (value) => value.toStringAsFixed(2),
+              activeColor: LiveMixTokens.accentOchre,
+              thumbColor: LiveMixTokens.textSecondary,
             ),
           ),
           Wrap(
