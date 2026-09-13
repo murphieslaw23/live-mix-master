@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoSlider;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/app/app_surface_web.dart';
@@ -60,8 +61,11 @@ void main() {
     expect(find.text('Limiter'), findsOneWidget);
     expect(find.text('Disconnect source'), findsOneWidget);
 
-    final slider =
-        tester.widget<Slider>(find.byKey(const ValueKey('channel-fader')));
+    final slider = tester.widget<CupertinoSlider>(
+      find.byKey(const ValueKey('channel-fader')),
+    );
+    expect(slider.value, closeTo(1, 0.0001));
+    expect(slider.onChanged, isNotNull);
     slider.onChanged!(0.4);
     await tester.pump();
     expect(mixerController.state.fader, closeTo(0.4, 0.0001));
