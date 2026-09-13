@@ -39,6 +39,8 @@ The initial verified desktop development target remains macOS. Windows and Linux
 | Windows | Not verified | Not verified | Pending | Pending | Not verified | Not verified | Not verified | Not verified |
 | Linux | Not verified | Not verified | Pending | Pending | Not verified | Not verified | Not verified | Not verified |
 
+The canonical macOS physical-input / BlackHole acceptance procedure for Issue #3 is [`docs/audio/macos-device-e2e.md`](docs/audio/macos-device-e2e.md). Its acceptance record must remain `PENDING REAL DEVICE RUN` until that procedure is completed on a real macOS host.
+
 ## Architecture
 
 Flutter owns the application shell and control state, while the real-time path is platform-specific.
@@ -80,6 +82,9 @@ native/                            # desktop C ABI/DSP prototype + parity vector
 web/                               # PWA shell, Worklet/Worker assets, icons
 api/                               # Vercel server-side service proxies
 docs/
+  audio/macos-device-e2e.md
+  audio/issue3-device-acceptance-record.md
+  audio/dsp-safety-evidence.md
   release/tested-web-artifact-promotion.md
   product-spec.md
 DEVELOPMENT.md                     # clean-clone Web + macOS development paths
@@ -87,6 +92,6 @@ DEVELOPMENT.md                     # clean-clone Web + macOS development paths
 
 ## Development and release evidence
 
-See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the pinned Flutter 3.47.2 clean-clone workflows and platform boundaries. See [`docs/release/tested-web-artifact-promotion.md`](docs/release/tested-web-artifact-promotion.md) for the immutable-artifact Vercel promotion contract.
+See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the pinned Flutter 3.47.2 clean-clone workflows and platform boundaries. See [`docs/audio/macos-device-e2e.md`](docs/audio/macos-device-e2e.md) for the real macOS Issue #3 acceptance path and [`docs/release/tested-web-artifact-promotion.md`](docs/release/tested-web-artifact-promotion.md) for the immutable-artifact Vercel promotion contract.
 
 The current production Web deployment is intentionally tied to the tested artifact from `4f97a354dac54cf7c103f477d65002e7dff87213`. Later documentation/tooling commits on `main` do not change that deployed artifact unless a new tested artifact is explicitly promoted.
