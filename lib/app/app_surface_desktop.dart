@@ -48,7 +48,12 @@ class _NativeDesktopOperatorSurface extends StatelessWidget {
             ),
           );
         }
-        return MixerDeskView(audioEngine: snapshot.data!.audioEngine);
+        final runtime = snapshot.data!;
+        return MixerDeskView(
+          audioEngine: runtime.audioEngine,
+          fingerprintService: runtime.services,
+          recordingWriter: runtime.services,
+        );
       },
     );
   }
