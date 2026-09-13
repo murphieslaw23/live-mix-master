@@ -88,7 +88,7 @@ int captureFor(const LmmInputDeviceRecord& device, int seconds) {
     return 4;
   }
 
-  if (!lmm_capture_start(device.uid)) {
+  if (!lmm_capture_start(device.uid, 0)) {
     std::cerr << "probe_error=capture_start_failed\n";
     lmm_remove_channel(kProbeChannelId);
     return 5;
