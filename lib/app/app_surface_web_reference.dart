@@ -17,12 +17,21 @@ import 'web_reference_live_state.dart';
 
 Widget buildPrimaryOperatorSurface() => const WebReferenceSurface();
 
+enum _WebReferenceSection {
+  mixer,
+  patchbay,
+  session,
+  settings,
+  operator,
+}
+
 /// Responsive Web composition backed by one shared W5 browser runtime.
 ///
 /// Desktop and compact reference views are projections of verified browser
-/// controller state. The operator drawer receives the same controller
-/// instances, so opening it never creates a second MediaStream/AudioWorklet
-/// graph merely to expose the lower-level W5 controls.
+/// controller state. Desktop navigation keeps one lower-level WebReleaseShell
+/// alive behind the reference mixer so session/fingerprint state remains
+/// continuous while the rail switches views. Compact layouts keep the same
+/// functional shell in the operator drawer.
 class WebReferenceSurface extends StatefulWidget {
   const WebReferenceSurface({super.key});
 
@@ -32,6 +41,7 @@ class WebReferenceSurface extends StatefulWidget {
 
 class _WebReferenceSurfaceState extends State<WebReferenceSurface> {
   late final BrowserWebRuntime _runtime;
+  _WebReferenceSection _desktopSection = _WebReferenceSection.mixer;
 
   @override
   void initState() {
@@ -66,6 +76,15 @@ class _WebReferenceSurfaceState extends State<WebReferenceSurface> {
     }
   }
 
+  void _selectDesktopSection(_WebReferenceSection section) {
+    if (_desktopSection == section || !mounted) {
+      return;
+    }
+    setState(() {
+      _desktopSection = section;
+    });
+  }
+
   WebReferenceLiveState get _liveState =>
       WebReferenceLiveState.fromBrowserStates(
         capture: _runtime.captureController.state,
@@ -95,26 +114,38 @@ class _WebReferenceSurfaceState extends State<WebReferenceSurface> {
           math.max(320.0, constraints.maxWidth * .78),
         );
 
+        final operatorShell = WebReleaseShell(
+          key: ValueKey(
+            compact ? 'compact-web-operator-shell' : 'desktop-web-operator-shell',
+          ),
+          controller: _runtime.captureController,
+          recordingController: _runtime.recordingController,
+          fingerprintController: _runtime.fingerprintController,
+          mixerController: _runtime.mixerController,
+        );
+
         return Scaffold(
           key: const ValueKey('web-reference-shell'),
           backgroundColor: LiveMixTokens.surfaceBase,
           endDrawerEnableOpenDragGesture: false,
-          endDrawer: SizedBox(
-            width: drawerWidth,
-            child: Drawer(
-              backgroundColor: LiveMixTokens.surfaceBase,
-              child: WebReleaseShell(
-                controller: _runtime.captureController,
-                recordingController: _runtime.recordingController,
-                fingerprintController: _runtime.fingerprintController,
-                mixerController: _runtime.mixerController,
-              ),
-            ),
-          ),
+          endDrawer: compact
+              ? SizedBox(
+                  width: drawerWidth,
+                  child: Drawer(
+                    backgroundColor: LiveMixTokens.surfaceBase,
+                    child: operatorShell,
+                  ),
+                )
+              : null,
           body: Builder(
             builder: (scaffoldContext) {
-              void openOperator() =>
+              void openOperator() {
+                if (compact) {
                   Scaffold.of(scaffoldContext).openEndDrawer();
+                } else {
+                  _selectDesktopSection(_WebReferenceSection.operator);
+                }
+              }
 
               return compact
                   ? _CompactReferenceBody(
@@ -123,6 +154,11 @@ class _WebReferenceSurfaceState extends State<WebReferenceSurface> {
                     )
                   : _DesktopReferenceBody(
                       liveState: liveState,
+                      section: _desktopSection,
+                      operatorShell: operatorShell,
+                      onSectionChanged: _selectDesktopSection,
+                      onReprobe: () =>
+                          unawaited(_runtime.captureController.probe()),
                       onOpenOperator: openOperator,
                       onFaderChanged: (value) =>
                           unawaited(_runtime.mixerController.setFader(value)),
@@ -143,6 +179,10 @@ class _WebReferenceSurfaceState extends State<WebReferenceSurface> {
 class _DesktopReferenceBody extends StatelessWidget {
   const _DesktopReferenceBody({
     required this.liveState,
+    required this.section,
+    required this.operatorShell,
+    required this.onSectionChanged,
+    required this.onReprobe,
     required this.onOpenOperator,
     required this.onFaderChanged,
     required this.onMutedChanged,
@@ -151,6 +191,10 @@ class _DesktopReferenceBody extends StatelessWidget {
   });
 
   final WebReferenceLiveState liveState;
+  final _WebReferenceSection section;
+  final Widget operatorShell;
+  final ValueChanged<_WebReferenceSection> onSectionChanged;
+  final VoidCallback onReprobe;
   final VoidCallback onOpenOperator;
   final ValueChanged<double> onFaderChanged;
   final ValueChanged<bool> onMutedChanged;
@@ -161,15 +205,30 @@ class _DesktopReferenceBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _DesktopRail(onOpenOperator: onOpenOperator),
+        _DesktopRail(
+          section: section,
+          onSectionChanged: onSectionChanged,
+          onOpenOperator: onOpenOperator,
+        ),
         Expanded(
-          child: WebLiveMixerReference(
-            liveState: liveState,
-            onFaderChanged: onFaderChanged,
-            onMutedChanged: onMutedChanged,
-            onSoloChanged: onSoloChanged,
-            onToggleRecording: onToggleRecording,
-            onOpenOperator: onOpenOperator,
+          child: IndexedStack(
+            index: section == _WebReferenceSection.mixer ? 0 : 1,
+            children: [
+              WebLiveMixerReference(
+                liveState: liveState,
+                onFaderChanged: onFaderChanged,
+                onMutedChanged: onMutedChanged,
+                onSoloChanged: onSoloChanged,
+                onToggleRecording: onToggleRecording,
+                onOpenOperator: () =>
+                    onSectionChanged(_WebReferenceSection.session),
+              ),
+              _DesktopOperatorSection(
+                section: section,
+                onReprobe: onReprobe,
+                child: operatorShell,
+              ),
+            ],
           ),
         ),
       ],
@@ -177,9 +236,78 @@ class _DesktopReferenceBody extends StatelessWidget {
   }
 }
 
-class _DesktopRail extends StatelessWidget {
-  const _DesktopRail({required this.onOpenOperator});
+class _DesktopOperatorSection extends StatelessWidget {
+  const _DesktopOperatorSection({
+    required this.section,
+    required this.onReprobe,
+    required this.child,
+  });
 
+  final _WebReferenceSection section;
+  final VoidCallback onReprobe;
+  final Widget child;
+
+  String get _title => switch (section) {
+        _WebReferenceSection.patchbay => 'PATCHBAY',
+        _WebReferenceSection.session => 'SESSION',
+        _WebReferenceSection.settings => 'SETTINGS',
+        _WebReferenceSection.operator => 'WEB OPERATOR',
+        _WebReferenceSection.mixer => 'WEB OPERATOR',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: LiveMixTokens.surfaceBase,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              minHeight: 58,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: const BoxDecoration(
+                color: LiveMixTokens.surfaceRack,
+                border: Border(
+                  bottom: BorderSide(color: LiveMixTokens.surfaceStrip),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _title,
+                      style: LiveMixTextStyles.sectionTitle.copyWith(
+                        color: LiveMixTokens.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (section == _WebReferenceSection.settings)
+                    OutlinedButton.icon(
+                      onPressed: onReprobe,
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('RE-PROBE CAPABILITIES'),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DesktopRail extends StatelessWidget {
+  const _DesktopRail({
+    required this.section,
+    required this.onSectionChanged,
+    required this.onOpenOperator,
+  });
+
+  final _WebReferenceSection section;
+  final ValueChanged<_WebReferenceSection> onSectionChanged;
   final VoidCallback onOpenOperator;
 
   @override
@@ -199,10 +327,26 @@ class _DesktopRail extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 82),
-            const _RailItem(label: 'Mixer', active: true),
-            const _RailItem(label: 'Patchbay'),
-            const _RailItem(label: 'Session'),
-            const _RailItem(label: 'Settings'),
+            _RailItem(
+              label: 'Mixer',
+              active: section == _WebReferenceSection.mixer,
+              onPressed: () => onSectionChanged(_WebReferenceSection.mixer),
+            ),
+            _RailItem(
+              label: 'Patchbay',
+              active: section == _WebReferenceSection.patchbay,
+              onPressed: () => onSectionChanged(_WebReferenceSection.patchbay),
+            ),
+            _RailItem(
+              label: 'Session',
+              active: section == _WebReferenceSection.session,
+              onPressed: () => onSectionChanged(_WebReferenceSection.session),
+            ),
+            _RailItem(
+              label: 'Settings',
+              active: section == _WebReferenceSection.settings,
+              onPressed: () => onSectionChanged(_WebReferenceSection.settings),
+            ),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.all(8),
@@ -232,9 +376,14 @@ class _DesktopRail extends StatelessWidget {
 }
 
 class _RailItem extends StatelessWidget {
-  const _RailItem({required this.label, this.active = false});
+  const _RailItem({
+    required this.label,
+    required this.onPressed,
+    this.active = false,
+  });
 
   final String label;
+  final VoidCallback onPressed;
   final bool active;
 
   @override
@@ -242,7 +391,6 @@ class _RailItem extends StatelessWidget {
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: 58),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       decoration: BoxDecoration(
         color: active ? LiveMixTokens.surfaceStrip : LiveMixTokens.surfaceBase,
         border: Border(
@@ -253,14 +401,20 @@ class _RailItem extends StatelessWidget {
           bottom: const BorderSide(color: LiveMixTokens.surfaceStrip),
         ),
       ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: LiveMixTextStyles.uiLabel.copyWith(
-          color: active
+      child: TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(double.infinity, 58),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          foregroundColor: active
               ? LiveMixTokens.textPrimary
               : LiveMixTokens.textSecondary,
+          shape: const RoundedRectangleBorder(),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: LiveMixTextStyles.uiLabel,
         ),
       ),
     );
