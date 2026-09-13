@@ -4,7 +4,7 @@ import '../../design/live_mix_tokens.dart';
 import '../../design/widgets/lmm_controls.dart';
 import '../../design/widgets/lmm_state_widgets.dart';
 import '../../services/fingerprint_service.dart';
-import '../../services/lossless_recording_writer.dart';
+import '../../services/mixer_service_ports.dart';
 import '../patchbay/patchbay_routing_modal.dart';
 
 class MixerDeskView extends StatefulWidget {
@@ -14,8 +14,8 @@ class MixerDeskView extends StatefulWidget {
     this.recordingWriter,
   });
 
-  final FingerprintService? fingerprintService;
-  final LosslessRecordingWriter? recordingWriter;
+  final MixerFingerprintPort? fingerprintService;
+  final MixerRecordingPort? recordingWriter;
 
   @override
   State<MixerDeskView> createState() => _MixerDeskViewState();
