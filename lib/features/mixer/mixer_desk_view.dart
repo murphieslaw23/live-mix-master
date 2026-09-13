@@ -17,17 +17,21 @@ class MixerDeskView extends StatelessWidget {
     this.audioEngine,
     this.fingerprintService,
     this.recordingWriter,
+    this.onOpenAudioSettings,
   });
 
   final AudioEngine? audioEngine;
   final MixerFingerprintPort? fingerprintService;
   final MixerRecordingPort? recordingWriter;
+  final Future<void> Function()? onOpenAudioSettings;
 
   @override
   Widget build(BuildContext context) {
     return impl.MixerDeskView(
+      audioEngine: audioEngine,
       fingerprintService: fingerprintService,
       recordingWriter: recordingWriter,
+      onOpenAudioSettings: onOpenAudioSettings,
     );
   }
 }
