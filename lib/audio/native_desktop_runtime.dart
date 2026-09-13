@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'audio_engine_bridge.dart';
+import 'native_acceptance_telemetry.dart';
 import 'native_audio_engine.dart';
 import 'native_audio_ffi_bindings.dart';
 import 'native_audio_gain_ffi.dart';
@@ -15,19 +16,22 @@ import 'native_recording_drain.dart';
 ///
 /// Native callbacks stay entirely in C/C++. Recorder/fingerprint consumers are
 /// activated only after capture publishes its negotiated running format; only
-/// then is the non-real-time PCM pump started.
+/// then is the non-real-time PCM pump started. Acceptance telemetry samples
+/// already-published host state and never runs on the Core Audio callback.
 class NativeDesktopRuntime {
   NativeDesktopRuntime._({
     required this.library,
     required this.audioEngine,
     this.services,
     this.pcmRuntimePump,
+    this.acceptanceTelemetry,
   });
 
   final DynamicLibrary library;
   final AudioEngine audioEngine;
   final NativePcmServiceCoordinator? services;
   final NativePcmRuntimePump? pcmRuntimePump;
+  final AcceptanceTelemetrySource? acceptanceTelemetry;
 
   static Future<NativeDesktopRuntime> create(DynamicLibrary library) async {
     final permissions = FfiAudioInputPermissionBindings(library);
@@ -68,11 +72,21 @@ class NativeDesktopRuntime {
 
     try {
       final engine = await runtime.prepare();
+      if (engine is! NativeAudioEngine) {
+        throw StateError(
+          'Desktop native runtime did not return NativeAudioEngine.',
+        );
+      }
+      final acceptanceTelemetry = NativeRuntimeAcceptanceTelemetry(
+        audioEngine: engine,
+        pcmRuntimePump: pump,
+      );
       return NativeDesktopRuntime._(
         library: library,
         audioEngine: engine,
         services: services,
         pcmRuntimePump: pump,
+        acceptanceTelemetry: acceptanceTelemetry,
       );
     } catch (_) {
       pump.dispose();
@@ -85,12 +99,14 @@ class NativeDesktopRuntime {
     required AudioEngine audioEngine,
     NativePcmServiceCoordinator? services,
     NativePcmRuntimePump? pcmRuntimePump,
+    AcceptanceTelemetrySource? acceptanceTelemetry,
   }) {
     return NativeDesktopRuntime._(
       library: DynamicLibrary.process(),
       audioEngine: audioEngine,
       services: services,
       pcmRuntimePump: pcmRuntimePump,
+      acceptanceTelemetry: acceptanceTelemetry,
     );
   }
 
