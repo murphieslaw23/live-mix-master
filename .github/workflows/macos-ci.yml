@@ -75,6 +75,16 @@ jobs:
           test -f build/native/liblive_mixer_engine.dylib
           ctest --test-dir build/native --output-on-failure
 
+      - name: Core Audio discovery probe
+        run: |
+          test -x build/native/macos_device_probe
+          build/native/macos_device_probe --list | tee /tmp/live-mix-master-coreaudio-probe.log
+
+      - name: Built-dylib Dart FFI smoke
+        env:
+          LMM_NATIVE_LIBRARY: ${{ github.workspace }}/build/native/liblive_mixer_engine.dylib
+        run: flutter test --reporter expanded test/native_built_library_smoke_test.dart
+
       - name: Build Flutter debug app
         run: flutter build macos --debug
 
@@ -110,6 +120,7 @@ jobs:
           name: issue2-macos-launch-evidence
           path: |
             /tmp/live-mix-master-launch.log
+            /tmp/live-mix-master-coreaudio-probe.log
             build/macos/Build/Products/Debug/live_mix_master.app/Contents/Frameworks/liblive_mixer_engine.dylib
           if-no-files-found: warn
           retention-days: 14
