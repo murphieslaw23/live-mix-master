@@ -15,6 +15,16 @@ This is the canonical Issue #3 acceptance procedure for the first verified deskt
 
 ## Build and preflight
 
+The recommended path is the fail-closed local helper:
+
+```sh
+bash tool/macos_device_acceptance.sh --preflight
+```
+
+It refuses hosted CI, non-macOS hosts, a dirty tracked checkout, and the wrong Flutter version. It records only local preflight diagnostics under `build/issue3-device-acceptance/`; those files are not acceptance PASS and are not committed automatically.
+
+The helper executes the equivalent explicit preflight sequence:
+
 ```sh
 bash tool/bootstrap_fonts.sh
 flutter pub get
@@ -36,7 +46,15 @@ This CLI diagnostic is not the canonical physical-microphone permission test bec
 
 ## Canonical 10-second live path
 
-1. Start the app with `flutter run -d macos` and grant microphone/audio-input permission when macOS requests it.
+For the same exact checkout, the helper can run preflight and launch the app:
+
+```sh
+bash tool/macos_device_acceptance.sh --launch
+```
+
+The helper does not automate UI observations and never edits the acceptance record. Complete the following in the launched app:
+
+1. Grant microphone/audio-input permission when macOS requests it.
 2. Confirm the app exposes **E2E TELEMETRY** from the same Flutter process used for acceptance.
 3. Open the native patchbay, refresh inputs, select the intended physical input or BlackHole endpoint, and record its stable UID in the acceptance record.
 4. Select the intended channel pair. For a multichannel endpoint, verify a non-default pair such as CH 3-4 when available.
@@ -70,4 +88,4 @@ The presently provable limiter property is the deterministic sample ceiling enfo
 
 ## Pass/fail rule
 
-Do not change the acceptance record from `PENDING REAL DEVICE RUN` to PASS based on hosted CI, source inspection, screenshots, app launch smoke, or the standalone probe. PASS requires the full real macOS path above, including >=10 seconds of recording, same-process telemetry, zero rejected blocks for the clean run, and disconnect/reconnect recovery evidence.
+Do not change the acceptance record from `PENDING REAL DEVICE RUN` to PASS based on hosted CI, source inspection, screenshots, app launch smoke, the local helper's preflight output, or the standalone probe. PASS requires the full real macOS path above, including >=10 seconds of recording, same-process telemetry, zero rejected blocks for the clean run, and disconnect/reconnect recovery evidence.
