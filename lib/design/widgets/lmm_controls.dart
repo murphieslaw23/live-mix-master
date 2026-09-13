@@ -1,3 +1,5 @@
+import 'package:flutter/cupertino.dart' show CupertinoSlider;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -345,11 +347,21 @@ class LmmFader extends StatelessWidget {
   final ValueChanged<double>? onChanged;
 
   Widget _slider(double clampedValue) {
+    final slider = kIsWeb
+        ? CupertinoSlider(
+            value: clampedValue,
+            min: 0,
+            max: 1,
+            onChanged: onChanged,
+            activeColor: LiveMixTokens.accentOchre,
+            thumbColor: LiveMixTokens.textSecondary,
+          )
+        : Slider(value: clampedValue, min: 0, max: 1, onChanged: onChanged);
     return SizedBox(
       width: LiveMixTokens.minimumTarget,
       child: RotatedBox(
         quarterTurns: 3,
-        child: Slider(value: clampedValue, min: 0, max: 1, onChanged: onChanged),
+        child: slider,
       ),
     );
   }
