@@ -9,9 +9,12 @@ This is a non-secret evidence template. Do not mark it PASS until `docs/audio/ma
 Hosted CI may be recorded here only as preflight proof. It does not satisfy the device-backed fields below.
 
 - current replacement PR: #38
-- automated capture/DSP/control/queue contracts: implemented; exact-head verification must be referenced from the PR when finalized
-- same-process acceptance telemetry formatter/UI: implementation present; exact-head verification pending at the time this template was added
-- hosted app launch smoke: preflight only
+- verified implementation head: `a0bd2f449f005df7e9d137a982fe7f027883f4f3`
+- CI #730 (`34761349988`): GREEN, including Flutter analyze, the full non-golden suite, native release build, design/golden/mixer/reliability/broadcast contracts, Web release/shared-DSP contracts, and exact-artifact browser E2E
+- macOS Desktop CI #573 (`34761349911`): GREEN, including 201 passing Flutter tests with 1 expected generic-suite skip, 11/11 native CTests, Core Audio discovery probe, built-dylib Dart FFI smoke, Flutter macOS build, dylib packaging, and launch smoke
+- same-process acceptance telemetry formatter/UI: exact-head hosted regression coverage GREEN; hosted values are not copied into the real-device fields below
+- non-secret hosted evidence artifact: `issue2-macos-launch-evidence`, artifact ID `10319021900`, digest `sha256:f4df1821664f19ee0b2dfcba5b462798d584f8093ce7e7d1cafdd3a3aa872a55`
+- hosted Core Audio probe enumerated runner-provided virtual/null inputs only; that is infrastructure proof and **not** physical/BlackHole acceptance
 - real physical/BlackHole run: **PENDING REAL DEVICE RUN**
 
 ## Build/runtime identity
