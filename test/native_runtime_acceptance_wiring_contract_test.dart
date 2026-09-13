@@ -38,5 +38,28 @@ void main() {
       expect(coordinator, contains('final rate = status.sampleRate.round()'));
       expect(coordinator, contains('sampleRate: rate'));
     });
+
+    test('same Flutter process exposes acceptance telemetry to native mixer', () {
+      final runtime =
+          File('lib/audio/native_desktop_runtime.dart').readAsStringSync();
+      final desktopSurface =
+          File('lib/app/app_surface_desktop.dart').readAsStringSync();
+      final wrapper =
+          File('lib/features/mixer/mixer_desk_view.dart').readAsStringSync();
+      final nativeMixer = File('lib/features/mixer/native_mixer_desk_view.dart')
+          .readAsStringSync();
+
+      expect(runtime, contains('NativeRuntimeAcceptanceTelemetry'));
+      expect(runtime, contains('AcceptanceTelemetrySource? acceptanceTelemetry'));
+      expect(runtime, contains('pcmRuntimePump: pump'));
+      expect(
+        desktopSurface,
+        contains('telemetrySource: runtime.acceptanceTelemetry'),
+      );
+      expect(wrapper, contains('this.telemetrySource'));
+      expect(wrapper, contains('telemetrySource: widget.telemetrySource'));
+      expect(nativeMixer, contains('NativeAcceptanceTelemetryPanel'));
+      expect(nativeMixer, contains('telemetrySource: telemetrySource'));
+    });
   });
 }
