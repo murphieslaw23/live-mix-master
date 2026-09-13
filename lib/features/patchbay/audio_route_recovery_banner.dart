@@ -8,10 +8,12 @@ class AudioRouteRecoveryBanner extends StatelessWidget {
     super.key,
     required this.state,
     this.onRecoveryRequested,
+    this.onRefreshRequested,
   });
 
   final AudioRouteState state;
   final VoidCallback? onRecoveryRequested;
+  final VoidCallback? onRefreshRequested;
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +54,15 @@ class AudioRouteRecoveryBanner extends StatelessWidget {
               ),
               child: Text(action),
             ),
+          if (state == AudioRouteState.permissionDenied &&
+              onRefreshRequested != null)
+            OutlinedButton(
+              onPressed: onRefreshRequested,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, LiveMixTokens.minimumTarget),
+              ),
+              child: const Text('REFRESH ACCESS'),
+            ),
         ],
       ),
     );
@@ -76,7 +87,7 @@ class AudioRouteRecoveryBanner extends StatelessWidget {
           ),
         AudioRouteState.permissionDenied => const _RoutePresentation(
             status: 'AUDIO INPUT PERMISSION DENIED',
-            detail: 'Allow microphone/audio input access in macOS System Settings.',
+            detail: 'Allow microphone/audio input access in macOS System Settings, then refresh access.',
             action: 'OPEN AUDIO SETTINGS',
             icon: Icons.lock_outline,
             color: LiveMixTokens.meterClip,
