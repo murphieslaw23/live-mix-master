@@ -6,14 +6,15 @@ import '../../audio/audio_engine_bridge.dart';
 import '../../services/mixer_service_ports.dart';
 import '../patchbay/audio_route_recovery_banner.dart';
 import 'mixer_desk_view_impl.dart' as impl;
+import 'native_mixer_desk_view.dart';
 
 export 'mixer_desk_view_impl.dart' show ChannelData;
 
 /// Stable public mixer surface.
 ///
-/// The visual implementation remains isolated from platform bootstrap code.
-/// Desktop may inject native audio and stable service ports; Web leaves them
-/// null and continues using the browser-owned operator surface.
+/// Reference/Web mode keeps the approved fixture-driven implementation.
+/// Desktop native mode selects a separate surface whose controls and meters are
+/// wired only to the injected [AudioEngine].
 class MixerDeskView extends StatefulWidget {
   const MixerDeskView({
     super.key,
@@ -46,7 +47,7 @@ class _MixerDeskViewState extends State<MixerDeskView> {
   void didUpdateWidget(covariant MixerDeskView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.audioEngine != widget.audioEngine) {
-      _routeSubscription?.cancel();
+      unawaited(_routeSubscription?.cancel());
       _bindAudioEngine();
     }
   }
@@ -74,17 +75,25 @@ class _MixerDeskViewState extends State<MixerDeskView> {
 
   @override
   void dispose() {
-    _routeSubscription?.cancel();
+    unawaited(_routeSubscription?.cancel());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final mixer = impl.MixerDeskView(
-      fingerprintService: widget.fingerprintService,
-      recordingWriter: widget.recordingWriter,
-    );
-    if (widget.audioEngine == null ||
+    final engine = widget.audioEngine;
+    final mixer = engine == null
+        ? impl.MixerDeskView(
+            fingerprintService: widget.fingerprintService,
+            recordingWriter: widget.recordingWriter,
+          )
+        : NativeMixerDeskView(
+            audioEngine: engine,
+            fingerprintService: widget.fingerprintService,
+            recordingWriter: widget.recordingWriter,
+          );
+
+    if (engine == null ||
         (_routeState == AudioRouteState.idle ||
             _routeState == AudioRouteState.active)) {
       return mixer;
