@@ -58,6 +58,7 @@ class _NativeDesktopOperatorSurface extends StatelessWidget {
           audioEngine: runtime.audioEngine,
           fingerprintService: runtime.services,
           recordingWriter: runtime.services,
+          telemetrySource: runtime.acceptanceTelemetry,
           onOpenAudioSettings: settingsLauncher.openMicrophonePrivacy,
         );
       },
