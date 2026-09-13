@@ -203,6 +203,7 @@ class _DesktopReferenceBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mixerVisible = section == _WebReferenceSection.mixer;
     return Row(
       children: [
         _DesktopRail(
@@ -211,22 +212,28 @@ class _DesktopReferenceBody extends StatelessWidget {
           onOpenOperator: onOpenOperator,
         ),
         Expanded(
-          child: IndexedStack(
-            index: section == _WebReferenceSection.mixer ? 0 : 1,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              WebLiveMixerReference(
-                liveState: liveState,
-                onFaderChanged: onFaderChanged,
-                onMutedChanged: onMutedChanged,
-                onSoloChanged: onSoloChanged,
-                onToggleRecording: onToggleRecording,
-                onOpenOperator: () =>
-                    onSectionChanged(_WebReferenceSection.session),
+              Offstage(
+                offstage: !mixerVisible,
+                child: WebLiveMixerReference(
+                  liveState: liveState,
+                  onFaderChanged: onFaderChanged,
+                  onMutedChanged: onMutedChanged,
+                  onSoloChanged: onSoloChanged,
+                  onToggleRecording: onToggleRecording,
+                  onOpenOperator: () =>
+                      onSectionChanged(_WebReferenceSection.session),
+                ),
               ),
-              _DesktopOperatorSection(
-                section: section,
-                onReprobe: onReprobe,
-                child: operatorShell,
+              Offstage(
+                offstage: mixerVisible,
+                child: _DesktopOperatorSection(
+                  section: section,
+                  onReprobe: onReprobe,
+                  child: operatorShell,
+                ),
               ),
             ],
           ),
