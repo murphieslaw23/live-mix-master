@@ -4,6 +4,11 @@ import 'audio_engine_bridge.dart';
 import 'audio_permission_state.dart';
 import 'native_audio_bindings.dart';
 
+typedef NativeCaptureStartedCallback = FutureOr<void> Function(
+  NativeCaptureStatus status,
+);
+typedef NativeCaptureStoppedCallback = FutureOr<void> Function();
+
 /// Non-real-time Dart host adapter for the native LiveMixMaster engine.
 ///
 /// The native audio callback never crosses into Dart. This adapter performs
@@ -14,6 +19,8 @@ class NativeAudioEngine implements AudioEngine {
     required this.permissionState,
     this.permissionStateProvider,
     this.requestPermission,
+    this.onCaptureStarted,
+    this.onCaptureStopped,
     this.pollInterval = const Duration(milliseconds: 33),
     this.noSignalPollThreshold = 2,
   }) : assert(noSignalPollThreshold > 0);
@@ -22,6 +29,8 @@ class NativeAudioEngine implements AudioEngine {
   final AudioPermissionState permissionState;
   final AudioPermissionState Function()? permissionStateProvider;
   final bool Function()? requestPermission;
+  final NativeCaptureStartedCallback? onCaptureStarted;
+  final NativeCaptureStoppedCallback? onCaptureStopped;
   final Duration? pollInterval;
   final int noSignalPollThreshold;
 
@@ -170,21 +179,41 @@ class NativeAudioEngine implements AudioEngine {
     _setRouteState(AudioRouteState.preparing);
 
     var nativeChannelAdded = false;
+    var captureStarted = false;
     try {
       nativeChannelAdded = bindings.addChannel(channel.id);
       if (!nativeChannelAdded ||
           !bindings.setFader(channel.id, channel.fader) ||
           !bindings.setMuted(channel.id, channel.muted) ||
           !bindings.setSolo(channel.id, channel.solo) ||
-          !bindings.bindCaptureChannel(channel.id) ||
-          !bindings.captureStart(channel.endpointId, channel.channelPairIndex)) {
+          !bindings.bindCaptureChannel(channel.id)) {
         throw StateError('Native capture route configuration failed.');
       }
+      if (!bindings.captureStart(
+        channel.endpointId,
+        channel.channelPairIndex,
+      )) {
+        throw StateError('Native capture route configuration failed.');
+      }
+      captureStarted = true;
+
+      final status = bindings.captureStatus();
+      _captureStatus = status;
+      if (status.state != NativeCaptureState.running || status.sampleRate <= 0) {
+        throw StateError('Native capture did not publish a negotiated format.');
+      }
+      await onCaptureStarted?.call(status);
     } catch (_) {
-      bindings.captureStop();
+      if (captureStarted) {
+        bindings.captureStop();
+        await onCaptureStopped?.call();
+      } else {
+        bindings.captureStop();
+      }
       if (nativeChannelAdded) {
         bindings.removeChannel(channel.id);
       }
+      _captureStatus = null;
       _state = EngineState.failed;
       _setRouteState(AudioRouteState.failed);
       rethrow;
@@ -205,6 +234,7 @@ class NativeAudioEngine implements AudioEngine {
     _channels.remove(channelId);
     if (_channels.isEmpty) {
       bindings.captureStop();
+      await onCaptureStopped?.call();
       _captureStatus = null;
       _lastCallbackCount = null;
       _lastXrunCount = 0;
@@ -430,6 +460,7 @@ class NativeAudioEngine implements AudioEngine {
     if (_disposed) return;
     _pollTimer?.cancel();
     bindings.captureStop();
+    await onCaptureStopped?.call();
     _disposed = true;
     await _routeStates.close();
     await _channelMeters.close();
