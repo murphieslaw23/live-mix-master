@@ -4,6 +4,7 @@ import 'dart:io';
 import 'audio_engine_bridge.dart';
 import 'native_audio_engine.dart';
 import 'native_audio_ffi_bindings.dart';
+import 'native_audio_gain_ffi.dart';
 import 'native_audio_permission_bindings.dart';
 import 'native_audio_runtime.dart';
 import 'native_pcm_runtime_pump.dart';
@@ -31,6 +32,7 @@ class NativeDesktopRuntime {
   static Future<NativeDesktopRuntime> create(DynamicLibrary library) async {
     final permissions = FfiAudioInputPermissionBindings(library);
     final bindings = FfiNativeAudioBindings(library);
+    final gainBindings = FfiNativeAudioGainBindings(library);
     final services = NativePcmServiceCoordinator(
       destinationDirectory: _recordingDirectory(),
       acoustIdApiKey: Platform.environment['ACOUSTID_API_KEY'] ?? '',
@@ -50,6 +52,7 @@ class NativeDesktopRuntime {
       permissions: permissions,
       engineFactory: (permissionState) => NativeAudioEngine(
         bindings: bindings,
+        gainBindings: gainBindings,
         permissionState: permissionState,
         permissionStateProvider: permissions.readStatus,
         requestPermission: permissions.request,
