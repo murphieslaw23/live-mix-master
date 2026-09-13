@@ -3,6 +3,7 @@ import 'dart:async';
 import 'audio_engine_bridge.dart';
 import 'audio_permission_state.dart';
 import 'native_audio_bindings.dart';
+import 'native_audio_gain_bindings.dart';
 
 typedef NativeCaptureStartedCallback = FutureOr<void> Function(
   NativeCaptureStatus status,
@@ -17,6 +18,7 @@ class NativeAudioEngine implements AudioEngine {
   NativeAudioEngine({
     required this.bindings,
     required this.permissionState,
+    this.gainBindings,
     this.permissionStateProvider,
     this.requestPermission,
     this.onCaptureStarted,
@@ -26,6 +28,7 @@ class NativeAudioEngine implements AudioEngine {
   }) : assert(noSignalPollThreshold > 0);
 
   final NativeAudioBindings bindings;
+  final NativeAudioGainBindings? gainBindings;
   final AudioPermissionState permissionState;
   final AudioPermissionState Function()? permissionStateProvider;
   final bool Function()? requestPermission;
@@ -182,8 +185,22 @@ class NativeAudioEngine implements AudioEngine {
     var captureStarted = false;
     try {
       nativeChannelAdded = bindings.addChannel(channel.id);
-      if (!nativeChannelAdded ||
-          !bindings.setFader(channel.id, channel.fader) ||
+      if (!nativeChannelAdded) {
+        throw StateError('Native capture route configuration failed.');
+      }
+
+      final gains = gainBindings;
+      if (gains != null) {
+        if (!gains.setTrim(channel.id, channel.trimDb)) {
+          throw StateError('Native capture route configuration failed.');
+        }
+      } else if (channel.trimDb != 0) {
+        throw UnsupportedError(
+          'Native trim control is unavailable for this runtime.',
+        );
+      }
+
+      if (!bindings.setFader(channel.id, channel.fader) ||
           !bindings.setMuted(channel.id, channel.muted) ||
           !bindings.setSolo(channel.id, channel.solo) ||
           !bindings.bindCaptureChannel(channel.id)) {
@@ -269,18 +286,32 @@ class NativeAudioEngine implements AudioEngine {
   }
 
   @override
-  Future<void> setTrim(String channelId, double db) => Future<void>.error(
-        UnsupportedError(
-          'Native trim control is not part of the current C ABI yet.',
-        ),
+  Future<void> setTrim(String channelId, double db) async {
+    _ensureUsable();
+    final gains = gainBindings;
+    if (gains == null) {
+      throw UnsupportedError(
+        'Native trim control is unavailable for this runtime.',
       );
+    }
+    if (!gains.setTrim(channelId, db)) {
+      throw StateError('Native trim update failed for $channelId.');
+    }
+  }
 
   @override
-  Future<void> setMasterGain(double db) => Future<void>.error(
-        UnsupportedError(
-          'Native master gain control is not part of the current C ABI yet.',
-        ),
+  Future<void> setMasterGain(double db) async {
+    _ensureUsable();
+    final gains = gainBindings;
+    if (gains == null) {
+      throw UnsupportedError(
+        'Native master gain control is unavailable for this runtime.',
       );
+    }
+    if (!gains.setMasterGain(db)) {
+      throw StateError('Native master gain update failed.');
+    }
+  }
 
   @override
   Future<void> startRecording(String filePath) => Future<void>.error(
