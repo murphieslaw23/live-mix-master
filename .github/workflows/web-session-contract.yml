@@ -15,8 +15,9 @@ concurrency:
 
 jobs:
   browser-session-contract:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Browser Session Recovery + Export
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

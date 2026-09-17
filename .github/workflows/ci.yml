@@ -17,8 +17,9 @@ concurrency:
 
 jobs:
   flutter-analyze:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Flutter Analyze
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -31,8 +32,9 @@ jobs:
       - run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
   design-contract-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Design Contract Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -45,8 +47,9 @@ jobs:
       - run: flutter test test/design_contract_test.dart test/operator_journey_test.dart test/design_system_semantics_test.dart test/operator_surface_design_contract_test.dart test/component_state_registry_test.dart test/responsive_layout_test.dart test/approved_visual_parity_contract_test.dart
 
   golden-fixture-contract:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Golden Fixture Contract
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -69,8 +72,9 @@ jobs:
           retention-days: 14
 
   reliability-models-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Reliability Models Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -83,8 +87,9 @@ jobs:
       - run: flutter test test/reliability_models_test.dart test/session_tracklist_test.dart test/fingerprint_tracklist_bridge_test.dart test/session_tracklist_codec_test.dart test/session_tracklist_store_test.dart test/session_tracklist_persister_test.dart test/live_session_tracklist_controller_test.dart test/fingerprint_service_test.dart test/tracklist_exporter_test.dart test/browser_session_controller_test.dart
 
   broadcast-pipeline-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Broadcast Pipeline Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -97,8 +102,9 @@ jobs:
       - run: flutter test --reporter expanded test/broadcast_pipeline_test.dart test/broadcast_metadata_adapter_test.dart
 
   mixer-user-flow-test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Mixer User Flow Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -111,8 +117,9 @@ jobs:
       - run: flutter test test/mixer_user_flow_test.dart
 
   web-release-compile:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Web Release Compile Contract
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 30
     outputs:
       artifact_id: ${{ steps.web_artifact.outputs.artifact-id }}
@@ -224,9 +231,10 @@ jobs:
           retention-days: 14
 
   web-browser-e2e:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Web Browser E2E — Exact Artifact
     needs: web-release-compile
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -297,8 +305,9 @@ jobs:
     secrets: inherit
 
   native-engine-build:
-    name: Native Engine Build (macos-latest)
-    runs-on: macos-latest
+    if: vars.SYCO23_SELF_HOSTED_MACOS == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    name: Native Engine Build (self-hosted macOS)
+    runs-on: [self-hosted, macOS, X64, syco23, macos]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

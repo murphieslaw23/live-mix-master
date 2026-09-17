@@ -33,8 +33,9 @@ concurrency:
 
 jobs:
   macos-desktop-baseline:
+    if: vars.SYCO23_SELF_HOSTED_MACOS == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     name: Build, package, and launch macOS
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS, X64, syco23, macos]
     timeout-minutes: 30
     steps:
       - name: Check out source
