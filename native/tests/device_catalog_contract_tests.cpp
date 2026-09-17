@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
   }
 
   const std::size_t total = listInputDevices(nullptr, 0);
-  std::cout << "Core Audio eligible input endpoint count: " << total << '\n';
+  std::cout << "Eligible input/monitor endpoint count: " << total << '\n';
 
   std::array<LmmInputDeviceRecord, 2> records{};
   std::memset(records.data(), 0xA5, sizeof(records));
@@ -104,11 +104,11 @@ int main(int argc, char** argv) {
 
   if (total == 0) {
     checks.expect(written == 0, "zero-endpoint infrastructure query writes zero records");
-    std::cout << "No Core Audio input endpoints are visible on this host; this is infrastructure evidence only, not device-E2E success.\n";
+    std::cout << "No eligible input/monitor endpoint is visible on this host; this is infrastructure evidence only, not device-E2E success.\n";
   } else {
     checks.expect(written == 1, "non-empty catalog fills one record at capacity one");
     const auto& record = records[0];
-    checks.expect(record.object_id != 0, "input endpoint exposes a non-zero Core Audio object ID");
+    checks.expect(record.object_id != 0, "input endpoint exposes a non-zero native object ID");
     checks.expect(isNullTerminated(record.uid, LMM_DEVICE_UID_CAPACITY), "device UID is NUL terminated");
     checks.expect(record.uid[0] != '\0', "device UID is non-empty and stable-selection capable");
     checks.expect(isNullTerminated(record.name, LMM_DEVICE_NAME_CAPACITY), "device display name is NUL terminated");
@@ -122,6 +122,6 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  std::cout << "Core Audio input catalog ABI/bounds contract passed\n";
+  std::cout << "Native input catalog ABI/bounds contract passed\n";
   return EXIT_SUCCESS;
 }

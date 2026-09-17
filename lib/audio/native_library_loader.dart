@@ -51,13 +51,21 @@ class NativeLibraryLoadResult {
 }
 
 class NativeLibraryLoader {
-  static const String libraryFileName = 'liblive_mixer_engine.dylib';
+  static String libraryFileNameFor(String operatingSystem) => switch (operatingSystem) {
+        'macos' => 'liblive_mixer_engine.dylib',
+        'linux' => 'liblive_mixer_engine.so',
+        'windows' => 'liblive_mixer_engine.dll',
+        _ => 'liblive_mixer_engine.so',
+      };
 
   static List<String> candidatePaths({
     required Map<String, String> environment,
     required String currentDirectory,
     required String resolvedExecutable,
+    String? operatingSystem,
   }) {
+    final platform = operatingSystem ?? Platform.operatingSystem;
+    final libraryFileName = libraryFileNameFor(platform);
     final candidates = <String>[];
     final override = environment['LMM_NATIVE_LIBRARY']?.trim();
     if (override != null && override.isNotEmpty) {
@@ -66,9 +74,21 @@ class NativeLibraryLoader {
 
     candidates.add(_join(currentDirectory, 'build/native/$libraryFileName'));
 
-    final bundleContents = _bundleContentsDirectory(resolvedExecutable);
-    if (bundleContents != null) {
-      candidates.add(_join(bundleContents, 'Frameworks/$libraryFileName'));
+    switch (platform) {
+      case 'macos':
+        final bundleContents = _macosBundleContentsDirectory(resolvedExecutable);
+        if (bundleContents != null) {
+          candidates.add(_join(bundleContents, 'Frameworks/$libraryFileName'));
+        }
+        break;
+      case 'linux':
+        final executableDirectory = _executableDirectory(resolvedExecutable);
+        if (executableDirectory != null) {
+          candidates.add(_join(executableDirectory, 'lib/$libraryFileName'));
+        }
+        break;
+      default:
+        break;
     }
 
     return List.unmodifiable(candidates.toSet());
@@ -78,6 +98,7 @@ class NativeLibraryLoader {
     Map<String, String>? environment,
     String? currentDirectory,
     String? resolvedExecutable,
+    String? operatingSystem,
     bool Function(String path)? fileExists,
     DynamicLibrary Function(String path)? openLibrary,
   }) {
@@ -85,6 +106,7 @@ class NativeLibraryLoader {
       environment: environment ?? Platform.environment,
       currentDirectory: currentDirectory ?? Directory.current.path,
       resolvedExecutable: resolvedExecutable ?? Platform.resolvedExecutable,
+      operatingSystem: operatingSystem,
     );
     final exists = fileExists ?? (path) => File(path).existsSync();
     final open = openLibrary ?? DynamicLibrary.open;
@@ -109,12 +131,19 @@ class NativeLibraryLoader {
     );
   }
 
-  static String? _bundleContentsDirectory(String resolvedExecutable) {
+  static String? _macosBundleContentsDirectory(String resolvedExecutable) {
     final normalized = resolvedExecutable.replaceAll('\\', '/');
     const marker = '/Contents/MacOS/';
     final markerIndex = normalized.lastIndexOf(marker);
     if (markerIndex < 0) return null;
     return '${normalized.substring(0, markerIndex)}/Contents';
+  }
+
+  static String? _executableDirectory(String resolvedExecutable) {
+    final normalized = resolvedExecutable.replaceAll('\\', '/');
+    final separatorIndex = normalized.lastIndexOf('/');
+    if (separatorIndex <= 0) return null;
+    return normalized.substring(0, separatorIndex);
   }
 
   static String _join(String base, String suffix) {

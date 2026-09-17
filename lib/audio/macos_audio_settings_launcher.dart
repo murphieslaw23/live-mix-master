@@ -1,12 +1,14 @@
 import 'dart:io';
 
+import 'audio_settings_launcher_port.dart';
+
 typedef MacosProcessRunner = Future<int> Function(
   String executable,
   List<String> arguments,
 );
 
 /// Opens the macOS microphone privacy pane from the non-real-time host side.
-class MacosAudioSettingsLauncher {
+class MacosAudioSettingsLauncher implements AudioSettingsLauncher {
   MacosAudioSettingsLauncher({MacosProcessRunner? runProcess})
       : runProcess = runProcess ?? _run;
 
@@ -19,6 +21,9 @@ class MacosAudioSettingsLauncher {
     final result = await Process.run(executable, arguments);
     return result.exitCode;
   }
+
+  @override
+  Future<void> openAudioInputSettings() => openMicrophonePrivacy();
 
   Future<void> openMicrophonePrivacy() async {
     final exitCode = await runProcess(

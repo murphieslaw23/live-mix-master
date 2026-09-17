@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../audio/audio_engine_factory_desktop.dart';
 import '../audio/audio_engine_port.dart';
-import '../audio/macos_audio_settings_launcher.dart';
+import '../audio/audio_settings_launcher.dart';
 import '../audio/native_desktop_runtime.dart';
 import '../design/live_mix_tokens.dart';
 import '../features/mixer/mixer_desk_view.dart';
@@ -17,11 +17,11 @@ Widget buildPrimaryOperatorSurface(AudioEnginePort? audioEngine) {
 class _NativeDesktopOperatorSurface extends StatelessWidget {
   _NativeDesktopOperatorSurface({
     required this.audioEngine,
-    MacosAudioSettingsLauncher? settingsLauncher,
-  }) : settingsLauncher = settingsLauncher ?? MacosAudioSettingsLauncher();
+    AudioSettingsLauncher? settingsLauncher,
+  }) : settingsLauncher = settingsLauncher ?? createDesktopAudioSettingsLauncher();
 
   final DesktopNativeAudioEngine audioEngine;
-  final MacosAudioSettingsLauncher settingsLauncher;
+  final AudioSettingsLauncher settingsLauncher;
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +59,7 @@ class _NativeDesktopOperatorSurface extends StatelessWidget {
           fingerprintService: runtime.services,
           recordingWriter: runtime.services,
           telemetrySource: runtime.acceptanceTelemetry,
-          onOpenAudioSettings: settingsLauncher.openMicrophonePrivacy,
+          onOpenAudioSettings: settingsLauncher.openAudioInputSettings,
         );
       },
     );

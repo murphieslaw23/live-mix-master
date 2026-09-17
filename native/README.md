@@ -40,13 +40,24 @@ An explicit path can be supplied with `LMM_NATIVE_LIBRARY`.
 
 ### Linux
 
-The current CMake target basename is:
+Linux capture is PipeWire-first. Install the development/runtime prerequisites:
 
-```text
-liblive_mixer_engine.so
+```sh
+sudo apt install libpipewire-0.3-dev libspa-0.2-dev clang ninja-build libgtk-3-dev
 ```
 
-Linux build/runtime support is not verified by Issue #2. Do not treat the CMake branch as device-capture evidence.
+Then build the engine:
+
+```sh
+cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/native --parallel
+ctest --test-dir build/native --output-on-failure
+test -f build/native/liblive_mixer_engine.so
+```
+
+The Linux backend enumerates PipeWire `Audio/Source` input nodes and `Audio/Sink` monitor nodes. PipeWire owns ALSA device policy and virtual-device/loopback routing; direct ALSA hardware capture is intentionally not a fallback. On ALSA-only installations, install and run PipeWire rather than bypassing the session manager.
+
+The Flutter Linux bundle packages `liblive_mixer_engine.so` under `lib/` next to the executable. For an explicit development override, set `LMM_NATIVE_LIBRARY` to the Debug artifact. Device E2E is not satisfied until `docs/audio/linux-pipewire-device-e2e.md` is run on a real PipeWire desktop host.
 
 ### Windows
 

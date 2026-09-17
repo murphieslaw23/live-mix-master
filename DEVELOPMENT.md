@@ -58,6 +58,27 @@ The Web build does not require CMake or `liblive_mixer_engine.dylib`. `lib/audio
 
 The GitHub Actions **Web Release Compile Contract** is the authoritative clean-checkout reproduction of this path and uploads the resulting `build/web` artifact. Browser capture, AudioWorklet DSP, recording, installability, browser E2E, and Vercel promotion are separate release gates.
 
+### Linux desktop — PipeWire path
+
+Install the host prerequisites before generating or building the Linux bundle:
+
+```sh
+sudo apt install libpipewire-0.3-dev libspa-0.2-dev clang ninja-build libgtk-3-dev
+```
+
+Then use Flutter 3.47.2 to build the committed `linux/` runner:
+
+```sh
+bash tool/bootstrap_fonts.sh
+flutter pub get
+cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/native --parallel
+ctest --test-dir build/native --output-on-failure
+flutter build linux --debug
+```
+
+PipeWire is the Linux audio backend. It enumerates physical/virtual `Audio/Source` nodes plus `Audio/Sink` monitor routes for system-output capture. Direct ALSA access is intentionally not used because it bypasses PipeWire session policy and virtual-device routing. Run `FLUTTER_BIN=/path/to/flutter tool/linux_device_acceptance.sh` for the real-device procedure; it remains pending until [`docs/audio/linux-pipewire-device-e2e.md`](docs/audio/linux-pipewire-device-e2e.md) is completed.
+
 ### macOS desktop — Issues #2 and #3
 
 From the repository root:

@@ -32,9 +32,9 @@ struct LmmCaptureStatus {
   double max_callback_us;
 };
 
-// Starts capture from the Core Audio input endpoint identified by stable UID.
-// channel_pair_index is zero-based: 0 selects CH 1-2, 1 selects CH 3-4, etc.
-// Returns only after the device IOProc has been created and started.
+// Starts capture from the platform input or monitor endpoint identified by its
+// stable UID. channel_pair_index is zero-based: 0 selects CH 1-2, 1 selects
+// CH 3-4, etc. Returns only after the platform stream is negotiated and running.
 bool lmm_capture_start(
     const char* device_uid,
     std::uint32_t channel_pair_index);

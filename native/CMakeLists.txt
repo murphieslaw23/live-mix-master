@@ -40,8 +40,15 @@ if(APPLE)
     target_include_directories(macos_device_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_link_libraries(macos_device_probe PRIVATE live_mixer_engine)
 elseif(UNIX AND NOT APPLE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
     find_package(Threads REQUIRED)
-    target_link_libraries(live_mixer_engine PRIVATE Threads::Threads asound)
+    target_sources(live_mixer_engine PRIVATE
+        linux/pipewire_device_catalog.cpp
+        linux/pipewire_capture.cpp
+        linux/audio_input_permissions.cpp
+    )
+    target_link_libraries(live_mixer_engine PRIVATE Threads::Threads PkgConfig::PIPEWIRE)
 elseif(WIN32)
     target_link_libraries(live_mixer_engine PRIVATE mfplat mfuuid ole32)
 endif()
@@ -81,13 +88,27 @@ if(BUILD_TESTING)
     add_test(NAME pcm_handoff_tests
         COMMAND pcm_handoff_tests $<TARGET_FILE:live_mixer_engine>)
 
-    if(APPLE)
+    if(APPLE OR (UNIX AND NOT APPLE))
         add_executable(device_catalog_contract_tests tests/device_catalog_contract_tests.cpp)
         target_include_directories(device_catalog_contract_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
         add_dependencies(device_catalog_contract_tests live_mixer_engine)
+        if(UNIX)
+            target_link_libraries(device_catalog_contract_tests PRIVATE ${CMAKE_DL_LIBS})
+        endif()
         add_test(NAME device_catalog_contract_tests
             COMMAND device_catalog_contract_tests $<TARGET_FILE:live_mixer_engine>)
+    endif()
 
+    if(UNIX AND NOT APPLE)
+        add_executable(linux_pipewire_capture_contract_tests tests/linux_pipewire_capture_contract_tests.cpp)
+        target_include_directories(linux_pipewire_capture_contract_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        add_dependencies(linux_pipewire_capture_contract_tests live_mixer_engine)
+        target_link_libraries(linux_pipewire_capture_contract_tests PRIVATE ${CMAKE_DL_LIBS})
+        add_test(NAME linux_pipewire_capture_contract_tests
+            COMMAND linux_pipewire_capture_contract_tests $<TARGET_FILE:live_mixer_engine>)
+    endif()
+
+    if(APPLE)
         add_executable(audio_permission_contract_tests tests/audio_permission_contract_tests.cpp)
         target_include_directories(audio_permission_contract_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
         add_dependencies(audio_permission_contract_tests live_mixer_engine)

@@ -18,10 +18,10 @@ struct LmmInputDeviceRecord {
 };
 
 // Count query: out_records == nullptr or capacity == 0 returns the number of
-// currently eligible Core Audio input endpoints.
+// currently eligible platform input and monitor endpoints.
 //
 // Fill query: writes at most `capacity` records and returns the number written.
-// Device selection in later tasks consumes `uid`; `name` is display-only.
+// Device selection consumes `uid`; `name` is display-only.
 std::size_t lmm_list_input_devices(
     LmmInputDeviceRecord* out_records,
     std::size_t capacity);

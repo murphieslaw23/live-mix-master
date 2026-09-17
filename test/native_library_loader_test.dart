@@ -11,6 +11,7 @@ void main() {
         currentDirectory: '/workspace/live-mix-master',
         resolvedExecutable:
             '/workspace/live-mix-master/build/macos/Build/Products/Debug/live_mix_master.app/Contents/MacOS/live_mix_master',
+        operatingSystem: 'macos',
       );
 
       expect(
@@ -23,12 +24,34 @@ void main() {
       );
     });
 
+    test('orders Linux override, repo debug build, then bundled shared object', () {
+      final candidates = NativeLibraryLoader.candidatePaths(
+        environment: const {
+          'LMM_NATIVE_LIBRARY': '/custom/liblive_mixer_engine.so',
+        },
+        currentDirectory: '/workspace/live-mix-master',
+        resolvedExecutable:
+            '/workspace/live-mix-master/build/linux/x64/debug/bundle/live_mix_master',
+        operatingSystem: 'linux',
+      );
+
+      expect(
+        candidates,
+        const [
+          '/custom/liblive_mixer_engine.so',
+          '/workspace/live-mix-master/build/native/liblive_mixer_engine.so',
+          '/workspace/live-mix-master/build/linux/x64/debug/bundle/lib/liblive_mixer_engine.so',
+        ],
+      );
+    });
+
     test('missing library returns actionable recovery guidance', () {
       final result = NativeLibraryLoader.tryLoad(
         environment: const {},
         currentDirectory: '/workspace/live-mix-master',
         resolvedExecutable:
             '/Applications/LiveMixMaster.app/Contents/MacOS/live_mix_master',
+        operatingSystem: 'macos',
         fileExists: (_) => false,
       );
 
