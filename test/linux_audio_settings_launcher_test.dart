@@ -13,7 +13,7 @@ void main() {
     await launcher.openAudioInputSettings();
 
     expect(calls, hasLength(1));
-    expect(calls.single.$1, 'gnome-control-center');
+    expect(calls.single.$1, 'xdg-open');
     expect(calls.single.$2, const ['sound']);
   });
 

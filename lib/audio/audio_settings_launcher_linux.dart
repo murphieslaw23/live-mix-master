@@ -31,5 +31,5 @@ class LinuxAudioSettingsLauncher implements AudioSettingsLauncher {
 
   @override
   Future<void> openAudioInputSettings() =>
-      startProcess('gnome-control-center', const ['sound']);
+      startProcess('xdg-open', const ['sound']);
 }

@@ -10,7 +10,7 @@
 - OS audio subsystems referenced by the current prototype:
   - macOS: CoreAudio, AudioToolbox
   - Windows: Windows Media Foundation / platform audio APIs
-  - Linux: ALSA plus planned PipeWire-first capture work
+  - Linux: PipeWire (verified backend; direct ALSA is not used)
 
 ## CMake build
 
