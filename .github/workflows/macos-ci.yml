@@ -9,6 +9,7 @@ on:
       - 'native/**'
       - 'test/**'
       - 'tool/bootstrap_fonts.sh'
+      - 'tool/macos_device_acceptance.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/macos-ci.yml'
@@ -19,6 +20,7 @@ on:
       - 'native/**'
       - 'test/**'
       - 'tool/bootstrap_fonts.sh'
+      - 'tool/macos_device_acceptance.sh'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/macos-ci.yml'
@@ -69,11 +71,22 @@ jobs:
           test -n "$TEST_FILES"
           flutter test --reporter expanded $TEST_FILES
 
-      - name: Build native debug engine
+      - name: Build and test native debug engine
         run: |
-          cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Debug
+          cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug
           cmake --build build/native --config Debug --parallel
           test -f build/native/liblive_mixer_engine.dylib
+          ctest --test-dir build/native --output-on-failure
+
+      - name: Core Audio discovery probe
+        run: |
+          test -x build/native/macos_device_probe
+          build/native/macos_device_probe --list | tee /tmp/live-mix-master-coreaudio-probe.log
+
+      - name: Built-dylib Dart FFI smoke
+        env:
+          LMM_NATIVE_LIBRARY: ${{ github.workspace }}/build/native/liblive_mixer_engine.dylib
+        run: flutter test --reporter expanded test/native_built_library_smoke_test.dart
 
       - name: Build Flutter debug app
         run: flutter build macos --debug
@@ -110,6 +123,7 @@ jobs:
           name: issue2-macos-launch-evidence
           path: |
             /tmp/live-mix-master-launch.log
+            /tmp/live-mix-master-coreaudio-probe.log
             build/macos/Build/Products/Debug/live_mix_master.app/Contents/Frameworks/liblive_mixer_engine.dylib
           if-no-files-found: warn
           retention-days: 14

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'mixer_service_ports.dart';
 import 'reliability_models.dart' as reliability;
 
 enum PcmBitDepth {
@@ -34,7 +36,7 @@ class RecordingStats {
   final int droppedBuffers;
 }
 
-class LosslessRecordingWriter {
+class LosslessRecordingWriter implements MixerRecordingPort {
   LosslessRecordingWriter({required this.config});
   final RecordingConfig config;
   final _events = StreamController<RecordingStats>.broadcast();
@@ -51,11 +53,13 @@ class LosslessRecordingWriter {
   bool _accepting = false;
   bool _writeFailed = false;
 
+  @override
   Stream<RecordingStats> get onStatsUpdated => _events.stream;
   Stream<reliability.ServiceStatus> get onStatus => _statuses.stream;
   bool get isRecording => _file != null && _accepting;
   String? get currentFilePath => _path;
 
+  @override
   Future<String> startRecording() async {
     if (isRecording) throw StateError('Recording is already in progress.');
     final failure = config.validationFailure;
@@ -115,6 +119,7 @@ class LosslessRecordingWriter {
     }
   }
 
+  @override
   Future<RecordingStats> stopRecording() async {
     if (_file == null) throw StateError('Cannot stop a recording that is not active.');
     _accepting = false;
