@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/services/broadcast_metadata_adapter.dart';
 import 'package:live_mix_master/services/fingerprint_service.dart';
+import 'support/broadcast_config_validation_cases.dart';
 
 void main() {
+  registerBroadcastConfigValidationTests();
   group('LiveMixMaster Broadcast & Identification Pipeline Integration Tests', () {
     late StreamController<IdentifiedTrack> fingerprintStreamController;
 

@@ -2,39 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'broadcast_server_config.dart';
 import 'fingerprint_service.dart';
 import 'reliability_models.dart';
-
-enum BroadcastProtocol { icecast, shoutcast, webhook, obsHttpOverlay }
-
-class BroadcastServerConfig {
-  const BroadcastServerConfig({required this.protocol, this.host = 'localhost', this.port = 8000, this.mountPoint = '/live', this.adminUser = 'admin', this.adminPassword = '', this.webhookUrl, this.timeout = const Duration(seconds: 4), this.maxRetries = 2, this.initialBackoff = const Duration(milliseconds: 100), this.overlayFilePath});
-  final BroadcastProtocol protocol;
-  final String host;
-  final int port;
-  final String mountPoint;
-  final String adminUser;
-  final String adminPassword;
-  final Uri? webhookUrl;
-  final Duration timeout;
-  final int maxRetries;
-  final Duration initialBackoff;
-  final String? overlayFilePath;
-  ServiceFailureCode? get validationFailure {
-    switch (protocol) {
-      case BroadcastProtocol.icecast:
-      case BroadcastProtocol.shoutcast:
-        if (host.trim().isEmpty || port <= 0 || port > 65535) return ServiceFailureCode.invalidConfiguration;
-        break;
-      case BroadcastProtocol.webhook:
-        if (webhookUrl == null || !webhookUrl!.hasScheme || webhookUrl!.host.isEmpty) return ServiceFailureCode.invalidConfiguration;
-        break;
-      case BroadcastProtocol.obsHttpOverlay:
-        break;
-    }
-    return null;
-  }
-}
+export 'broadcast_server_config.dart';
 
 class BroadcastAdapterResult {
   const BroadcastAdapterResult({required this.protocol, required this.attemptCount, required this.safeEndpointIdentity, required this.succeeded, this.failureCode, this.diagnostic});
@@ -50,10 +21,11 @@ class BroadcastAdapterResult {
 String redactBroadcastDiagnostic(String value) => redactDiagnostic(value);
 
 class BroadcastMetadataAdapter {
-  BroadcastMetadataAdapter({required this.config, required Stream<IdentifiedTrack> fingerprintStream, http.Client? httpClient, Future<void> Function(Duration)? sleeper})
+  BroadcastMetadataAdapter({required this.config, required Stream<IdentifiedTrack> fingerprintStream, http.Client? httpClient, Future<void> Function(Duration)? sleeper, Future<void> Function(String path, String content)? overlayWriter})
       : _client = httpClient ?? http.Client(),
         _shouldCloseClient = httpClient == null,
         _sleeper = sleeper,
+        _overlayWriter = overlayWriter,
         _destinationId = ++_nextDestinationId,
         _fingerprintSub = fingerprintStream.listen(null) {
     _fingerprintSub.onData(_onTrackDetected);
@@ -65,6 +37,7 @@ class BroadcastMetadataAdapter {
   final http.Client _client;
   final bool _shouldCloseClient;
   final Future<void> Function(Duration)? _sleeper;
+  final Future<void> Function(String path, String content)? _overlayWriter;
   final _statusController = StreamController<ServiceStatus>.broadcast(sync: true);
   final _resultController = StreamController<BroadcastAdapterResult>.broadcast(sync: true);
   bool _isConnected = false;
@@ -114,13 +87,13 @@ class BroadcastMetadataAdapter {
         }
         lastFailureCode = outcome.failureCode ?? ServiceFailureCode.unknown;
         if (!_isRetryableCode(lastFailureCode) || attempt >= maxAttempts) break;
-        final backoff = config.initialBackoff * (1 << (attempt - 1));
+        final backoff = config.retryDelay(attempt);
         _emitStatus(ServiceStatus.retrying(failureCode: lastFailureCode, attempt: attempt, nextRetryAt: DateTime.now().add(backoff), message: _message(lastFailureCode)));
         if (_sleeper != null) { await _sleeper(backoff); } else { await Future<void>.delayed(backoff); }
       } catch (error) {
         lastFailureCode = _mapExceptionToFailureCode(error);
         if (!_isRetryableCode(lastFailureCode) || attempt >= maxAttempts) break;
-        final backoff = config.initialBackoff * (1 << (attempt - 1));
+        final backoff = config.retryDelay(attempt);
         _emitStatus(ServiceStatus.retrying(failureCode: lastFailureCode, attempt: attempt, nextRetryAt: DateTime.now().add(backoff), message: _message(lastFailureCode)));
         if (_sleeper != null) { await _sleeper(backoff); } else { await Future<void>.delayed(backoff); }
       }
@@ -145,8 +118,7 @@ class BroadcastMetadataAdapter {
   }
 
   Future<_DispatchOutcome> _dispatchIcecast(String song) async {
-    final mount = config.mountPoint.startsWith('/') ? config.mountPoint : '/${config.mountPoint}';
-    final uri = Uri(scheme: 'http', host: config.host, port: config.port, path: '/admin/metadata', queryParameters: {'mount': mount, 'mode': 'updinfo', 'song': song, 'charset': 'UTF-8'});
+    final uri = config.buildMetadataUri(song);
     final basicAuth = 'Basic ${base64Encode(utf8.encode('${config.adminUser}:${config.adminPassword}'))}';
     try {
       return _interpretHttpResponse(await _client.get(uri, headers: {'Authorization': basicAuth}).timeout(config.timeout));
@@ -154,15 +126,14 @@ class BroadcastMetadataAdapter {
   }
 
   Future<_DispatchOutcome> _dispatchShoutcast(String song) async {
-    final uri = Uri(scheme: 'http', host: config.host, port: config.port, path: '/admin.cgi', queryParameters: {'mode': 'updinfo', 'pass': config.adminPassword, 'song': song});
+    final uri = config.buildMetadataUri(song);
     try {
       return _interpretHttpResponse(await _client.get(uri).timeout(config.timeout));
     } catch (error) { return _DispatchOutcome(succeeded: false, failureCode: _mapExceptionToFailureCode(error)); }
   }
 
   Future<_DispatchOutcome> _dispatchWebhook(IdentifiedTrack track) async {
-    final url = config.webhookUrl;
-    if (url == null) return const _DispatchOutcome(succeeded: false, failureCode: ServiceFailureCode.invalidConfiguration);
+    final url = config.buildMetadataUri('${track.artist} - ${track.title}');
     final payload = jsonEncode({'event': 'track_change', 'artist': track.artist, 'title': track.title, 'release': track.release, 'confidence': track.confidence, 'detectedAt': track.detectedAt.toUtc().toIso8601String(), 'sessionOffsetMs': track.sessionOffset.inMilliseconds});
     try {
       return _interpretHttpResponse(await _client.post(url, headers: {'Content-Type': 'application/json; charset=utf-8'}, body: payload).timeout(config.timeout));
@@ -171,7 +142,9 @@ class BroadcastMetadataAdapter {
 
   Future<_DispatchOutcome> _dispatchOverlay(IdentifiedTrack track) async {
     try {
-      await File(config.overlayFilePath ?? 'live_current_track.txt').writeAsString('${track.artist.toUpperCase()} — ${track.title.toUpperCase()}', encoding: utf8, flush: true);
+      final path = config.overlayFilePath ?? 'live_current_track.txt';
+      final content = '${track.artist.toUpperCase()} — ${track.title.toUpperCase()}';
+      if (_overlayWriter != null) { await _overlayWriter(path, content); } else { await File(path).writeAsString(content, encoding: utf8, flush: true); }
       return const _DispatchOutcome(succeeded: true);
     } catch (_) { return const _DispatchOutcome(succeeded: false, failureCode: ServiceFailureCode.writeFailed); }
   }
