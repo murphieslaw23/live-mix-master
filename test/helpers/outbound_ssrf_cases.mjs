@@ -1,3 +1,4 @@
+import '../web_outbound_address_policy_test.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createBroadcastMetadataHandler} from '../../api/broadcast-metadata.mjs';
