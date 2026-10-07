@@ -3,9 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:live_mix_master/services/broadcast_metadata_adapter.dart';
 import 'package:live_mix_master/services/fingerprint_service.dart';
 import 'support/broadcast_config_validation_cases.dart';
+import 'support/broadcast_lifecycle_cases.dart';
 
 void main() {
   registerBroadcastConfigValidationTests();
+  registerBroadcastLifecycleTests();
   group('LiveMixMaster Broadcast & Identification Pipeline Integration Tests', () {
     late StreamController<IdentifiedTrack> fingerprintStreamController;
 
