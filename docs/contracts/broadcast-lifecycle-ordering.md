@@ -1,0 +1,15 @@
+# A3/A4 lifecycle and ordering — implementation plan and candidate
+
+Date: 2026-10-07. Baseline: b2a22fd6b7b4580e393302b6b24896ce3e2445b4. Status: candidate; tests have not been executed on the proposed new commit.
+
+Plan: retain A1/A2 safe diagnostics and A5 validation; introduce one active operation and one replaceable pending update; settle superseded operations exactly once; use http 1.6.0 AbortableRequest with Client.send; cancel backoff; make disposal idempotent and close only owned clients; register focused regressions in existing CI-selected pipeline tests; require exact-head analysis/service/browser and applicable desktop evidence.
+
+Each request/result has a monotonic adapter-local operation ID. BroadcastOperationStatus correlates existing ServiceStatus with operation ID. Existing onStatus/onResult remain; controllers deliver asynchronously to prevent listener-triggered synchronous reentrancy. Supersession records supersededBy and resolves as cancelled. Invalid config is rejected before acceptance/dispatch and does not supersede valid active work.
+
+Only one operation runs; the pending slot stores the latest valid update. New updates cancel the active operation logically and signal HTTP abortion. The scheduler retains the transport ordering gate until that attempt settles or reaches the configured timeout; older operations never retry or change connection state after supersession. Already accepted futures receive one terminal result. New calls after shutdown return cancelled without emitting to closed streams.
+
+Disposal marks closing synchronously, cancels active/pending jobs, interrupts default Timer and injected sleeper waits, unsubscribes fingerprint input, closes an owned client once and joins the bounded worker before closing streams. Injected clients are never closed. clientFactory allows ownership testing; supplying it together with httpClient is rejected. Timer and request abortion cover retry/request lifecycle separately.
+
+Limits: standard abort-capable clients can terminate HTTP transport; arbitrary injected clients can ignore abort, so logical cancellation is immediate but teardown/order gating can wait up to config.timeout. Late completions are consumed and cannot emit success. Timeouts/abort cannot retract an upstream write already processed or prove remote ordering after ambiguous transport timeout. Strong remote guarantees require server-side sequence/idempotency acknowledgement. File writes and injected overlay writers are not physically abortable; the gate waits for completion/timeout and does not undo prior output.
+
+Regression cases: A/B/C supersession, late old failure, 100-update bound, active/pending disposal, owned/injected client handling, backoff supersession and disposal, late sleeper error, listener-driven disposal, timeout abortion, ignored-abort late response, overlay gate. Original payload/auth/redaction/A5/persistence tests remain. No dependency upgrade, merge, deployment, Notion completion update or server-side SSRF remediation is included.
