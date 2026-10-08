@@ -1,0 +1,78 @@
+name: Runner Storage Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/runner-storage-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-storage-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  storage:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.number == 42 && github.event.pull_request.head.repo.full_name == github.repository)
+    name: Runner Storage — Read Only
+    runs-on: [self-hosted, Linux, X64, syco23, broker]
+    timeout-minutes: 5
+    steps:
+      - name: Disk, inode and bounded directory-size diagnostics
+        shell: bash
+        working-directory: /
+        run: |
+          set +e
+          set -uo pipefail
+          printf 'snapshot_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          printf 'runner=%s os=%s arch=%s\n' "${RUNNER_NAME:-unknown}" "${RUNNER_OS:-unknown}" "${RUNNER_ARCH:-unknown}"
+          printf 'workflow_sha=%s\n' "${GITHUB_SHA:-unknown}"
+          printf 'Read-only snapshot; no cleanup, SDK install, cache restore or checkout.\n'
+          printf 'Pool scheduling may select a different runner than the earlier failed job.\n'
+
+          paths=()
+          for path in "${GITHUB_WORKSPACE:-}" "${RUNNER_TEMP:-}" "${RUNNER_TOOL_CACHE:-}"; do
+            if [[ -n "$path" && -e "$path" ]]; then
+              paths+=("$path")
+            fi
+          done
+          if [[ -n "${RUNNER_TEMP:-}" && -d "$RUNNER_TEMP" ]]; then
+            work_root="$(dirname -- "$RUNNER_TEMP")"
+            if [[ "$work_root" != / && -d "$work_root" ]]; then
+              paths+=("$work_root")
+            fi
+          fi
+
+          if (( ${#paths[@]} == 0 )); then
+            printf 'No existing runner-owned diagnostic paths found.\n'
+            exit 1
+          fi
+
+          for path in "${paths[@]}"; do
+            printf '\n=== %s ===\n' "$path"
+            printf '\nDisk capacity (human readable):\n'
+            df -h -- "$path"
+            printf '\nDisk capacity (bytes):\n'
+            df -P -B1 -- "$path"
+            printf '\nInode capacity:\n'
+            df -Pi -- "$path"
+            if [[ -d "$path" ]]; then
+              printf '\nLargest immediate children (one filesystem; 30-second scan limit):\n'
+              if command -v timeout >/dev/null 2>&1; then
+                timeout 30s du -x -h --max-depth=1 -- "$path" | sort -hr | head -n 15
+                scan_status=${PIPESTATUS[0]}
+                if (( scan_status != 0 )); then
+                  printf 'Directory scan incomplete or unavailable; du/timeout exit=%s\n' "$scan_status"
+                fi
+              else
+                printf 'Skipping directory scan: timeout command unavailable.\n'
+              fi
+            fi
+          done
+
+          printf '\nSnapshot complete. Inspect free bytes and inodes separately.\n'
+          printf 'Successful diagnostic execution is not storage recovery or a passing app test.\n'
