@@ -1,0 +1,13 @@
+# Guarded outbound HTTPS transport — candidate
+
+Date: 2026-10-07. Baseline: 6770d40716f2dc421e4799af0805e02a75b5e918.
+
+Uses Node built-ins only. createGuardedRequest classifies server-selected destinations, resolves and validates all DNS answers before each call, rejects any prohibited answer and pins one approved canonical address through an HTTPS lookup callback. No second DNS lookup or global fetch occurs in the default transport. DNS and body waits share a total deadline, caller cancellation prevents late dispatch, redirects are rejected, requests are capped at 256 KiB and responses at 64 KiB by default. Limits are validated and can be configured up to 1 MiB; timeout defaults to 5 seconds and is capped at 60 seconds.
+
+No connection pooling (agent:false). DNS hostname is retained for SNI and certificate identity checking; rejectUnauthorized remains true. The socket's canonical peer must equal the pinned address and be approved. Request.end is deferred until authorized TLS and peer verification, preventing headers/body from being deliberately flushed before those checks. Caller Host overrides and unrelated header names are rejected. Only content-type is forwarded from upstream response headers. Errors contain allowlisted codes and a generic message, without causes/URLs/credentials.
+
+resolveImpl and requestImpl are trusted server-side testing seams, never browser request fields. The tests drive the configured lookup through a controlled request/socket harness. They do not open a real socket or prove a live TLS handshake, infrastructure routing or Vercel egress policy. The underlying system DNS lookup is not physically cancelled; its late result is consumed and cannot start dispatch after cancellation/deadline.
+
+Local verification: Node v20.20.1, Linux x64; node --test test/web_guarded_outbound_request_test.mjs; exit 0; 18 passed, 0 failed, 0 skipped. Module SHA-256: 19d2fe02eff2b91c0af3b43792587abeba2129525afb79b2479ac92aacb79ab3. Test SHA-256: ea610fedd3077433c674bc8596633fa0655f451e59f5c5b602d432471dad0c77. Local evidence JSON/TAP are supplied as deliverables. Exact-head Node 24 CI/deployment evidence remains required.
+
+This commit adds the transport and tests but does not wire either API. The existing SSRF entry imports transport tests for targeted CI; API SSRF cases remain unresolved until handler integration. Next patch must preserve destination registry selection and provider payloads, use the default guarded transport, map policy failures to safe terminal API results, keep mock transport seams explicit, rerun original plus SSRF contracts, and add controlled live TLS/deployment egress verification. No merge, deployment, Notion completion update or SSRF closure is included.
