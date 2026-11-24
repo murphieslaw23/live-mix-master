@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import './helpers/outbound_ssrf_cases.mjs';
 
 import {createBroadcastMetadataHandler} from '../api/broadcast-metadata.mjs';
 
